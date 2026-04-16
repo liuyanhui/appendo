@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Appendo</string>
+    <string name="channel_name">写入通知</string>
+    <string name="notification_title">收集成功</string>
+    <string name="no_file_hint">尚未选择文件，请先在主界面选择或创建文件</string>
+    <string name="developer_name">yiyue31</string>
+</resources>
