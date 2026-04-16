@@ -1,4 +1,4 @@
-package com.example.linkappending.util
+package com.yiyue31.android.appendo.util
 
 import android.content.ContentResolver
 import android.content.Context

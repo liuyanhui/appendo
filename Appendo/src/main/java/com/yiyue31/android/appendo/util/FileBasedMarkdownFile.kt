@@ -1,73 +1,72 @@
-package com.example.linkappending.util
+package com.yiyue31.android.appendo.util
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class FileBasedMarkdownFile(
     private val context: Context,
     private val file: File
-) {
+) : MarkdownFileOperations {
     private val lock = Any()
 
     companion object {
-        const val FILE_HEADER = "# Link Collection\n"
-        internal const val TIMESTAMP_PATTERN = "^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"
-        internal val TIMESTAMP_REGEX = Regex(TIMESTAMP_PATTERN, RegexOption.MULTILINE)
+        private const val TAG = "FileBasedMarkdownFile"
     }
 
-    fun append(content: String): Boolean {
+    override fun append(content: String): Boolean {
         synchronized(lock) {
             return try {
-                val entry = formatEntry(content)
+                val entry = MarkdownFormatter.formatEntry(content)
                 FileOutputStream(file, true).use { output ->
                     output.write(entry.toByteArray(Charsets.UTF_8))
                 }
                 true
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to append content", e)
                 false
             }
         }
     }
 
-    fun readAll(): String {
+    override fun readAll(): String {
         return try {
             FileInputStream(file).use { input ->
                 input.readBytes().toString(Charsets.UTF_8)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read file", e)
             ""
         }
     }
 
-    fun clear(): Boolean {
+    override fun clear(): Boolean {
         synchronized(lock) {
             return try {
                 FileOutputStream(file).use { output ->
-                    output.write(FILE_HEADER.toByteArray(Charsets.UTF_8))
+                    output.write(MarkdownFormatter.FILE_HEADER.toByteArray(Charsets.UTF_8))
                 }
                 true
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear file", e)
                 false
             }
         }
     }
 
-    fun exists(): Boolean {
+    override fun exists(): Boolean {
         return file.exists()
     }
 
-    fun count(): Int {
+    override fun count(): Int {
         val content = readAll()
-        return TIMESTAMP_REGEX.findAll(content).count()
+        return MarkdownFormatter.getTimestampRegex().findAll(content).count()
     }
 
-    fun initHeader(): Boolean {
+    override fun initHeader(): Boolean {
         if (!file.exists()) {
             file.parentFile?.mkdirs()
             file.createNewFile()
@@ -76,19 +75,14 @@ class FileBasedMarkdownFile(
         if (content.isBlank()) {
             return try {
                 FileOutputStream(file).use { output ->
-                    output.write(FILE_HEADER.toByteArray(Charsets.UTF_8))
+                    output.write(MarkdownFormatter.FILE_HEADER.toByteArray(Charsets.UTF_8))
                 }
                 true
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize header", e)
                 false
             }
         }
         return true
-    }
-
-    private fun formatEntry(content: String): String {
-        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            .format(Date())
-        return "\n---\n\n## $timestamp\n\n$content\n\n---\n"
     }
 }

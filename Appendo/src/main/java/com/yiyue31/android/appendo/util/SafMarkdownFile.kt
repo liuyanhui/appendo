@@ -1,33 +1,26 @@
-package com.example.linkappending.util
+package com.yiyue31.android.appendo.util
 
 import android.content.Context
 import android.net.Uri
-import android.provider.DocumentsContract
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.OutputStream
-import java.io.PrintWriter
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class SafMarkdownFile(
     private val context: Context,
     private val uri: Uri
-) {
+) : MarkdownFileOperations {
     private val lock = Any()
 
     companion object {
-        const val FILE_HEADER = "# Link Collection\n"
-        internal const val TIMESTAMP_PATTERN = "^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"
-        internal val TIMESTAMP_REGEX = Regex(TIMESTAMP_PATTERN, RegexOption.MULTILINE)
+        private const val TAG = "SafMarkdownFile"
     }
 
-    fun append(content: String): Boolean {
+    override fun append(content: String): Boolean {
         synchronized(lock) {
             return try {
-                val entry = formatEntry(content)
+                val entry = MarkdownFormatter.formatEntry(content)
                 val outputStream = context.contentResolver.openOutputStream(uri, "wa")
                 if (outputStream != null) {
                     outputStream.use { output ->
@@ -39,6 +32,7 @@ class SafMarkdownFile(
                     appendFallback(content)
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Failed to append content, trying fallback", e)
                 // Fallback on any error
                 appendFallback(content)
             }
@@ -48,9 +42,9 @@ class SafMarkdownFile(
     private fun appendFallback(content: String): Boolean {
         return try {
             val existingContent = readAll()
-            val entry = formatEntry(content)
+            val entry = MarkdownFormatter.formatEntry(content)
             val newContent = if (existingContent.isBlank()) {
-                FILE_HEADER + entry
+                MarkdownFormatter.FILE_HEADER + entry
             } else {
                 existingContent + entry
             }
@@ -65,11 +59,12 @@ class SafMarkdownFile(
                 false
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to append fallback content", e)
             false
         }
     }
 
-    fun readAll(): String {
+    override fun readAll(): String {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri)
             if (inputStream != null) {
@@ -81,57 +76,61 @@ class SafMarkdownFile(
             } else {
                 ""
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read file", e)
             ""
         }
     }
 
-    fun clear(): Boolean {
+    override fun clear(): Boolean {
         synchronized(lock) {
             return try {
                 val outputStream = context.contentResolver.openOutputStream(uri, "wt")
                 if (outputStream != null) {
                     outputStream.use { output ->
-                        output.write(FILE_HEADER.toByteArray(Charsets.UTF_8))
+                        output.write(MarkdownFormatter.FILE_HEADER.toByteArray(Charsets.UTF_8))
                     }
                     true
                 } else {
                     false
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear file", e)
                 false
             }
         }
     }
 
-    fun exists(): Boolean {
+    override fun exists(): Boolean {
         return try {
             val docFile = DocumentFile.fromSingleUri(context, uri)
             docFile?.exists() == true
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to check file existence", e)
             false
         }
     }
 
-    fun count(): Int {
+    override fun count(): Int {
         val content = readAll()
-        return TIMESTAMP_REGEX.findAll(content).count()
+        return MarkdownFormatter.getTimestampRegex().findAll(content).count()
     }
 
-    fun initHeader(): Boolean {
+    override fun initHeader(): Boolean {
         val content = readAll()
         if (content.isBlank()) {
             return try {
                 val outputStream = context.contentResolver.openOutputStream(uri, "wt")
                 if (outputStream != null) {
                     outputStream.use { output ->
-                        output.write(FILE_HEADER.toByteArray(Charsets.UTF_8))
+                        output.write(MarkdownFormatter.FILE_HEADER.toByteArray(Charsets.UTF_8))
                     }
                     true
                 } else {
                     false
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize header", e)
                 false
             }
         }
@@ -142,14 +141,9 @@ class SafMarkdownFile(
         return try {
             val docFile = DocumentFile.fromSingleUri(context, uri)
             docFile?.name ?: "Appendo.md"
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get file name", e)
             "Appendo.md"
         }
-    }
-
-    private fun formatEntry(content: String): String {
-        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            .format(Date())
-        return "\n---\n\n## $timestamp\n\n$content\n\n---\n"
     }
 }

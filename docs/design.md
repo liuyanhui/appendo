@@ -7,6 +7,7 @@
 | 2026-04-01 | — | 初始版本 |
 | 2026-04-10 | Yiyue | 去除 BOM；Toast 改 Notification；新增分享和归档功能；写入加同步锁；条目计数改为按时间戳标题 |
 | 2026-04-16 | Yiyue | 新增手动输入功能；新增内容预览功能；应用定位调整为速记应用 |
+| 2026-04-16 | Yiyue | 优化文件存储：首次启动使用默认目录；归档自动生成文件名；支持混合存储模式 |
 
 ## 架构概述
 
@@ -18,10 +19,10 @@
 
 #### `MainActivity`
 - 主界面，Jetpack Compose 构建
-- 首次启动时引导用户选择/创建 Markdown 文件
+- **首次启动**：自动在应用私有目录创建 `Appendo.md` 文件，无需用户选择
 - 显示当前文件路径和状态信息
 - 提供操作按钮：打开文件、复制内容、清空文件、分享内容
-- 菜单提供归档功能
+- 菜单提供：归档、更换文件功能
 
 #### `ShareReceiverActivity`
 - 接收其他应用分享内容的入口（`ACTION_SEND` Intent Filter）
@@ -150,9 +151,13 @@
 11. **剪贴板复制** — 使用 `ClipboardManager`，内容通过 `ClipData.newPlainText` 设置
 12. **打开文件** — 使用 `Intent.ACTION_VIEW` 配合文件 URI
 13. **分享内容** — 使用 `ACTION_SEND` + `Intent.EXTRA_TEXT`（文件全部内容）+ `Intent.createChooser`
-14. **归档** — 调用 `ActivityResultContracts.CreateDocument` 引导用户创建新文件，释放旧文件 URI 权限（`releasePersistableUriPermission`），更新 SharedPreferences 中的 URI，条目计数归零
-15. **写入反馈** — 使用 `NotificationManager` 发送 Notification，避免 Activity 快速关闭导致 Toast 不可见
-16. **条目计数** — 通过正则 `^## \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$` 匹配时间戳标题行统计
+14. **默认文件存储** — 首次启动时，应用自动在 `context.getExternalFilesDir(null)` 目录下创建 `Appendo.md` 文件，使用 `FileBasedMarkdownFile` 进行文件操作。用户无需手动选择文件，开箱即用
+15. **归档功能** — 点击归档后，自动在当前文件所在目录创建新文件，文件名格式为 `Appendo_yyyyMMdd_HHmmss.md`。保留旧文件，自动切换到新文件，条目计数归零。无需用户选择文件名或位置
+16. **文件存储模式** — 支持两种存储模式：
+    - **默认模式**：使用应用私有存储目录（`getExternalFilesDir`），无需 SAF，使用 `FileBasedMarkdownFile`
+    - **SAF 模式**：用户通过"更换文件"功能选择外部存储位置，使用 `SafMarkdownFile`
+17. **写入反馈** — 使用 `NotificationManager` 发送 Notification，避免 Activity 快速关闭导致 Toast 不可见
+18. **条目计数** — 通过正则 `^## \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$` 匹配时间戳标题行统计
 
 ## 依赖
 

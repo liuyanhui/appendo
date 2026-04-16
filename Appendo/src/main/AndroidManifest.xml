@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
+        android:name=".AppendoApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -10,7 +13,7 @@
         android:theme="@style/Theme.LinkAppending">
 
         <activity
-            android:name=".MainActivity"
+            android:name="com.yiyue31.android.appendo.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.LinkAppending">
             <intent-filter>
@@ -20,7 +23,7 @@
         </activity>
 
         <activity
-            android:name=".ShareReceiverActivity"
+            android:name="com.yiyue31.android.appendo.ShareReceiverActivity"
             android:exported="true"
             android:theme="@style/Theme.LinkAppending"
             android:excludeFromRecents="true"

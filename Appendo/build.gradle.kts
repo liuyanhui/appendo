@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.linkappending"
+    namespace = "com.yiyue31.android.appendo"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.linkappending"
+        applicationId = "com.yiyue31.android.appendo"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -34,6 +34,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

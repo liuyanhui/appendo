@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew test *)",
+      "Bash(./gradlew :app:testDebugUnitTest)",
+      "Bash(./gradlew :app:assembleDebug)",
+      "Bash(./gradlew clean *)",
+      "Bash(convert -version)",
+      "Bash(magick -version)",
+      "Bash(python -c \"from PIL import Image; img = Image.open\\('Appendo.png'\\); print\\(f'{img.size[0]}x{img.size[1]}'\\)\")",
+      "Bash(./gradlew assembleDebug)",
+      "Bash(ls -la *.png)",
+      "Bash(dir *.png)",
+      "Bash(magick --version)",
+      "Bash(mkdir -p com/yiyue31/android/appendo)",
+      "Bash(mkdir -p com/yiyue31/android/appendo/util)",
+      "Bash(mkdir -p com/yiyue31/android/appendo/data)",
+      "Bash(mkdir -p com/yiyue31/android/appendo/ui)",
+      "Bash(mv com/example/linkappending/MainActivity.kt com/yiyue31/android/appendo/)",
+      "Bash(mv com/example/linkappending/ShareReceiverActivity.kt com/yiyue31/android/appendo/)",
+      "Bash(mv com/example/linkappending/data/*.kt com/yiyue31/android/appendo/data/)",
+      "Bash(mv com/example/linkappending/util/*.kt com/yiyue31/android/appendo/util/)",
+      "Bash(mv com/example/linkappending/ui/*.kt com/yiyue31/android/appendo/ui/)",
+      "Bash(./gradlew --stop)",
+      "Bash(./gradlew assembleDebug --offline)",
+      "Bash(./gradlew assembleDebug --stacktrace)",
+      "Bash(./gradlew --info compileDebugKotlin)",
+      "Bash(./gradlew compileDebugKotlin)",
+      "Bash(./gradlew assembleDebug --quiet)",
+      "Bash(./gradlew :Appendo:assembleDebug --dry-run)",
+      "Bash(./gradlew :Appendo:assembleDebug *)",
+      "Bash(git add *)"
+    ]
+  }
+}
