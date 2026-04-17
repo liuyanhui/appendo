@@ -1,6 +1,5 @@
 package com.yiyue31.android.appendo
 
-import android.app.NotificationManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -8,9 +7,9 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import com.yiyue31.android.appendo.util.SafMarkdownFile
@@ -22,8 +21,6 @@ class ShareReceiverActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "ShareReceiverActivity"
-        private const val CHANNEL_ID = "write_feedback"
-        private const val NOTIFICATION_ID = 1
         private const val MAX_CONTENT_LENGTH = 10000 // Prevent DOS attacks
     }
 
@@ -89,11 +86,14 @@ class ShareReceiverActivity : ComponentActivity() {
                 if (success) {
                     // Update file last modified timestamp
                     fileRepo.setFileLastModified(System.currentTimeMillis())
-                    showNotification()
+                    showToast(this@ShareReceiverActivity, "Appendo已收到")
                 } else {
-                    Toast.makeText(this@ShareReceiverActivity, "写入失败", Toast.LENGTH_SHORT).show()
+                    showToast(this@ShareReceiverActivity, "写入失败")
                 }
-                finish()
+                // Delay finish to allow toast to be shown
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    finish()
+                }, 500)
             }
         }
     }
@@ -142,17 +142,5 @@ class ShareReceiverActivity : ComponentActivity() {
 
         Log.w(TAG, "No valid content found in intent")
         return null
-    }
-
-    private fun showNotification() {
-        val notificationManager = getSystemService(NotificationManager::class.java)
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_save)
-            .setContentTitle(getString(R.string.notification_title))
-            .setAutoCancel(true)
-            .build()
-
-        notificationManager.notify(NOTIFICATION_ID, notification)
     }
 }

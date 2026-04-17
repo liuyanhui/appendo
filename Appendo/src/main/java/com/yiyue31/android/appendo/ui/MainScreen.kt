@@ -38,6 +38,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.MoreVert
@@ -78,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import com.yiyue31.android.appendo.util.MarkdownFileOperations
@@ -142,7 +145,10 @@ fun parseMarkdownEntries(content: String): List<LinkEntry> {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun MainScreen(fileRepository: FileRepository) {
+fun MainScreen(
+    fileRepository: FileRepository,
+    onNavigateToArchiveList: () -> Unit = {}
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -284,6 +290,13 @@ fun MainScreen(fileRepository: FileRepository) {
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("归档管理") },
+                            onClick = {
+                                showMenu = false
+                                onNavigateToArchiveList()
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("打开文件") },
                             onClick = {
                                 showMenu = false
@@ -397,7 +410,7 @@ fun MainScreen(fileRepository: FileRepository) {
                         .combinedClickable(
                             onClick = {
                                 // Show hint for long press
-                                Toast.makeText(context, "长按以清空内容", Toast.LENGTH_SHORT).show()
+                                showToast(context, "长按以清空内容")
                             },
                             onLongClick = {
                                 // Vibrate feedback (with hasVibrator check)
@@ -511,7 +524,7 @@ fun MainScreen(fileRepository: FileRepository) {
                                     .combinedClickable(
                                         onClick = {
                                             // Normal click - show hint
-                                            Toast.makeText(context, "长按复制内容", Toast.LENGTH_SHORT).show()
+                                            showToast(context, "长按复制内容")
                                         },
                                         onLongClick = {
                                             // Long press - copy with vibration feedback
@@ -520,7 +533,7 @@ fun MainScreen(fileRepository: FileRepository) {
                                             // Copy to clipboard
                                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
                                             clipboard.setPrimaryClip(ClipData.newPlainText("entry", entry.content))
-                                            Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                                            showToast(context, "已复制")
                                         },
                                         onLongClickLabel = "长按复制"
                                     ),
@@ -646,15 +659,15 @@ fun MainScreen(fileRepository: FileRepository) {
                                 fileRepository.setFileLastModified(System.currentTimeMillis())
                                 entryCount = 0
                                 entries = emptyList()
-                                Toast.makeText(context, "已清空", Toast.LENGTH_SHORT).show()
+                                showToast(context, "已清空")
                             } else {
-                                Toast.makeText(context, "清空失败", Toast.LENGTH_SHORT).show()
+                                showToast(context, "清空失败")
                             }
                         } catch (e: Exception) {
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.e("MainScreen", "Failed to clear", e)
                             }
-                            Toast.makeText(context, "操作失败", Toast.LENGTH_SHORT).show()
+                            showToast(context, "操作失败")
                         }
                     }
                 ) {
@@ -671,8 +684,11 @@ fun MainScreen(fileRepository: FileRepository) {
 
     // Manual input dialog
     if (showInputDialog) {
+        val focusRequester = remember { FocusRequester() }
+
         LaunchedEffect(Unit) {
-            // Show keyboard when dialog opens
+            // Focus the text field and show keyboard when dialog opens
+            focusRequester.requestFocus()
             keyboardController?.show()
         }
 
@@ -693,7 +709,9 @@ fun MainScreen(fileRepository: FileRepository) {
                 OutlinedTextField(
                     value = inputContent,
                     onValueChange = { inputContent = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
                     minLines = 3,
                     maxLines = 6,
                     placeholder = { Text("请输入要追加的内容") }
@@ -708,12 +726,12 @@ fun MainScreen(fileRepository: FileRepository) {
                                 if (mdFile.append(inputContent)) {
                                     fileRepository.setFileLastModified(System.currentTimeMillis())
                                     refreshEntryCount()
-                                    Toast.makeText(context, "内容已追加", Toast.LENGTH_SHORT).show()
+                                    showToast(context, "内容已追加")
                                 } else {
-                                    Toast.makeText(context, "追加失败", Toast.LENGTH_SHORT).show()
+                                    showToast(context, "追加失败")
                                 }
                             } catch (_: Exception) {
-                                Toast.makeText(context, "追加失败", Toast.LENGTH_SHORT).show()
+                                showToast(context, "追加失败")
                             }
                         }
                         inputContent = ""
@@ -773,20 +791,30 @@ private fun performVibration(context: android.content.Context, durationMs: Long)
 private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
     try {
         val content = mdFile.readAll()
+        // Check if content is empty (only has header, no actual entries)
+        if (content.isBlank() || !content.contains("## ")) {
+            showToast(context, "暂无内容可复制")
+            return
+        }
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("link_collection", content))
-        Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+        showToast(context, "已复制到剪贴板")
     } catch (e: Exception) {
         if (BuildConfig.DEBUG) {
             android.util.Log.e("MainScreen", "Copy failed", e)
         }
-        Toast.makeText(context, "复制失败", Toast.LENGTH_SHORT).show()
+        showToast(context, "复制失败")
     }
 }
 
 private fun shareContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
     try {
         val content = mdFile.readAll()
+        // Check if content is empty (only has header, no actual entries)
+        if (content.isBlank() || !content.contains("## ")) {
+            showToast(context, "暂无内容可分享")
+            return
+        }
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, content)
@@ -796,7 +824,7 @@ private fun shareContent(context: android.content.Context, mdFile: MarkdownFileO
         if (BuildConfig.DEBUG) {
             android.util.Log.e("MainScreen", "Share failed", e)
         }
-        Toast.makeText(context, "分享失败", Toast.LENGTH_SHORT).show()
+        showToast(context, "分享失败")
     }
 }
 
@@ -816,7 +844,7 @@ private fun openFile(context: android.content.Context, useSAF: Boolean, fileUri:
         if (BuildConfig.DEBUG) {
             android.util.Log.e("MainScreen", "Open file failed", e)
         }
-        Toast.makeText(context, "打开失败，请安装 Markdown 查看器", Toast.LENGTH_SHORT).show()
+        showToast(context, "打开失败，请安装 Markdown 查看器")
     }
 }
 
@@ -834,6 +862,12 @@ private fun archiveFile(
     try {
         // Read current content BEFORE creating new archive file
         val currentContent = currentMdFile.readAll()
+
+        // Check if content is empty (only has header, no actual entries)
+        if (currentContent.isBlank() || !currentContent.contains("## ")) {
+            showToast(context, "暂无内容可归档")
+            return
+        }
 
         // Create archive file and write current content to it
         val archiveMdFile = FileBasedMarkdownFile(context, archiveFile)
@@ -854,12 +888,12 @@ private fun archiveFile(
             }
         }
 
-        Toast.makeText(context, "已归档到: ${archiveFile.name}", Toast.LENGTH_LONG).show()
+        showToast(context, "已归档到: ${archiveFile.name}")
         onComplete()
     } catch (e: Exception) {
         if (BuildConfig.DEBUG) {
             android.util.Log.e("MainScreen", "Archive failed", e)
         }
-        Toast.makeText(context, "归档失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        showToast(context, "归档失败: ${e.message}")
     }
 }
