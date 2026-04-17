@@ -29,7 +29,19 @@
       "Bash(./gradlew assembleDebug --quiet)",
       "Bash(./gradlew :Appendo:assembleDebug --dry-run)",
       "Bash(./gradlew :Appendo:assembleDebug *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(dir D:\\\\liuyh\\\\code\\\\project\\\\github\\\\appendo\\\\Appendo\\\\src\\\\main\\\\res\\\\mipmap-xxxhdpi *)",
+      "Bash(dir D:\\\\liuyh\\\\code\\\\project\\\\github\\\\appendo\\\\Appendo\\\\src\\\\main\\\\res\\\\mipmap-anydpi-v26 *)",
+      "Bash(dir \"D:\\\\liuyh\\\\code\\\\project\\\\github\\\\appendo\\\\Appendo\\\\src\\\\main\\\\res\")",
+      "Bash(python scripts/fix_launcher_icons.py)",
+      "Bash(python -c \"from PIL import Image; img = Image.open\\(r'Appendo\\\\src\\\\main\\\\res\\\\mipmap-xxxhdpi\\\\ic_launcher.png'\\); print\\(f'Size: {img.size}, Mode: {img.mode}'\\); pixels = list\\(img.getdata\\(\\)\\); unique_colors = len\\(set\\(pixels[:1000]\\)\\); print\\(f'Unique colors in sample: {unique_colors}'\\); print\\(f'Corner pixel: {pixels[0]}'\\); print\\(f'Center pixel: {pixels[len\\(pixels\\)//2}]'\\)\")",
+      "Bash(python scripts/verify_icon.py)",
+      "Bash(./gradlew build *)",
+      "Bash(./gradlew assembleDebug --no-daemon)",
+      "Bash(python -c \"from PIL import Image; img = Image.open\\(r'Appendo\\\\src\\\\main\\\\res\\\\mipmap-xxxhdpi\\\\ic_launcher.png'\\); print\\(f'Size: {img.size}, Mode: {img.mode}'\\); pixels = list\\(img.getdata\\(\\)\\); print\\(f'Total pixels: {len\\(pixels\\)}'\\); print\\(f'Unique colors: {len\\(set\\(pixels\\)\\)}'\\); print\\(f'First 10 pixels: {pixels[:10]}'\\)\")",
+      "Bash(./gradlew :Appendo:compileDebugKotlin)"
     ]
   }
 }

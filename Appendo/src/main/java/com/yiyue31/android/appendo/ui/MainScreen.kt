@@ -80,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.ui.EntryListScreen
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
@@ -476,96 +477,79 @@ fun MainScreen(
                     }
                 }
             } else {
-                // Entries list with animation
-                Text(
-                    "已收集内容",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                // Entry list with shared component
+                var showDeleteDialog by remember { mutableStateOf(false) }
+                var entryToDelete by remember { mutableIntStateOf(-1) }
+
+                EntryListScreen(
+                    entries = entries,
+                    entryCount = entryCount,
+                    onEntryLongClick = { content ->
+                        // Copy to clipboard
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("entry", content))
+                        showToast(context, "已复制")
+                    },
+                    onEntrySwipeToDelete = { index ->
+                        entryToDelete = index
+                        showDeleteDialog = true
+                    }
                 )
 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    itemsIndexed(
-                        items = entries.reversed(),
-                        key = { index, _ -> index }
-                    ) { index, entry ->
-                        val cardElevation by animateDpAsState(
-                            targetValue = if (index == 0) 8.dp else 2.dp,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
-                            ),
-                            label = "elevation"
-                        )
-
-                        AnimatedVisibility(
-                            visible = true,
-                            enter = expandVertically(
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessLow
-                                )
-                            ) + fadeIn(
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessLow
-                                )
-                            ),
-                            exit = shrinkVertically() + fadeOut()
-                        ) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = {
-                                            // Normal click - show hint
-                                            showToast(context, "长按复制内容")
-                                        },
-                                        onLongClick = {
-                                            // Long press - copy with vibration feedback
-                                            performVibration(context, VIBRATION_DURATION_SHORT_MS)
-
-                                            // Copy to clipboard
-                                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            clipboard.setPrimaryClip(ClipData.newPlainText("entry", entry.content))
-                                            showToast(context, "已复制")
-                                        },
-                                        onLongClickLabel = "长按复制"
-                                    ),
-                                shape = RoundedCornerShape(16.dp),
-                                elevation = CardDefaults.cardElevation(
-                                    defaultElevation = cardElevation
-                                ),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surface
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp)
-                                ) {
-                                    Text(
-                                        text = entry.timestamp,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = entry.content,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 3,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                // Delete entry confirmation dialog
+                if (showDeleteDialog && entryToDelete >= 0) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            showDeleteDialog = false
+                            entryToDelete = -1
+                        },
+                        title = {
+                            Text(
+                                "删除条目",
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFEF5350)
+                            )
+                        },
+                        text = {
+                            Text("确定要删除这条内容吗？\n\n此操作无法撤销。")
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    showDeleteDialog = false
+                                    try {
+                                        val mdFile = getCurrentMarkdownFile()
+                                        // Delete entry by index
+                                        if (mdFile.deleteEntry(entryToDelete)) {
+                                            fileRepository.setFileLastModified(System.currentTimeMillis())
+                                            refreshEntryCount()
+                                            showToast(context, "已删除")
+                                        } else {
+                                            showToast(context, "删除失败")
+                                        }
+                                    } catch (e: Exception) {
+                                        if (BuildConfig.DEBUG) {
+                                            android.util.Log.e("MainScreen", "Failed to delete entry", e)
+                                        }
+                                        showToast(context, "删除失败")
+                                    }
+                                    entryToDelete = -1
                                 }
+                            ) {
+                                Text("删除", color = Color(0xFFEF5350))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    showDeleteDialog = false
+                                    entryToDelete = -1
+                                }
+                            ) {
+                                Text("取消")
                             }
                         }
-                    }
+                    )
                 }
             }
         }

@@ -1,8 +1,24 @@
 package com.yiyue31.android.appendo.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,7 +35,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -35,20 +51,29 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.ArchiveFile
 import com.yiyue31.android.appendo.data.ArchiveRepository
 import com.yiyue31.android.appendo.ui.showToast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+// Constants for magic numbers
+private const val VIBRATION_DURATION_SHORT_MS = 100L
+private const val VIBRATION_DURATION_LONG_MS = 200L
+private const val SWIPE_THRESHOLD_DP = 120f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +88,7 @@ fun ArchiveListScreen(
     var isLoading by remember { mutableStateOf(true) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var archiveToDelete by remember { mutableStateOf<ArchiveFile?>(null) }
+    var archiveToDeleteIndex by remember { mutableIntStateOf(-1) }
 
     fun loadArchives() {
         isLoading = true
@@ -151,11 +177,31 @@ fun ArchiveListScreen(
                         items = archives,
                         key = { it.file.absolutePath }
                     ) { archive ->
+                        val index = archives.indexOf(archive)
                         ArchiveCard(
                             archive = archive,
+                            archiveRepository = archiveRepository,
+                            index = index,
                             onClick = { onArchiveClick(archive) },
                             onLongClick = {
+                                performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                                // Copy all content from archive
+                                try {
+                                    val content = archive.file.readText()
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("archive", content))
+                                    showToast(context, "已复制全部内容")
+                                } catch (e: Exception) {
+                                    if (BuildConfig.DEBUG) {
+                                        android.util.Log.e("ArchiveListScreen", "Failed to copy archive", e)
+                                    }
+                                    showToast(context, "复制失败")
+                                }
+                            },
+                            onSwipeToDelete = {
+                                performVibration(context, VIBRATION_DURATION_LONG_MS)
                                 archiveToDelete = archive
+                                archiveToDeleteIndex = index
                                 showDeleteDialog = true
                             }
                         )
@@ -171,6 +217,7 @@ fun ArchiveListScreen(
             onDismissRequest = {
                 showDeleteDialog = false
                 archiveToDelete = null
+                archiveToDeleteIndex = -1
             },
             title = {
                 Text(
@@ -194,6 +241,7 @@ fun ArchiveListScreen(
                         }
                         showDeleteDialog = false
                         archiveToDelete = null
+                        archiveToDeleteIndex = -1
                     }
                 ) {
                     Text("删除", color = Color(0xFFEF5350))
@@ -204,6 +252,7 @@ fun ArchiveListScreen(
                     onClick = {
                         showDeleteDialog = false
                         archiveToDelete = null
+                        archiveToDeleteIndex = -1
                     }
                 ) {
                     Text("取消")
@@ -217,57 +266,135 @@ fun ArchiveListScreen(
 @Composable
 private fun ArchiveCard(
     archive: ArchiveFile,
+    archiveRepository: ArchiveRepository,
+    index: Int,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onSwipeToDelete: () -> Unit
 ) {
-    val context = LocalContext.current
-    val archiveRepository = remember { ArchiveRepository(context) }
+    var offsetX by remember { mutableStateOf(0f) }
+    val cardElevation by animateDpAsState(
+        targetValue = if (index == 0) 8.dp else 2.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "elevation"
+    )
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = {
-                    onClick()
-                },
-                onLongClick = {
-                    onLongClick()
-                }
-            ),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+    AnimatedVisibility(
+        visible = true,
+        enter = expandVertically(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        ) + fadeIn(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        ),
+        exit = shrinkVertically() + fadeOut()
     ) {
-        Row(
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Default.Info,
-                contentDescription = null,
-                modifier = Modifier.size(40.dp),
-                tint = Color(0xFF2196F3)
+                .offset { IntOffset(offsetX.toInt(), 0) }
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        onClick()
+                    },
+                    onLongClick = {
+                        onLongClick()
+                    }
+                )
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (offsetX > SWIPE_THRESHOLD_DP) {
+                                onSwipeToDelete()
+                            }
+                            offsetX = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            val newOffset = offsetX + dragAmount
+                            if (newOffset > 0) {
+                                offsetX = newOffset.coerceAtMost(SWIPE_THRESHOLD_DP * 1.5f)
+                            }
+                        }
+                    )
+                },
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = cardElevation),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
             )
-
-            Spacer(modifier = Modifier.size(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = archive.name.removeSuffix(".md"),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = Color(0xFF2196F3)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+                Spacer(modifier = Modifier.size(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = archive.name.removeSuffix(".md"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * Perform vibration with safety checks.
+ * Checks hasVibrator() before vibrating.
+ */
+private fun performVibration(context: Context, durationMs: Long) {
+    try {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+
+        // Check if vibration is supported
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(durationMs)
+            }
+        }
+    } catch (e: Exception) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.e("ArchiveListScreen", "Vibration failed", e)
+        }
+        // Ignore vibration errors - not critical
     }
 }

@@ -40,4 +40,11 @@ interface MarkdownFileOperations {
      * @return true if successful, false otherwise
      */
     fun initHeader(): Boolean
+
+    /**
+     * Delete a specific entry by index (0-based, from newest to oldest).
+     * @param index The index of the entry to delete
+     * @return true if successful, false otherwise
+     */
+    fun deleteEntry(index: Int): Boolean
 }

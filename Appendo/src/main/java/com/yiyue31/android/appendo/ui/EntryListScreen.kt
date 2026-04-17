@@ -1,0 +1,246 @@
+package com.yiyue31.android.appendo.ui
+
+import android.content.Context
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.yiyue31.android.appendo.BuildConfig
+
+private const val VIBRATION_DURATION_SHORT_MS = 100L
+private const val SWIPE_THRESHOLD_DP = 120f
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun EntryListScreen(
+    entries: List<LinkEntry>,
+    entryCount: Int,
+    sourceFileName: String? = null,
+    readOnly: Boolean = false,
+    onEntryLongClick: (String) -> Unit = { },
+    onEntrySwipeToDelete: (Int) -> Unit = { }
+) {
+    val context = LocalContext.current
+    val listState = rememberLazyListState()
+
+    // Header
+    Column {
+        if (sourceFileName != null) {
+            Text(
+                text = sourceFileName,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+        }
+
+        Text(
+            "已收集 $entryCount 条",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            itemsIndexed(
+                items = entries.reversed(),
+                key = { index, _ -> index }
+            ) { index, entry ->
+                EntryCard(
+                    entry = entry,
+                    index = index,
+                    readOnly = readOnly,
+                    onLongClick = {
+                        performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                        onEntryLongClick(entry.content)
+                    },
+                    onSwipeToDelete = {
+                        onEntrySwipeToDelete(index)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EntryCard(
+    entry: LinkEntry,
+    index: Int,
+    readOnly: Boolean = false,
+    onLongClick: () -> Unit,
+    onSwipeToDelete: () -> Unit
+) {
+    val context = LocalContext.current
+    var offsetX by remember { mutableStateOf(0f) }
+    val cardElevation by animateDpAsState(
+        targetValue = if (index == 0) 8.dp else 2.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "elevation"
+    )
+
+    val cardModifier = if (readOnly) {
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { },
+                onLongClick = onLongClick
+            )
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .offset { IntOffset(offsetX.toInt(), 0) }
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { },
+                onLongClick = onLongClick
+            )
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (offsetX > SWIPE_THRESHOLD_DP) {
+                            onSwipeToDelete()
+                        }
+                        offsetX = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        val newOffset = offsetX + dragAmount
+                        if (newOffset > 0) {
+                            offsetX = newOffset.coerceAtMost(SWIPE_THRESHOLD_DP * 1.5f)
+                        }
+                    }
+                )
+            }
+    }
+
+    AnimatedVisibility(
+        visible = true,
+        enter = expandVertically(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        ) + fadeIn(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        ),
+        exit = shrinkVertically() + fadeOut()
+    ) {
+        Card(
+            modifier = cardModifier,
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = cardElevation
+            ),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = entry.timestamp,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = entry.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Perform vibration with safety checks.
+ */
+private fun performVibration(context: Context, durationMs: Long) {
+    try {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(durationMs)
+            }
+        }
+    } catch (e: Exception) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.e("EntryListScreen", "Vibration failed", e)
+        }
+    }
+}

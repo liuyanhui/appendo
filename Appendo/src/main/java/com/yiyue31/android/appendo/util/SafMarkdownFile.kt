@@ -137,6 +137,58 @@ class SafMarkdownFile(
         return true
     }
 
+    override fun deleteEntry(index: Int): Boolean {
+        synchronized(lock) {
+            return try {
+                val content = readAll()
+                val lines = content.lines().toMutableList()
+
+                // Find all entry boundaries (lines with ## timestamp)
+                val entryBoundaries = mutableListOf<Int>()
+                lines.forEachIndexed { i, line ->
+                    if (line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))) {
+                        entryBoundaries.add(i)
+                    }
+                }
+
+                if (index < 0 || index >= entryBoundaries.size) {
+                    return false
+                }
+
+                // Determine the range to delete
+                val startIndex = entryBoundaries[index]
+                val endIndex = if (index + 1 < entryBoundaries.size) {
+                    entryBoundaries[index + 1]
+                } else {
+                    lines.size
+                }
+
+                // Remove the entry (including its separator before it)
+                val deleteFrom = if (startIndex > 0 && lines[startIndex - 1].matches(Regex("^---$"))) {
+                    startIndex - 1
+                } else {
+                    startIndex
+                }
+
+                lines.subList(deleteFrom, endIndex).clear()
+
+                // Write back
+                val outputStream = context.contentResolver.openOutputStream(uri, "wt")
+                if (outputStream != null) {
+                    outputStream.use { output ->
+                        output.write(lines.joinToString("\n").toByteArray(Charsets.UTF_8))
+                    }
+                    true
+                } else {
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete entry", e)
+                false
+            }
+        }
+    }
+
     fun getFileName(): String {
         return try {
             val docFile = DocumentFile.fromSingleUri(context, uri)
