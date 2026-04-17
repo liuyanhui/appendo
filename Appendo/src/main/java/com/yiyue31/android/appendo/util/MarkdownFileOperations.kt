@@ -42,9 +42,15 @@ interface MarkdownFileOperations {
     fun initHeader(): Boolean
 
     /**
-     * Delete a specific entry by index (0-based, from newest to oldest).
-     * @param index The index of the entry to delete
+     * Delete a specific entry by its timestamp.
+     *
+     * NOTE: We use timestamp instead of index because:
+     * - Index changes after insert/delete operations, causing misalignment
+     * - Timestamp is the unique identifier of each entry, always accurate
+     * - Supports consecutive deletions and batch operations
+     *
+     * @param timestamp The timestamp of the entry to delete (format: "YYYY-MM-DD HH:mm:ss")
      * @return true if successful, false otherwise
      */
-    fun deleteEntry(index: Int): Boolean
+    fun deleteEntry(timestamp: String): Boolean
 }

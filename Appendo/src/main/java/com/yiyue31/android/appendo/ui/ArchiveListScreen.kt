@@ -16,6 +16,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -66,7 +67,9 @@ import androidx.compose.ui.unit.dp
 import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.ArchiveFile
 import com.yiyue31.android.appendo.data.ArchiveRepository
+import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.ui.showToast
+import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -78,6 +81,7 @@ private const val SWIPE_THRESHOLD_DP = 120f
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArchiveListScreen(
+    fileRepository: FileRepository,
     onNavigateBack: () -> Unit,
     onArchiveClick: (ArchiveFile) -> Unit
 ) {
@@ -89,6 +93,9 @@ fun ArchiveListScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var archiveToDelete by remember { mutableStateOf<ArchiveFile?>(null) }
     var archiveToDeleteIndex by remember { mutableIntStateOf(-1) }
+    var showRestoreDialog by remember { mutableStateOf(false) }
+    var archiveToRestore by remember { mutableStateOf<ArchiveFile?>(null) }
+    var restoreEntryCount by remember { mutableIntStateOf(0) }
 
     fun loadArchives() {
         isLoading = true
@@ -203,6 +210,12 @@ fun ArchiveListScreen(
                                 archiveToDelete = archive
                                 archiveToDeleteIndex = index
                                 showDeleteDialog = true
+                            },
+                            onSwipeLeftRestore = {
+                                performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                                archiveToRestore = archive
+                                restoreEntryCount = archive.entryCount
+                                showRestoreDialog = true
                             }
                         )
                     }
@@ -260,6 +273,95 @@ fun ArchiveListScreen(
             }
         )
     }
+
+    // Restore confirmation dialog
+    if (showRestoreDialog && archiveToRestore != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showRestoreDialog = false
+                archiveToRestore = null
+                restoreEntryCount = 0
+            },
+            title = {
+                Text(
+                    "追加到当前文档",
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF4CAF50)
+                )
+            },
+            text = {
+                Text("确定要将归档 \"${archiveToRestore!!.name}\" 中的 $restoreEntryCount 条内容追加到当前文档吗？")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        try {
+                            val archiveContent = archiveToRestore!!.file.readText()
+                            val entries = parseMarkdownEntries(archiveContent)
+                            val count = entries.size
+
+                            val mdFile = MarkdownFileFactory.create(
+                                context,
+                                fileRepository.isUsingSAF(),
+                                fileRepository.getFileUri(),
+                                fileRepository.getDefaultFile()
+                            )
+
+                            // Get existing content to append after
+                            val existingContent = mdFile.readAll()
+                            val lines = existingContent.lines().toMutableList()
+
+                            // Find entries in archive (skip header)
+                            val archiveLines = archiveContent.lines()
+                            var isContent = false
+                            for (line in archiveLines) {
+                                if (line.startsWith("# Link Collection") || line == "---") {
+                                    continue
+                                }
+                                if (line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))) {
+                                    isContent = true
+                                }
+                                if (isContent) {
+                                    lines.add(line)
+                                }
+                            }
+
+                            // Write back
+                            val newContent = lines.joinToString("\n")
+                            mdFile.clear()
+                            if (mdFile.append(newContent.dropWhile { it == '\n' })) {
+                                fileRepository.setFileLastModified(System.currentTimeMillis())
+                                showToast(context, "已追加 $count 条内容")
+                            } else {
+                                showToast(context, "追加失败")
+                            }
+                        } catch (e: Exception) {
+                            if (BuildConfig.DEBUG) {
+                                android.util.Log.e("ArchiveListScreen", "Failed to restore archive", e)
+                            }
+                            showToast(context, "追加失败")
+                        }
+                        showRestoreDialog = false
+                        archiveToRestore = null
+                        restoreEntryCount = 0
+                    }
+                ) {
+                    Text("追加", color = Color(0xFF4CAF50))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRestoreDialog = false
+                        archiveToRestore = null
+                        restoreEntryCount = 0
+                    }
+                ) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -270,7 +372,8 @@ private fun ArchiveCard(
     index: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onSwipeToDelete: () -> Unit
+    onSwipeToDelete: () -> Unit,
+    onSwipeLeftRestore: () -> Unit
 ) {
     var offsetX by remember { mutableStateOf(0f) }
     val cardElevation by animateDpAsState(
@@ -281,6 +384,19 @@ private fun ArchiveCard(
         ),
         label = "elevation"
     )
+
+    // Calculate swipe action text and background
+    val swipeActionText = when {
+        offsetX > SWIPE_THRESHOLD_DP / 2 -> "删除"
+        offsetX < -SWIPE_THRESHOLD_DP / 2 -> "追加"
+        else -> null
+    }
+
+    val swipeBackgroundColor = when {
+        offsetX > SWIPE_THRESHOLD_DP / 2 -> Color(0xFFEF5350) // Red for delete
+        offsetX < -SWIPE_THRESHOLD_DP / 2 -> Color(0xFF4CAF50) // Green for restore
+        else -> Color.Transparent
+    }
 
     AnimatedVisibility(
         visible = true,
@@ -297,69 +413,93 @@ private fun ArchiveCard(
         ),
         exit = shrinkVertically() + fadeOut()
     ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(offsetX.toInt(), 0) }
-                .combinedClickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        onClick()
-                    },
-                    onLongClick = {
-                        onLongClick()
+        Box {
+            // Background layer for swipe action indicator
+            if (swipeActionText != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(swipeBackgroundColor, RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    contentAlignment = when {
+                        offsetX > 0 -> Alignment.CenterEnd
+                        else -> Alignment.CenterStart
                     }
-                )
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (offsetX > SWIPE_THRESHOLD_DP) {
-                                onSwipeToDelete()
-                            }
-                            offsetX = 0f
-                        },
-                        onHorizontalDrag = { _, dragAmount ->
-                            val newOffset = offsetX + dragAmount
-                            if (newOffset > 0) {
-                                offsetX = newOffset.coerceAtMost(SWIPE_THRESHOLD_DP * 1.5f)
-                            }
-                        }
+                ) {
+                    Text(
+                        text = swipeActionText,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
-                },
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = cardElevation),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
-        ) {
-            Row(
+                }
+            }
+
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                    tint = Color(0xFF2196F3)
+                    .offset { IntOffset(offsetX.toInt(), 0) }
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            onClick()
+                        },
+                        onLongClick = {
+                            onLongClick()
+                        }
+                    )
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (offsetX > SWIPE_THRESHOLD_DP) {
+                                    onSwipeToDelete()
+                                } else if (offsetX < -SWIPE_THRESHOLD_DP) {
+                                    onSwipeLeftRestore()
+                                }
+                                offsetX = 0f
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                val newOffset = offsetX + dragAmount
+                                // Allow both positive and negative offset
+                                offsetX = newOffset.coerceIn(-SWIPE_THRESHOLD_DP * 1.5f, SWIPE_THRESHOLD_DP * 1.5f)
+                            }
+                        )
+                    },
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = cardElevation),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
-
-                Spacer(modifier = Modifier.size(16.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = archive.name.removeSuffix(".md"),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = Color(0xFF2196F3)
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+
+                    Spacer(modifier = Modifier.size(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = archive.name.removeSuffix(".md"),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }

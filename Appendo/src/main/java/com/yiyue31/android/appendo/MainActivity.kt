@@ -62,6 +62,7 @@ fun AppendoNavHost(fileRepository: FileRepository) {
 
         composable("archive_list") {
             ArchiveListScreen(
+                fileRepository = fileRepository,
                 onNavigateBack = {
                     navController.popBackStack()
                 },

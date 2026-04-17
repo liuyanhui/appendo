@@ -479,7 +479,8 @@ fun MainScreen(
             } else {
                 // Entry list with shared component
                 var showDeleteDialog by remember { mutableStateOf(false) }
-                var entryToDelete by remember { mutableIntStateOf(-1) }
+                // Store timestamp instead of index for reliable deletion
+                var entryToDeleteTimestamp by remember { mutableStateOf("") }
 
                 EntryListScreen(
                     entries = entries,
@@ -490,18 +491,18 @@ fun MainScreen(
                         clipboard.setPrimaryClip(ClipData.newPlainText("entry", content))
                         showToast(context, "已复制")
                     },
-                    onEntrySwipeToDelete = { index ->
-                        entryToDelete = index
+                    onEntrySwipeToDelete = { timestamp ->
+                        entryToDeleteTimestamp = timestamp
                         showDeleteDialog = true
                     }
                 )
 
                 // Delete entry confirmation dialog
-                if (showDeleteDialog && entryToDelete >= 0) {
+                if (showDeleteDialog && entryToDeleteTimestamp.isNotEmpty()) {
                     AlertDialog(
                         onDismissRequest = {
                             showDeleteDialog = false
-                            entryToDelete = -1
+                            entryToDeleteTimestamp = ""
                         },
                         title = {
                             Text(
@@ -519,12 +520,24 @@ fun MainScreen(
                                     showDeleteDialog = false
                                     try {
                                         val mdFile = getCurrentMarkdownFile()
-                                        // Delete entry by index
-                                        if (mdFile.deleteEntry(entryToDelete)) {
+
+                                        if (BuildConfig.DEBUG) {
+                                            android.util.Log.d("MainScreen", "Attempting to delete entry with timestamp: $entryToDeleteTimestamp")
+                                            android.util.Log.d("MainScreen", "Current entry count: ${mdFile.count()}")
+                                        }
+
+                                        // Delete entry by timestamp
+                                        if (mdFile.deleteEntry(entryToDeleteTimestamp)) {
+                                            if (BuildConfig.DEBUG) {
+                                                android.util.Log.d("MainScreen", "Delete successful, new count: ${mdFile.count()}")
+                                            }
                                             fileRepository.setFileLastModified(System.currentTimeMillis())
                                             refreshEntryCount()
                                             showToast(context, "已删除")
                                         } else {
+                                            if (BuildConfig.DEBUG) {
+                                                android.util.Log.e("MainScreen", "Delete returned false")
+                                            }
                                             showToast(context, "删除失败")
                                         }
                                     } catch (e: Exception) {
@@ -533,7 +546,7 @@ fun MainScreen(
                                         }
                                         showToast(context, "删除失败")
                                     }
-                                    entryToDelete = -1
+                                    entryToDeleteTimestamp = ""
                                 }
                             ) {
                                 Text("删除", color = Color(0xFFEF5350))
@@ -543,7 +556,7 @@ fun MainScreen(
                             TextButton(
                                 onClick = {
                                     showDeleteDialog = false
-                                    entryToDelete = -1
+                                    entryToDeleteTimestamp = ""
                                 }
                             ) {
                                 Text("取消")

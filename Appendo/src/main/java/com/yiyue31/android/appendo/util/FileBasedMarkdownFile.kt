@@ -3,6 +3,7 @@ package com.yiyue31.android.appendo.util
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.yiyue31.android.appendo.BuildConfig
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -86,45 +87,77 @@ class FileBasedMarkdownFile(
         return true
     }
 
-    override fun deleteEntry(index: Int): Boolean {
+    override fun deleteEntry(timestamp: String): Boolean {
         synchronized(lock) {
             return try {
                 val content = readAll()
                 val lines = content.lines().toMutableList()
 
-                // Find all entry boundaries (lines with ## timestamp)
-                val entryBoundaries = mutableListOf<Int>()
-                lines.forEachIndexed { i, line ->
-                    if (line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))) {
-                        entryBoundaries.add(i)
+                // Find the entry with matching timestamp
+                // We iterate through the file to find the exact timestamp line
+                // This approach is O(n) but reliable and accurate
+                var targetStartIndex = -1
+                var targetEndIndex = lines.size
+                var currentTimestamp = ""
+
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "deleteEntry called for timestamp: $timestamp")
+                    Log.d(TAG, "Total lines in file: ${lines.size}")
+                }
+
+                for (i in lines.indices) {
+                    val line = lines[i]
+                    when {
+                        line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$")) -> {
+                            // Save previous entry if we found the target
+                            if (currentTimestamp == timestamp && targetStartIndex >= 0) {
+                                targetEndIndex = i
+                                if (BuildConfig.DEBUG) {
+                                    Log.d(TAG, "Found next entry boundary at line $i, setting end index")
+                                }
+                                break
+                            }
+
+                            currentTimestamp = line.substring(3).trim()
+                            if (currentTimestamp == timestamp) {
+                                targetStartIndex = i
+                                if (BuildConfig.DEBUG) {
+                                    Log.d(TAG, "Found target timestamp at line $i: $currentTimestamp")
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (index < 0 || index >= entryBoundaries.size) {
+                if (targetStartIndex < 0) {
+                    if (BuildConfig.DEBUG) {
+                        Log.e(TAG, "Failed to find timestamp: $timestamp")
+                    }
                     return false
                 }
 
-                // Determine the range to delete
-                val startIndex = entryBoundaries[index]
-                val endIndex = if (index + 1 < entryBoundaries.size) {
-                    entryBoundaries[index + 1]
-                } else {
-                    lines.size
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "Deleting from line $targetStartIndex to $targetEndIndex")
                 }
 
                 // Remove the entry (including its separator before it)
-                val deleteFrom = if (startIndex > 0 && lines[startIndex - 1].matches(Regex("^---$"))) {
-                    startIndex - 1
+                val deleteFrom = if (targetStartIndex > 0 && lines[targetStartIndex - 1].matches(Regex("^---$"))) {
+                    targetStartIndex - 1
                 } else {
-                    startIndex
+                    targetStartIndex
                 }
 
-                lines.subList(deleteFrom, endIndex).clear()
+                lines.subList(deleteFrom, targetEndIndex).clear()
 
                 // Write back
                 FileOutputStream(file).use { output ->
                     output.write(lines.joinToString("\n").toByteArray(Charsets.UTF_8))
                 }
+
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "Delete successful, remaining lines: ${lines.size}")
+                }
+
                 true
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete entry", e)
