@@ -1,6 +1,7 @@
 package com.yiyue31.android.appendo.data
 
 import android.content.Context
+import com.yiyue31.android.appendo.util.MarkdownFormatter
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -23,7 +24,7 @@ class ArchiveRepository(private val context: Context) {
     companion object {
         private const val ARCHIVE_PREFIX = "Appendo_"
         private const val ARCHIVE_SUFFIX = ".md"
-        private val DATE_FORMAT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+        private val DATE_FORMAT = SimpleDateFormat(MarkdownFormatter.ARCHIVE_TIMESTAMP_FORMAT, Locale.getDefault())
     }
 
     /**
@@ -87,7 +88,7 @@ class ArchiveRepository(private val context: Context) {
         return try {
             val content = file.readText()
             content.lines().count { line ->
-                line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
+                line.matches(MarkdownFormatter.getTimestampRegex())
             }
         } catch (e: Exception) {
             0

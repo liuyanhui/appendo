@@ -84,6 +84,7 @@ import com.yiyue31.android.appendo.ui.EntryListScreen
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
+import com.yiyue31.android.appendo.util.MarkdownFormatter
 import com.yiyue31.android.appendo.util.MarkdownFileOperations
 import com.yiyue31.android.appendo.util.SafMarkdownFile
 import kotlinx.coroutines.CoroutineScope
@@ -114,7 +115,7 @@ fun parseMarkdownEntries(content: String): List<LinkEntry> {
     for (line in lines) {
         when {
             // Check if this is a timestamp line
-            line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$")) -> {
+            MarkdownFormatter.getTimestampRegex().matches(line) -> {
                 // Save previous entry if exists
                 if (currentTimestamp.isNotEmpty() && currentContent.isNotEmpty()) {
                     entries.add(LinkEntry(currentTimestamp, currentContent.toString().trim()))
@@ -123,7 +124,7 @@ fun parseMarkdownEntries(content: String): List<LinkEntry> {
                 currentContent = StringBuilder()
             }
             // Skip header and separators
-            line.startsWith("# Link Collection") || line == "---" -> {
+            line.startsWith("# Appendo") || line == "---" -> {
                 // Skip these lines
             }
             // Otherwise, add to current content
@@ -250,7 +251,7 @@ fun MainScreen(
                         Text(
                             "Appendo",
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF2196F3)
+                            color = AppColors.Primary
                         )
                         Text(
                             "已收集 $entryCount 条",
@@ -342,7 +343,7 @@ fun MainScreen(
                         .weight(1f)
                         .height(56.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2196F3)
+                        containerColor = AppColors.Primary
                     ),
                     shape = RoundedCornerShape(16.dp)
                 ) {
@@ -367,9 +368,9 @@ fun MainScreen(
                         .weight(1f)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.5.dp, Color(0xFF2196F3).copy(alpha = 0.5f)),
+                    border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFF2196F3)
+                        contentColor = AppColors.Primary
                     )
                 ) {
                     Text("复制全部", fontWeight = FontWeight.Medium)
@@ -391,9 +392,9 @@ fun MainScreen(
                         .weight(1f)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.5.dp, Color(0xFF2196F3).copy(alpha = 0.5f)),
+                    border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = Color(0xFF2196F3)
+                        contentColor = AppColors.Primary
                     )
                 ) {
                     Text("分享全部", fontWeight = FontWeight.Medium)
@@ -424,7 +425,7 @@ fun MainScreen(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.5.dp, Color(0xFFEF5350).copy(alpha = 0.7f)),
+                        border = BorderStroke(1.5.dp, AppColors.Danger.copy(alpha = 0.7f)),
                         color = Color.Transparent
                     ) {
                         Box(
@@ -436,7 +437,7 @@ fun MainScreen(
                             Text(
                                 "清空",
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFFEF5350)
+                                color = AppColors.Danger
                             )
                         }
                     }
@@ -504,7 +505,7 @@ fun MainScreen(
                             Text(
                                 "删除条目",
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFFEF5350)
+                                color = AppColors.Danger
                             )
                         },
                         text = {
@@ -545,7 +546,7 @@ fun MainScreen(
                                     entryToDeleteTimestamp = ""
                                 }
                             ) {
-                                Text("删除", color = Color(0xFFEF5350))
+                                Text("删除", color = AppColors.Danger)
                             }
                         },
                         dismissButton = {
@@ -582,7 +583,7 @@ fun MainScreen(
                         text = "Appendo",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF2196F3)
+                        color = AppColors.Primary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -625,7 +626,7 @@ fun MainScreen(
                 Text(
                     "清空内容",
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFEF5350)
+                    color = AppColors.Danger
                 )
             },
             text = {
@@ -664,7 +665,7 @@ fun MainScreen(
                         }
                     }
                 ) {
-                    Text("确定", color = Color(0xFFEF5350))
+                    Text("确定", color = AppColors.Danger)
                 }
             },
             dismissButton = {
@@ -732,7 +733,7 @@ fun MainScreen(
                         keyboardController?.hide()
                     }
                 ) {
-                    Text("追加", color = Color(0xFF2196F3))
+                    Text("追加", color = AppColors.Primary)
                 }
             },
             dismissButton = {
@@ -869,8 +870,8 @@ private fun archiveFile(
         // Copy current content to archive if not empty
         if (currentContent.isNotBlank()) {
             // Extract content after header
-            val contentWithoutHeader = if (currentContent.startsWith("# Link Collection\n")) {
-                currentContent.substring("# Link Collection\n".length)
+            val contentWithoutHeader = if (currentContent.startsWith(MarkdownFormatter.FILE_HEADER)) {
+                currentContent.substring(MarkdownFormatter.FILE_HEADER.length)
             } else {
                 currentContent
             }

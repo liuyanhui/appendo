@@ -9,9 +9,10 @@ import java.util.Locale
  * Eliminates code duplication across different file implementations.
  */
 object MarkdownFormatter {
-    const val FILE_HEADER = "# Link Collection\n"
+    const val FILE_HEADER = "# Appendo\n"
+    const val TIMESTAMP_FORMAT = "yyyy-MM-dd HH:mm:ss"
+    const val ARCHIVE_TIMESTAMP_FORMAT = "yyyyMMdd_HHmmss"
 
-    private const val TIMESTAMP_FORMAT = "yyyy-MM-dd HH:mm:ss"
     private val TIMESTAMP_FORMATTER = SimpleDateFormat(TIMESTAMP_FORMAT, Locale.getDefault())
 
     /**

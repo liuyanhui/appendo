@@ -33,7 +33,7 @@ class MarkdownFileDeleteTest {
 
         // Initialize with sample content
         val sampleContent = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -162,7 +162,7 @@ Third entry content
     fun testDeleteEntry_withEmptyEntries() {
         // Arrange - Create file with empty entry (timestamp only, no content)
         val contentWithEmpty = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -216,7 +216,7 @@ Third entry
     fun testDeleteEntry_onlyOneEntry() {
         // Arrange - File with only one entry
         val singleEntryContent = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -244,7 +244,7 @@ Only entry
     fun testDeleteEntry_lastEntry_boundaryTest() {
         // Arrange - Create fresh file
         val freshContent = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00

@@ -118,7 +118,7 @@ fun ArchiveListScreen(
                     Text(
                         "归档管理",
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF2196F3)
+                        color = AppColors.Primary
                     )
                 },
                 navigationIcon = {
@@ -236,7 +236,7 @@ fun ArchiveListScreen(
                 Text(
                     "删除归档",
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFFEF5350)
+                    color = AppColors.Danger
                 )
             },
             text = {
@@ -257,7 +257,7 @@ fun ArchiveListScreen(
                         archiveToDeleteIndex = -1
                     }
                 ) {
-                    Text("删除", color = Color(0xFFEF5350))
+                    Text("删除", color = AppColors.Danger)
                 }
             },
             dismissButton = {
@@ -286,7 +286,7 @@ fun ArchiveListScreen(
                 Text(
                     "追加到当前文档",
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF4CAF50)
+                    color = AppColors.Success
                 )
             },
             text = {
@@ -341,7 +341,7 @@ fun ArchiveListScreen(
                         restoreEntryCount = 0
                     }
                 ) {
-                    Text("追加", color = Color(0xFF4CAF50))
+                    Text("追加", color = AppColors.Success)
                 }
             },
             dismissButton = {
@@ -388,8 +388,8 @@ private fun ArchiveCard(
     }
 
     val swipeBackgroundColor = when {
-        offsetX > SWIPE_THRESHOLD_DP / 2 -> Color(0xFFEF5350) // Red for delete
-        offsetX < -SWIPE_THRESHOLD_DP / 2 -> Color(0xFF4CAF50) // Green for restore
+        offsetX > SWIPE_THRESHOLD_DP / 2 -> AppColors.Danger // Red for delete
+        offsetX < -SWIPE_THRESHOLD_DP / 2 -> AppColors.Success // Green for restore
         else -> Color.Transparent
     }
 
@@ -477,7 +477,7 @@ private fun ArchiveCard(
                         Icons.Default.Info,
                         contentDescription = null,
                         modifier = Modifier.size(40.dp),
-                        tint = Color(0xFF2196F3)
+                        tint = AppColors.Primary
                     )
 
                     Spacer(modifier = Modifier.size(16.dp))

@@ -218,16 +218,6 @@ class SafMarkdownFile(
         }
     }
 
-    fun getFileName(): String {
-        return try {
-            val docFile = DocumentFile.fromSingleUri(context, uri)
-            docFile?.name ?: "Appendo.md"
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get file name", e)
-            "Appendo.md"
-        }
-    }
-
     override fun writeAll(content: String): Boolean {
         synchronized(FileOperationLock) {
             return try {

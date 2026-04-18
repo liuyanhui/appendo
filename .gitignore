@@ -23,8 +23,9 @@ local.properties
 *.aab
 *.ap_
 
-# Memory
+# Claude
 .claude/projects/*/memory/
+.claude/settings.local.json
 
 # OS
 Thumbs.db

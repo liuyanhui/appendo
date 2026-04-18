@@ -87,7 +87,7 @@
 
 #### `MarkdownFormatter`
 - 共享格式化工具
-- 常量：`FILE_HEADER = "# Link Collection\n"`
+- 常量：`FILE_HEADER = "# Appendo\n"`
 - `formatEntry(content)` — 生成带时间戳的条目文本
 - `getTimestampRegex()` — 返回时间戳正则
 
@@ -98,7 +98,7 @@
 
 #### `parseMarkdownEntries(content)`
 - 解析 Markdown 内容为 `List<LinkEntry>`
-- 跳过文件头 `# Link Collection` 和分隔线 `---`
+- 跳过文件头 `# Appendo` 和分隔线 `---`
 - 按时间戳标题 `## YYYY-MM-DD HH:mm:ss` 分割条目
 
 #### `MainScreen`

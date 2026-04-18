@@ -76,7 +76,7 @@ fun ArchiveDetailScreen(
                         Text(
                             "归档详情",
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF2196F3)
+                            color = AppColors.Primary
                         )
                         Text(
                             archive.name.removeSuffix(".md"),

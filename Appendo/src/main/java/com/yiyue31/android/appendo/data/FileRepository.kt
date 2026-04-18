@@ -6,12 +6,13 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
 import androidx.documentfile.provider.DocumentFile
+import com.yiyue31.android.appendo.util.MarkdownFormatter
 import java.io.File
 
 class FileRepository(private val context: Context) {
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("link_appending", Context.MODE_PRIVATE)
+        context.getSharedPreferences("appendo", Context.MODE_PRIVATE)
 
     companion object {
         private const val KEY_USE_SAF = "use_saf"
@@ -121,7 +122,7 @@ class FileRepository(private val context: Context) {
      * Generate archive filename with timestamp
      */
     fun generateArchiveFilename(): String {
-        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+        val timestamp = java.text.SimpleDateFormat(MarkdownFormatter.ARCHIVE_TIMESTAMP_FORMAT, java.util.Locale.getDefault())
             .format(java.util.Date())
         return "Appendo_$timestamp.md"
     }

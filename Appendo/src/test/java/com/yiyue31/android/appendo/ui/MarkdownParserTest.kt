@@ -19,7 +19,7 @@ class MarkdownParserTest {
     fun testParseEntries_validContent() {
         // Arrange
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -48,7 +48,7 @@ Second entry
     @Test
     fun testParseEntries_emptyContent() {
         // Arrange
-        val content = "# Link Collection\n\n---\n"
+        val content = "# Appendo\n\n---\n"
 
         // Act
         val entries = parseMarkdownEntries(content)
@@ -61,7 +61,7 @@ Second entry
     fun testParseEntries_withEmptyEntries() {
         // Arrange - Entry with timestamp but no content
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -94,7 +94,7 @@ Third entry
     fun testParseEntries_multiLineContent() {
         // Arrange
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -119,7 +119,7 @@ Line 3
     fun testParseEntries_specialCharacters() {
         // Arrange
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -143,7 +143,7 @@ Content with <special> & characters
     fun testParseEntries_chineseContent() {
         // Arrange
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -172,7 +172,7 @@ Second entry with 混合 content
     fun testParseEntries_urls() {
         // Arrange
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -200,7 +200,7 @@ Check out: https://github.com/user/repo
     fun testParseEntries_preservesWhitespace() {
         // Arrange
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00
@@ -244,7 +244,7 @@ Entry without header
     fun testParseEntries_codeBlock() {
         // Arrange
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 10:00:00

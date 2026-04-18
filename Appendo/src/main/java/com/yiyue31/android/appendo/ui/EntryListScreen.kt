@@ -207,7 +207,7 @@ private fun EntryCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFEF5350), RoundedCornerShape(16.dp))
+                        .background(AppColors.Danger, RoundedCornerShape(16.dp))
                         .padding(16.dp),
                     contentAlignment = Alignment.CenterEnd
                 ) {

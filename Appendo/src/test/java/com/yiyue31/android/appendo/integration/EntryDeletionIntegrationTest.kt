@@ -122,7 +122,7 @@ class EntryDeletionIntegrationTest {
 
         // Create file with exact format matching real usage
         val fileContent = StringBuilder()
-        fileContent.appendLine("# Link Collection")
+        fileContent.appendLine("# Appendo")
         fileContent.appendLine("")
         fileContent.appendLine("---")
         fileContent.appendLine("")

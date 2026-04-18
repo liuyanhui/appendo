@@ -20,7 +20,7 @@ class ArchiveRestoreDeduplicationTest {
     @Test
     fun testParseEntries_duplicateEntries_parsedCorrectly() {
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-18 10:30:45
@@ -56,7 +56,7 @@ entry2
     @Test
     fun testParseEntries_sameTimestampDifferentContent_parsedAsSeparate() {
         val content = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-18 10:30:45
@@ -195,7 +195,7 @@ content B
 
         // Step 1: Main file content (after adding 2 entries)
         val mainContent = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-18 10:30:45
@@ -237,7 +237,7 @@ entry2
     fun testFullScenario_restoreOldArchive_mergesWithoutDuplicates() {
         // Main has 2 recent entries, archive has 1 old entry + 1 duplicate
         val mainContent = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-18 10:30:45
@@ -253,7 +253,7 @@ another new entry
 """.trimIndent()
 
         val archiveContent = """
-# Link Collection
+# Appendo
 
 ---
 ## 2026-04-17 08:00:00

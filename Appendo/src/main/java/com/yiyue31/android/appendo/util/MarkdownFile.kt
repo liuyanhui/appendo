@@ -17,7 +17,7 @@ class MarkdownFile(
     private val contentResolver: ContentResolver = context.contentResolver
 
     companion object {
-        const val FILE_HEADER = "# Link Collection\n"
+        const val FILE_HEADER = "# Appendo\n"
         internal const val TIMESTAMP_PATTERN = "^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"
         internal val TIMESTAMP_REGEX = Regex(TIMESTAMP_PATTERN, RegexOption.MULTILINE)
     }
