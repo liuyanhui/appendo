@@ -171,28 +171,24 @@ fun MainScreen(
         return MarkdownFileFactory.create(context, useSAF, fileUri, defaultFile)
     }
 
-    // Helper function to refresh entry count and entries
+    // Helper function to refresh entry count and entries from a single file read
     fun refreshEntryCount() {
         coroutineScope.launch {
-            val success = try {
+            try {
                 val mdFile = getCurrentMarkdownFile()
                 if (!mdFile.exists()) {
                     mdFile.initHeader()
                 }
-                val count = mdFile.count()
-                entryCount = count
-
                 val content = mdFile.readAll()
                 val newEntries = parseMarkdownEntries(content)
                 entries = newEntries
-                true
+                entryCount = newEntries.size
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) {
                     android.util.Log.e("MainScreen", "Failed to refresh entries", e)
                 }
                 entryCount = 0
                 entries = emptyList()
-                false
             }
         }
     }

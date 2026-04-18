@@ -4,6 +4,13 @@ package com.yiyue31.android.appendo.util
  * Interface defining common operations for Markdown file implementations.
  * Eliminates code duplication and enables factory pattern usage.
  */
+/**
+ * Global lock for file operations to prevent concurrent access across instances.
+ * MainScreen and ShareReceiverActivity create separate MarkdownFileOperations instances,
+ * so instance-level locks don't protect against cross-instance concurrent writes.
+ */
+object FileOperationLock
+
 interface MarkdownFileOperations {
     /**
      * Append content to the file with timestamp formatting.
@@ -53,4 +60,14 @@ interface MarkdownFileOperations {
      * @return true if successful, false otherwise
      */
     fun deleteEntry(timestamp: String): Boolean
+
+    /**
+     * Write all content to the file, replacing existing content.
+     * Unlike append(), this does NOT add a timestamp or format the content.
+     * Used for operations that need to write raw markdown content directly.
+     *
+     * @param content The raw markdown content to write
+     * @return true if successful, false otherwise
+     */
+    fun writeAll(content: String): Boolean
 }

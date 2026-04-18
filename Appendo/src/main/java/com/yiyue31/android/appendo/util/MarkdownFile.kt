@@ -15,7 +15,6 @@ class MarkdownFile(
     private val uri: Uri
 ) {
     private val contentResolver: ContentResolver = context.contentResolver
-    private val lock = Any()
 
     companion object {
         const val FILE_HEADER = "# Link Collection\n"
@@ -24,7 +23,7 @@ class MarkdownFile(
     }
 
     fun append(content: String): Boolean {
-        synchronized(lock) {
+        synchronized(FileOperationLock) {
             return try {
                 appendInternal(content)
             } catch (_: Exception) {
@@ -50,7 +49,7 @@ class MarkdownFile(
     }
 
     fun clear(): Boolean {
-        synchronized(lock) {
+        synchronized(FileOperationLock) {
             return try {
                 contentResolver.openOutputStream(uri, "rwt")?.use { output ->
                     OutputStreamWriter(output, Charsets.UTF_8).use { writer ->

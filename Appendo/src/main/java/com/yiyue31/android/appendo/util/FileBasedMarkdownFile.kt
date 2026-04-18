@@ -12,14 +12,13 @@ class FileBasedMarkdownFile(
     private val context: Context,
     private val file: File
 ) : MarkdownFileOperations {
-    private val lock = Any()
 
     companion object {
         private const val TAG = "FileBasedMarkdownFile"
     }
 
     override fun append(content: String): Boolean {
-        synchronized(lock) {
+        synchronized(FileOperationLock) {
             return try {
                 val entry = MarkdownFormatter.formatEntry(content)
                 FileOutputStream(file, true).use { output ->
@@ -45,7 +44,7 @@ class FileBasedMarkdownFile(
     }
 
     override fun clear(): Boolean {
-        synchronized(lock) {
+        synchronized(FileOperationLock) {
             return try {
                 FileOutputStream(file).use { output ->
                     output.write(MarkdownFormatter.FILE_HEADER.toByteArray(Charsets.UTF_8))
@@ -88,7 +87,7 @@ class FileBasedMarkdownFile(
     }
 
     override fun deleteEntry(timestamp: String): Boolean {
-        synchronized(lock) {
+        synchronized(FileOperationLock) {
             return try {
                 val content = readAll()
                 val lines = content.lines().toMutableList()
@@ -161,6 +160,20 @@ class FileBasedMarkdownFile(
                 true
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to delete entry", e)
+                false
+            }
+        }
+    }
+
+    override fun writeAll(content: String): Boolean {
+        synchronized(FileOperationLock) {
+            return try {
+                FileOutputStream(file).use { output ->
+                    output.write(content.toByteArray(Charsets.UTF_8))
+                }
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to write all content", e)
                 false
             }
         }

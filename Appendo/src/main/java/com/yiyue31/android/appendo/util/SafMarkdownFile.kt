@@ -12,14 +12,13 @@ class SafMarkdownFile(
     private val context: Context,
     private val uri: Uri
 ) : MarkdownFileOperations {
-    private val lock = Any()
 
     companion object {
         private const val TAG = "SafMarkdownFile"
     }
 
     override fun append(content: String): Boolean {
-        synchronized(lock) {
+        synchronized(FileOperationLock) {
             return try {
                 val entry = MarkdownFormatter.formatEntry(content)
                 val outputStream = context.contentResolver.openOutputStream(uri, "wa")
@@ -84,7 +83,7 @@ class SafMarkdownFile(
     }
 
     override fun clear(): Boolean {
-        synchronized(lock) {
+        synchronized(FileOperationLock) {
             return try {
                 val outputStream = context.contentResolver.openOutputStream(uri, "wt")
                 if (outputStream != null) {
@@ -139,7 +138,7 @@ class SafMarkdownFile(
     }
 
     override fun deleteEntry(timestamp: String): Boolean {
-        synchronized(lock) {
+        synchronized(FileOperationLock) {
             return try {
                 val content = readAll()
                 val lines = content.lines().toMutableList()
@@ -226,6 +225,26 @@ class SafMarkdownFile(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get file name", e)
             "Appendo.md"
+        }
+    }
+
+    override fun writeAll(content: String): Boolean {
+        synchronized(FileOperationLock) {
+            return try {
+                val outputStream = context.contentResolver.openOutputStream(uri, "wt")
+                if (outputStream != null) {
+                    outputStream.use { output ->
+                        output.write(content.toByteArray(Charsets.UTF_8))
+                    }
+                    true
+                } else {
+                    Log.e(TAG, "Failed to open output stream for writeAll")
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to write all content", e)
+                false
+            }
         }
     }
 }
