@@ -5,95 +5,109 @@
 | 日期 | 变更人 | 变更摘要 |
 |------|--------|---------|
 | 2026-04-10 | Yiyue | 初始版本 |
+| 2026-04-18 | Yiyue | 更新为实际完成状态 |
 
 ## 里程碑
 
-| 阶段 | 内容 | 依赖 |
+| 阶段 | 内容 | 状态 |
 |------|------|------|
-| M1 | 项目脚手架搭建 | 无 |
-| M2 | 核心文件操作层 | M1 |
-| M3 | 分享接收功能 | M2 |
-| M4 | 主界面 UI | M2 |
-| M5 | 完整功能（分享/归档/通知） | M3, M4 |
-| M6 | 测试与验收 | M5 |
+| M1 | 项目脚手架搭建 | ✅ 完成 |
+| M2 | 核心文件操作层 | ✅ 完成 |
+| M3 | 分享接收功能 | ✅ 完成 |
+| M4 | 主界面 UI | ✅ 完成 |
+| M5 | 完整功能（归档/管理/恢复） | ✅ 完成 |
+| M6 | 测试与验收 | ✅ 完成 |
 
 ## 任务拆分
 
-### M1: 项目脚手架
+### M1: 项目脚手架 ✅
 
-| # | 任务 | 验收标准 |
-|---|------|---------|
-| 1.1 | 创建 Android 项目（Kotlin + Compose，minSdk 26，targetSdk 34） | 项目可编译运行 |
-| 1.2 | 配置依赖（Compose BOM Material 3, Activity Compose） | 构建成功 |
-| 1.3 | 建立 `src/` 目录结构：`ui/`, `data/`, `util/` | 目录就位 |
+| # | 任务 | 状态 |
+|---|------|------|
+| 1.1 | 创建 Android 项目（Kotlin + Compose，minSdk 26，targetSdk 34） | ✅ |
+| 1.2 | 配置依赖（Compose BOM Material 3, Activity Compose, Navigation Compose） | ✅ |
+| 1.3 | 建立 `src/` 目录结构：`ui/`, `data/`, `util/` | ✅ |
 
-### M2: 核心文件操作层（MarkdownFile）
+### M2: 核心文件操作层 ✅
 
-| # | 任务 | 验收标准 |
-|---|------|---------|
-| 2.1 | 实现 `MarkdownFile` 类：SAF URI + ContentResolver 封装 | 类可实例化 |
-| 2.2 | 实现 `append(content)` — 加 synchronized 锁，MODE_APPEND，降级覆写 | 追加写入正确，并发安全 |
-| 2.3 | 实现 `readAll()` | 读取全部内容，UTF-8 无 BOM |
-| 2.4 | 实现 `clear()` — 保留文件头 `# Link Collection` | 清空后只剩文件头 |
-| 2.5 | 实现 `exists()` | 检测文件存在性和 URI 权限有效性 |
-| 2.6 | 实现 `count()` — 正则匹配时间戳标题统计条目数 | 计数准确 |
-| 2.7 | URI 权限管理：SharedPreferences 存储 URI，takePersistableUriPermission，releasePersistableUriPermission | 持久化和释放均正确 |
+| # | 任务 | 状态 |
+|---|------|------|
+| 2.1 | 定义 `MarkdownFileOperations` 接口（append, readAll, clear, exists, count, initHeader, deleteEntry, writeAll） | ✅ |
+| 2.2 | 实现 `FileBasedMarkdownFile`（默认存储） | ✅ |
+| 2.3 | 实现 `SafMarkdownFile`（SAF 存储，含追加降级） | ✅ |
+| 2.4 | 实现 `MarkdownFileFactory` 工厂模式 | ✅ |
+| 2.5 | 实现 `MarkdownFormatter` 共享格式化工具 | ✅ |
+| 2.6 | 实现 `FileOperationLock` 全局同步锁 | ✅ |
 
-### M3: 分享接收功能（ShareReceiverActivity）
+### M3: 分享接收功能 ✅
 
-| # | 任务 | 验收标准 |
-|---|------|---------|
-| 3.1 | 创建 `ShareReceiverActivity`，配置 Intent Filter（ACTION_SEND, text/plain） | 显示在系统分享列表中 |
-| 3.2 | 解析 Intent：EXTRA_TEXT 和 EXTRA_STREAM | 正确提取文本和 URI |
-| 3.3 | 调用 MarkdownFile.append() 写入，格式：分隔线 + 时间戳标题 + 原始内容 | 文件中条目格式正确 |
-| 3.4 | 写入完成后发送 Notification 提示 | Notification 显示成功 |
-| 3.5 | 无文件时引导跳转 MainActivity 选择文件 | 流程通畅 |
-| 3.6 | adb CLI 可用性验证：`adb shell am start` 触发写入 | 命令行操作成功 |
+| # | 任务 | 状态 |
+|---|------|------|
+| 3.1 | 创建 `ShareReceiverActivity`，配置 Intent Filter（ACTION_SEND, text/plain） | ✅ |
+| 3.2 | 解析 Intent EXTRA_TEXT | ✅ |
+| 3.3 | 内容安全校验（最大 10,000 字符） | ✅ |
+| 3.4 | 支持 SAF 和默认文件双模式 | ✅ |
 
-### M4: 主界面 UI（MainActivity）
+### M4: 主界面 UI ✅
 
-| # | 任务 | 验收标准 |
-|---|------|---------|
-| 4.1 | 创建 MainActivity + Compose 主界面 | 界面渲染正常 |
-| 4.2 | 首次启动引导：ActivityResultContracts.CreateDocument 选择/创建文件 | 文件创建成功，URI 持久化 |
-| 4.3 | 状态展示：文件路径 + 条目计数 | 信息显示正确 |
-| 4.4 | 打开文件按钮：ACTION_VIEW + 文件 URI | 外部应用打开文件 |
-| 4.5 | 一键复制：ClipboardManager + ClipData | 内容复制到剪贴板 |
-| 4.6 | 一键清理：AlertDialog 确认 + MarkdownFile.clear() | 清空后只剩文件头 |
-| 4.7 | 文件丢失恢复：检测 exists()，失效时重新引导选择 | 恢复流程通畅 |
+| # | 任务 | 状态 |
+|---|------|------|
+| 4.1 | `MainScreen`：TopAppBar + 2x2 按钮网格 + 条目列表 | ✅ |
+| 4.2 | 手动输入对话框（自动弹出键盘，多行输入） | ✅ |
+| 4.3 | 复制全部 / 分享全部 / 清空（长按+备份） | ✅ |
+| 4.4 | `EntryListScreen` 可复用组件（长按复制、右滑删除） | ✅ |
+| 4.5 | 实时刷新（每 2 秒轮询文件修改时间） | ✅ |
+| 4.6 | 菜单：归档、归档管理、打开文件、自定义目录、关于 | ✅ |
 
-### M5: 完整功能
+### M5: 归档与管理 ✅
 
-| # | 任务 | 验收标准 |
-|---|------|---------|
-| 5.1 | 分享内容按钮：ACTION_SEND + EXTRA_TEXT + createChooser | 分享到其他应用成功 |
-| 5.2 | 归档功能：菜单选项 → CreateDocument 创建新文件 → 释放旧 URI → 切换 | 归档后写入新文件，旧文件不受影响 |
-| 5.3 | Notification 渠道创建（API 26+ 要求） | 渠道注册成功 |
+| # | 任务 | 状态 |
+|---|------|------|
+| 5.1 | `ArchiveRepository`：归档文件列表、删除、内容读取 | ✅ |
+| 5.2 | `ArchiveListScreen`：归档列表、左滑追加、右滑删除 | ✅ |
+| 5.3 | `ArchiveDetailScreen`：归档详情（只读模式） | ✅ |
+| 5.4 | 归档恢复去重（按 timestamp|content 组合键去重） | ✅ |
+| 5.5 | Navigation Compose 页面导航 | ✅ |
+| 5.6 | 自适应图标（矢量图前景 + 蓝色背景） | ✅ |
 
-### M6: 测试与验收
+### M6: 测试与验收 ✅
 
-| # | 任务 | 验收标准 |
-|---|------|---------|
-| 6.1 | MarkdownFile 单元测试：append、readAll、clear、count、并发写入 | 测试全部通过 |
-| 6.2 | 端到端测试：从系统分享 → 写入 → 主界面显示 → 计数正确 | 完整流程通畅 |
-| 6.3 | 边界测试：空文件、特殊字符内容、文件丢失、并发分享 | 异常情况不崩溃 |
-| 6.4 | adb CLI 测试 | 命令行追加成功 |
-| 6.5 | 对照需求文档逐项验收 | 全部需求满足 |
+| # | 任务 | 状态 |
+|---|------|------|
+| 6.1 | `MarkdownParserTest`：Markdown 解析测试 | ✅ |
+| 6.2 | `MarkdownFileDeleteTest`：条目删除测试 | ✅ |
+| 6.3 | `ArchiveRestoreDeduplicationTest`：归档恢复去重测试 | ✅ |
+| 6.4 | `EntryDeletionIntegrationTest`：删除集成测试 | ✅ |
 
 ## 文件结构
 
 ```
 src/main/java/com/yiyue31/android/appendo/
-├── MainActivity.kt
-├── ShareReceiverActivity.kt
+├── MainActivity.kt               # 主入口，Navigation 导航
+├── ShareReceiverActivity.kt      # 分享接收入口
+├── AppendoApplication.kt         # Application 初始化
 ├── ui/
-│   └── MainScreen.kt          # Compose 主界面
+│   ├── MainScreen.kt             # 主界面（含 LinkEntry、parseMarkdownEntries）
+│   ├── EntryListScreen.kt        # 可复用条目列表组件
+│   ├── ArchiveListScreen.kt      # 归档管理界面
+│   ├── ArchiveDetailScreen.kt    # 归档详情界面
+│   └── ToastUtils.kt             # Toast 兼容工具
 ├── data/
-│   └── FileRepository.kt      # URI 持久化（SharedPreferences）
+│   ├── FileRepository.kt         # 文件存储偏好和 URI 管理
+│   └── ArchiveRepository.kt      # 归档文件管理
 └── util/
-    └── MarkdownFile.kt        # 文件读写工具类
+    ├── MarkdownFileOperations.kt # 文件操作接口 + FileOperationLock
+    ├── MarkdownFileFactory.kt    # 文件操作工厂
+    ├── FileBasedMarkdownFile.kt  # 默认文件存储实现
+    ├── SafMarkdownFile.kt        # SAF 文件存储实现
+    └── MarkdownFormatter.kt      # Markdown 格式化工具
 
 src/test/java/com/yiyue31/android/appendo/
+├── integration/
+│   └── EntryDeletionIntegrationTest.kt
+├── ui/
+│   ├── MarkdownParserTest.kt
+│   └── ArchiveRestoreDeduplicationTest.kt
 └── util/
-    └── MarkdownFileTest.kt    # 单元测试
+    └── MarkdownFileDeleteTest.kt
 ```

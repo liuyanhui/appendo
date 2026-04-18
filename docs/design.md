@@ -9,10 +9,11 @@
 | 2026-04-16 | Yiyue | 新增手动输入功能；新增内容预览功能；应用定位调整为速记应用 |
 | 2026-04-16 | Yiyue | 优化文件存储：首次启动使用默认目录；归档自动生成文件名；支持混合存储模式 |
 | 2026-04-17 | Yiyue | 新增归档管理功能；统一条目交互模式；实现归档恢复功能；修复删除索引bug；改用时间戳作为删除标识符 |
+| 2026-04-18 | Yiyue | 提取 MarkdownFileOperations 接口和工厂模式；实现归档恢复去重；自适应图标矢量图；项目统一命名为 Appendo |
 
 ## 架构概述
 
-极简速记应用，两个 Activity 协作完成功能。支持通过分享接收内容和手动输入两种方式收集。
+极简速记应用，两个 Activity 协作完成功能。支持通过分享接收内容和手动输入两种方式收集。采用双存储模式（默认文件 + SAF），通过接口抽象和工厂模式统一文件操作。
 
 ## 组件设计
 
@@ -20,247 +21,287 @@
 
 #### `MainActivity`
 - 主界面，Jetpack Compose 构建
-- **首次启动**：自动在应用私有目录创建 `Appendo.md` 文件，无需用户选择
-- 显示当前文件路径和状态信息
-- 提供操作按钮：打开文件、复制内容、清空文件、分享内容
-- 菜单提供：归档、更换文件功能
+- 内嵌 Navigation Compose 管理页面导航（主界面 → 归档列表 → 归档详情）
+- 管理文件存储模式（默认/SAF）
+- 功能：手动输入、复制全部、分享全部、清空（含备份）、归档、删除条目
 
 #### `ShareReceiverActivity`
-- 接收其他应用分享内容的入口（`ACTION_SEND` Intent Filter）
-- 解析 Intent 中的文本或 URI
-- 静默追加写入 Markdown 文件后自动关闭
-- 写入完成后通过 Notification 提示用户
+- 接收其他应用分享内容（`ACTION_SEND` Intent Filter，`text/plain`）
+- 解析 Intent 中的文本
+- 校验内容长度（最大 10,000 字符）
+- 支持 SAF 和默认文件两种模式
+- 写入完成后 Toast 提示，自动关闭（`noHistory=true`，不出现在最近任务列表）
 
-### 工具类
+#### `AppendApplication`
+- Application 子类
+- 初始化 Toast 兼容工具
 
-#### `MarkdownFile`
-- 职责：Markdown 文件的读写操作
-- 依赖：SAF URI 和 ContentResolver
-- 方法：
-  - `append(content: String)` — 追加带时间戳和分隔线的条目（**加 synchronized 锁**）
-  - `readAll(): String` — 读取文件全部内容
-  - `clear()` — 清空文件内容
-  - `exists(): Boolean` — 检查文件是否存在
-  - `count(): Int` — 通过正则匹配 `## YYYY-MM-DD HH:mm:ss` 统计条目数
+### 数据层
 
-#### `LinkEntry`
-- 职责：表示单条收集内容的实体类
-- 属性：
-  - `timestamp: String` — 时间戳
-  - `content: String` — 原始内容
+#### `FileRepository`
+- 职责：管理文件存储偏好设置和 URI 权限
+- 存储方式：`SharedPreferences`（名称：`link_appending`）
+- 关键方法：
+  - `getDefaultFile(): File` — 获取默认文件（`getExternalFilesDir` 下的 `Appendo.md`）
+  - `isUsingSAF(): Boolean` — 判断当前是否使用 SAF 模式
+  - `saveFileUri(uri)` — 保存 SAF URI 并持久化权限
+  - `clearFileUri()` — 清除 URI 并释放权限（先清偏好再释放，防止竞态）
+  - `isFileUriValid(): Boolean` — 验证 SAF URI 是否仍然有效
+  - `generateArchiveFilename(): String` — 生成归档文件名 `Appendo_yyyyMMdd_HHmmss.md`
+  - `getFileLastModified() / setFileLastModified()` — 文件修改时间追踪（用于轮询刷新）
 
-#### `MarkdownParser`
-- 职责：解析 Markdown 文件内容为条目列表
-- 方法：
-  - `parseEntries(content: String): List<LinkEntry>` — 解析文件内容，返回条目列表（按时间正序）
-
-#### `EntryListScreen`（可复用组件）
-- 职责：统一的条目列表展示和交互组件
-- 支持功能：
-  - 显示条目列表（倒序）
-  - 长按复制单条内容（带震动）
-  - 右滑删除单条内容（带确认对话框）
-  - 滑动时显示操作指示文字
-- 参数：
-  - `entries: List<LinkEntry>` — 条目列表
-  - `entryCount: Int` — 条目总数
-  - `sourceFileName: String?` — 源文件名（可选）
-  - `readOnly: Boolean` — 是否只读模式
-  - `onEntryLongClick: (String) -> Unit` — 长按回调
-  - `onEntrySwipeToDelete: (Int) -> Unit` — 滑动删除回调（传入原始索引）
+#### `ArchiveFile`
+- 数据类：表示归档文件元信息
+- 属性：`file: File`、`name: String`、`timestamp: Date`、`entryCount: Int`
 
 #### `ArchiveRepository`
 - 职责：归档文件管理
-- 方法：
-  - `listArchiveFiles(): List<ArchiveFile>` — 列出所有归档文件
-  - `deleteArchive(file: File): Boolean` — 删除指定归档文件
-  - `formatTimestamp(date: Date): String` — 格式化时间戳
+- 归档文件识别：文件名以 `Appendo_` 开头、`.md` 结尾
+- 关键方法：
+  - `listArchiveFiles(): List<ArchiveFile>` — 列出所有归档，按时间倒序
+  - `getArchiveContent(file): String` — 读取归档内容
+  - `deleteArchive(file): Boolean` — 删除归档
+  - `formatTimestamp(date): String` — 格式化为 `yyyy-MM-dd HH:mm`
+
+### 工具层
+
+#### `MarkdownFileOperations`（接口）
+- 定义文件操作的统一抽象
+- 方法：`append`、`readAll`、`clear`、`exists`、`count`、`initHeader`、`deleteEntry(timestamp)`、`writeAll`
+- `deleteEntry` 使用时间戳作为标识符（非索引），支持连续删除不冲突
+
+#### `FileOperationLock`（全局锁对象）
+- 跨实例同步锁，防止 `MainActivity` 和 `ShareReceiverActivity` 各自创建的文件操作实例并发冲突
+
+#### `MarkdownFileFactory`
+- 工厂类，根据存储模式创建对应的文件操作实例
+- `create(context, useSAF, uri, file): MarkdownFileOperations`
+
+#### `FileBasedMarkdownFile`
+- 默认存储模式实现，使用 `java.io.File` 直接操作
+- 写入使用 `FileOperationLock` 同步锁
+
+#### `SafMarkdownFile`
+- SAF 存储模式实现，通过 `ContentResolver` 操作
+- `append` 失败时降级为先读后写
+
+#### `MarkdownFormatter`
+- 共享格式化工具
+- 常量：`FILE_HEADER = "# Link Collection\n"`
+- `formatEntry(content)` — 生成带时间戳的条目文本
+- `getTimestampRegex()` — 返回时间戳正则
+
+### UI 层
+
+#### `LinkEntry`
+- 数据类：`timestamp: String`、`content: String`
+
+#### `parseMarkdownEntries(content)`
+- 解析 Markdown 内容为 `List<LinkEntry>`
+- 跳过文件头 `# Link Collection` 和分隔线 `---`
+- 按时间戳标题 `## YYYY-MM-DD HH:mm:ss` 分割条目
+
+#### `MainScreen`
+- 主界面 Composable
+- 布局：TopAppBar（标题+条目数+菜单）→ 2x2 按钮网格 → 条目列表
+- 功能：手动输入、复制全部、分享全部、清空（长按+自动备份）、条目滑动删除、归档、打开文件、自定义目录、关于对话框
+- 实时刷新：`LaunchedEffect` 每 2 秒轮询文件修改时间
+
+#### `EntryListScreen`（可复用组件）
+- 统一的条目列表展示和交互
+- 参数：`entries`、`entryCount`、`sourceFileName`、`readOnly`、`onEntryLongClick`、`onEntrySwipeToDelete`
+- `LazyColumn` 使用复合 key（`"${timestamp}_$index"`）防止重复 key
+- 支持滑动删除（仅非只读模式）和长按复制
 
 #### `ArchiveListScreen`
-- 职责：归档管理界面
-- 功能：
-  - 显示所有归档文件列表
-  - 点击查看归档详情
-  - 长按复制归档全部内容
-  - 右滑删除归档文件（带确认）
-  - 左滑追加到当前文档（带确认）
+- 归档管理界面
+- 功能：归档列表、点击查看详情、长按复制、右滑删除、左滑追加（带去重）
+- 追加逻辑：解析归档和当前文件的条目，按 `timestamp|content` 组合去重，仅追加不重复的条目
 
 #### `ArchiveDetailScreen`
-- 职责：归档详情界面
-- 功能：
-  - 显示归档文件的所有条目
-  - 使用 `EntryListScreen` 组件（只读模式）
-  - 长按复制单条内容
-  - 不支持删除操作
+- 归档详情界面，使用 `EntryListScreen`（只读模式）
+
+#### `ToastUtils`
+- Toast 兼容工具，适配不同 Android 版本
 
 ## 数据流
 
 ```
 方式一（分享接收）：
-其他应用分享 → ShareReceiverActivity → 解析 Intent (text/uri) →
-追加到 Markdown 文件 → Notification 提示 → 关闭 Activity
+其他应用分享 → ShareReceiverActivity → 解析 Intent (text/plain) →
+校验长度 → 追加到 Markdown 文件 → Toast 提示 → 关闭 Activity
 
 方式二（手动输入）：
-主界面点击「手动输入」→ 弹出输入对话框 → 用户输入内容 →
-点击「追加」→ 追加到 Markdown 文件 → 刷新条目列表 → 关闭对话框
+主界面点击「手动输入」→ 弹出输入对话框 → 自动弹出键盘 →
+用户输入内容 → 点击「追加」→ 追加到 Markdown 文件 → 刷新条目列表
+
+方式三（归档恢复）：
+归档列表左滑 → 确认追加 → 解析归档条目 → 与当前条目去重 →
+追加不重复条目 → 更新文件修改时间 → 刷新列表
+
+条目删除：
+条目卡片右滑 → 确认删除 → 按时间戳定位条目 → 删除条目和分隔线 →
+更新文件修改时间 → 刷新列表
 ```
 
 ## 界面布局
 
 ```
 ┌──────────────────────────────┐
-│  Appendo           [⋯菜单]    │  ← TopAppBar（菜单含归档）
+│  Appendo           [⋯菜单]    │  ← TopAppBar
+│  已收集 42 条                 │
 ├──────────────────────────────┤
 │                              │
-│  文件: collection.md         │  ← 状态信息
-│  已收集: 42 条               │
-│                              │
-│  [一键复制]                  │  ← 操作按钮
-│  [手动输入]                  │  ← 手动输入按钮
-│  [清空] [分享]               │  ← 操作按钮
+│  [手动输入]    [复制全部]      │  ← 2x2 按钮网格
+│  [分享全部]    [清空]长按      │
 │                              │
 │  ──────────────────────────  │
 │                              │
-│  已收集内容 (42)             │  ← 内容预览区域
+│  已收集 42 条                 │  ← EntryListScreen
 │  ┌────────────────────────┐ │
-│  │ 2026-04-16 14:30:25    │ │
-│  │ 这是一条测试内容        │ │
-│  └────────────────────────┘ │
-│  ┌────────────────────────┐ │
-│  │ 2026-04-16 10:15:00    │ │
-│  │ https://example.com    │ │
+│  │ 2026-04-18 14:30:25    │ │  ← 条目卡片
+│  │ 这是一条测试内容        │ │     长按=复制，右滑=删除
 │  └────────────────────────┘ │
 │           ...               │
-│                              │
-│  ──────────────────────────  │
-│                              │
-│  使用说明                    │
-│  从任意应用分享链接或文字     │
-│  或点击「手动输入」添加内容   │
 │                              │
 └──────────────────────────────┘
 ```
 
+**菜单下拉**：归档 | 归档管理 | 打开文件 | 自定义目录 | 关于
+
 **归档列表页面**：
 ```
 ┌──────────────────────────────┐
-│  ← 归档管理                   │  ← TopAppBar
+│  ← 归档管理                   │
 ├──────────────────────────────┤
-│                              │
-│  共 3 个归档                  │  ← 统计信息
+│  共 3 个归档                  │
 │                              │
 │  ┌────────────────────────┐ │
-│  │ [ℹ] Appendo_20260416  │ │  ← 归档卡片
-│  │     2026-04-16 · 15 条  │ │     （左滑=追加，右滑=删除）
-│  │                      [🗑] │ │
+│  │ [ℹ] Appendo_20260418  │ │  ← 左滑=追加，右滑=删除
+│  │     2026-04-18 · 15 条  │ │     长按=复制全部
 │  └────────────────────────┘ │
-│  ┌────────────────────────┐ │
-│  │ [ℹ] Appendo_20260415  │ │
-│  │     2026-04-15 · 23 条  │ │
-│  └────────────────────────┘ │
-│  ┌────────────────────────┐ │
-│  │ [ℹ] Appendo_20260414  │ │
-│  │     2026-04-14 · 8 条   │ │
-│  └────────────────────────┘ │
-│                              │
+│           ...               │
 └──────────────────────────────┘
 ```
 
 **归档详情页面**：
 ```
 ┌──────────────────────────────┐
-│  ← 归档详情                   │  ← TopAppBar
-│  Appendo_20260416             │
+│  ← 归档详情                   │
+│  Appendo_20260418             │
 ├──────────────────────────────┤
-│  Appendo_20260416             │  ← 源文件名
-│  已收集 15 条                 │
-│                              │
+│  Appendo_20260418             │  ← 只读 EntryListScreen
+│  已收集 15 条                 │     长按=复制单条
 │  ┌────────────────────────┐ │
-│  │ 2026-04-16 14:30:25    │ │  ← 条目卡片（只读）
-│  │ 这是一条测试内容        │ │     （长按=复制）
-│  └────────────────────────┘ │
-│  ┌────────────────────────┐ │
-│  │ 2026-04-16 10:15:00    │ │
-│  │ https://example.com    │ │
+│  │ 2026-04-18 14:30:25    │ │
+│  │ 这是一条测试内容        │ │
 │  └────────────────────────┘ │
 │           ...               │
-│                              │
 └──────────────────────────────┘
 ```
 
-**手动输入对话框**：
+## 导航结构
+
 ```
-┌──────────────────────────────┐
-│  手动输入内容        [×]      │
-├──────────────────────────────┤
-│                              │
-│  ┌────────────────────────┐ │
-│  │                        │ │
-│  │  请输入要追加的内容     │ │  ← 多行输入框（3-6行）
-│  │                        │ │
-│  │                        │ │
-│  └────────────────────────┘ │
-│                              │
-│        [取消]    [追加]      │
-│                              │
-└──────────────────────────────┘
+MainActivity
+  └── NavHost
+       ├── composable("main") → MainScreen
+       ├── composable("archiveList") → ArchiveListScreen
+       └── composable("archiveDetail/{filePath}") → ArchiveDetailScreen
 ```
 
-## Intent Filter
+## 文件存储方案
 
-```xml
-<intent-filter>
-    <action android:name="android.intent.action.SEND" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <data android:mimeType="text/plain" />
-</intent-filter>
-```
+| 模式 | 实现 | 触发条件 | 文件位置 |
+|------|------|----------|----------|
+| 默认 | `FileBasedMarkdownFile` | 首次启动自动创建 | `getExternalFilesDir(null)/Appendo.md` |
+| SAF | `SafMarkdownFile` | 用户选择"自定义目录" | 用户自选的外部存储位置 |
 
-## 文件权限方案
-
-- 使用 SAF (Storage Access Framework)，无需 `WRITE_EXTERNAL_STORAGE` 权限
-- 通过 `ActivityResultContracts.CreateDocument` 让用户选择保存位置
+- SAF 模式通过 `ActivityResultContracts.CreateDocument` 选择文件
 - 持久化 URI 权限（`takePersistableUriPermission`）
-- 使用 SharedPreferences 存储用户选择的文件 URI
+- 使用 `SharedPreferences` 存储模式和 URI
+- URI 失效时自动回退到默认模式
 
 ## 关键实现细节
 
-1. **分享接收** — 在 `ShareReceiverActivity.onCreate()` 中解析 `Intent.EXTRA_TEXT` 或 `Intent.EXTRA_STREAM`
-2. **手动输入** — 使用 `AlertDialog` + `OutlinedTextField` 实现多行输入框，点击「追加」按钮后调用 `MarkdownFile.append()`
-3. **文件写入** — 通过 ContentResolver 的 `openOutputStream` 写入，使用 `MODE_APPEND`；**写入操作加 `synchronized` 锁**防止并发冲突
-4. **格式保持** — 收集到的文本内容直接原样写入，不做任何处理、过滤或转义。换行、括号、空格、缩进、特殊符号等全部保留
-5. **UTF-8 编码** — 写入时使用 `OutputStreamWriter` 并显式指定 `Charsets.UTF_8`，无 BOM
-6. **时间格式** — `SimpleDateFormat("yyyy-MM-dd HH:mm:ss")`
-7. **内容解析** — 使用正则 `^## \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$` 匹配时间戳标题行，提取每条的时间戳和内容，构建 `LinkEntry` 列表
-8. **内容预览** — 使用 `LazyColumn` 显示条目列表，`entries.reversed()` 实现倒序排列（最新的在前），使用 `Card` 组件美化每条显示
-9. **实时刷新** — 使用 `LaunchedEffect` 轮询检测文件修改时间变化（每2秒），变化时自动刷新条目列表
-10. **清空确认** — 使用 AlertDialog 确认后执行
-11. **剪贴板复制** — 使用 `ClipboardManager`，内容通过 `ClipData.newPlainText` 设置
-12. **打开文件** — 使用 `Intent.ACTION_VIEW` 配合文件 URI
-13. **分享内容** — 使用 `ACTION_SEND` + `Intent.EXTRA_TEXT`（文件全部内容）+ `Intent.createChooser`
-14. **默认文件存储** — 首次启动时，应用自动在 `context.getExternalFilesDir(null)` 目录下创建 `Appendo.md` 文件，使用 `FileBasedMarkdownFile` 进行文件操作。用户无需手动选择文件，开箱即用
-15. **归档功能** — 点击归档后，自动在当前文件所在目录创建新文件，文件名格式为 `Appendo_yyyyMMdd_HHmmss.md`。保留旧文件，自动切换到新文件，条目计数归零。无需用户选择文件名或位置
-16. **文件存储模式** — 支持两种存储模式：
-    - **默认模式**：使用应用私有存储目录（`getExternalFilesDir`），无需 SAF，使用 `FileBasedMarkdownFile`
-    - **SAF 模式**：用户通过"更换文件"功能选择外部存储位置，使用 `SafMarkdownFile`
-17. **写入反馈** — 使用 `NotificationManager` 发送 Notification，避免 Activity 快速关闭导致 Toast 不可见
-18. **条目计数** — 通过正则 `^## \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$` 匹配时间戳标题行统计
-19. **条目删除标识符** — 使用时间戳作为删除标识符，而不是索引。原因是：
-    - 索引会因为插入/删除操作而变化，导致错位
-    - 时间戳是条目的唯一标识，永远准确
-    - UI传递条目的时间戳，底层根据时间戳查找并删除对应条目
-    - 支持连续删除和多条操作，不会出现索引混乱
-20. **滑动手势检测** — 使用 `detectHorizontalDragGestures` 检测水平滑动，`offsetX > SWIPE_THRESHOLD_DP` 触发右滑，`offsetX < -SWIPE_THRESHOLD_DP` 触发左滑
-21. **滑动视觉反馈** — 使用 `Box` + `background` 实现滑动时显示的背景层，右滑显示红色背景+"删除"文字，左滑显示绿色背景+"追加"文字
-22. **长按震动反馈** — 使用 `Vibrator` + `VibrationEffect.createOneShot()` 提供触觉反馈，短震动（100ms）用于复制操作，长震动（200ms）用于删除操作
-23. **归档文件命名** — 归档文件自动命名为 `Appendo_yyyyMMdd_HHmmss.md`，存储在应用私有目录的 `archives/` 子目录
-24. **归档追加逻辑** — 追加归档内容时，解析归档文件内容，提取所有条目（跳过文件头和分隔线），追加到当前文档末尾
-25. **确认对话框** — 使用 `AlertDialog` 实现删除和追加确认，标题颜色区分操作类型（删除=红色，追加=绿色）
-26. **Navigation Compose** — 使用 `NavHost` + `composable` 实现页面导航，归档详情通过 `Uri.encode/decode` 传递文件路径
+1. **全局文件锁** — `FileOperationLock` 对象确保跨 Activity 的文件操作互斥
+2. **时间戳删除** — 使用 `## YYYY-MM-DD HH:mm:ss` 时间戳作为删除标识符，非索引
+3. **归档恢复去重** — 按 `timestamp|content` 组合键去重，防止重复条目导致 LazyColumn key 冲突
+4. **条目解析** — 正则 `^## \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$` 匹配时间戳标题行
+5. **内容格式保持** — 原始文本直接写入，不做任何处理、过滤或转义
+6. **UTF-8 编码无 BOM** — 显式指定 `Charsets.UTF_8`
+7. **清空备份** — 清空操作前自动执行归档，确保数据安全
+8. **轮询刷新** — `LaunchedEffect` + `delay(2000)` + `isActive` 检查，通过文件修改时间变化触发
+9. **自适应图标** — XML Vector Drawable 前景（记事本+羽毛笔）+ 蓝色背景色（#1565C0），适配所有密度
+10. **内容安全校验** — 分享接收限制内容最大 10,000 字符
+11. **震动反馈** — `Vibrator` + `VibrationEffect`，兼容 API 26+ 和旧版本
+
+## 项目文件结构
+
+```
+Appendo/
+├── src/main/java/com/yiyue31/android/appendo/
+│   ├── MainActivity.kt               # 主入口，Navigation 导航
+│   ├── ShareReceiverActivity.kt      # 分享接收入口
+│   ├── AppendoApplication.kt         # Application 初始化
+│   ├── data/
+│   │   ├── FileRepository.kt         # 文件存储偏好和 URI 管理
+│   │   └── ArchiveRepository.kt      # 归档文件管理
+│   ├── ui/
+│   │   ├── MainScreen.kt             # 主界面（含 LinkEntry、parseMarkdownEntries）
+│   │   ├── EntryListScreen.kt        # 可复用条目列表组件
+│   │   ├── ArchiveListScreen.kt      # 归档管理界面
+│   │   ├── ArchiveDetailScreen.kt    # 归档详情界面
+│   │   └── ToastUtils.kt             # Toast 兼容工具
+│   └── util/
+│       ├── MarkdownFileOperations.kt # 文件操作接口 + FileOperationLock
+│       ├── MarkdownFileFactory.kt    # 文件操作工厂
+│       ├── FileBasedMarkdownFile.kt  # 默认文件存储实现
+│       ├── SafMarkdownFile.kt        # SAF 文件存储实现
+│       └── MarkdownFormatter.kt      # Markdown 格式化工具
+├── src/main/res/
+│   ├── drawable/
+│   │   └── ic_launcher_foreground.xml  # 矢量图标前景
+│   ├── mipmap-anydpi-v26/
+│   │   ├── ic_launcher.xml             # 自适应图标
+│   │   └── ic_launcher_round.xml       # 圆形自适应图标
+│   ├── values/
+│   │   ├── colors.xml                  # 图标背景色
+│   │   ├── strings.xml                 # 字符串资源
+│   │   └── themes.xml                  # 主题
+│   └── mipmap-{hdpi,mdpi,...}/         # 各密度图标
+├── src/test/java/com/yiyue31/android/appendo/
+│   ├── integration/
+│   │   └── EntryDeletionIntegrationTest.kt
+│   ├── ui/
+│   │   ├── MarkdownParserTest.kt
+│   │   └── ArchiveRestoreDeduplicationTest.kt
+│   └── util/
+│       └── MarkdownFileDeleteTest.kt
+└── build.gradle.kts
+```
 
 ## 依赖
 
-- Jetpack Compose BOM (Material 3)
-- Activity Compose
-- Navigation Compose（用于归档管理和详情页面导航）
-- 无第三方依赖
+| 依赖 | 用途 |
+|------|------|
+| Compose BOM 2024.06.00 | Compose 版本统一管理 |
+| Material 3 | UI 组件库 |
+| Activity Compose 1.9.0 | Compose Activity 集成 |
+| Lifecycle Compose 2.8.2 | 生命周期感知 |
+| Navigation Compose 2.7.7 | 页面导航 |
+| DocumentFile 1.0.1 | SAF 文件操作 |
+| JUnit 4.13.2 | 单元测试 |
+| Mockito 5.10.0 + mockito-kotlin 5.2.1 | 测试 Mock |
+
+## 构建配置
+
+| 配置项 | 值 |
+|--------|-----|
+| compileSdk | 34 |
+| minSdk | 26 |
+| targetSdk | 34 |
+| JDK | 17 |
+| Kotlin | 2.2.10 |
+| AGP | 9.1.1 |
+| ProGuard | Release 启用（`proguard-android-optimize.txt`） |
