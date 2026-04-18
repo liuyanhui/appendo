@@ -104,7 +104,7 @@ fun EntryListScreen(
         ) {
             itemsIndexed(
                 items = entries.reversed(),
-                key = { index, _ -> index }
+                key = { index, entry -> "${entry.timestamp}_$index" }
             ) { index, entry ->
                 EntryCard(
                     entry = entry,

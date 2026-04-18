@@ -400,4 +400,16 @@ private class TestFileBasedMarkdownFile(private val file: File) : MarkdownFileOp
             }
         }
     }
+
+    override fun writeAll(content: String): Boolean {
+        synchronized(lock) {
+            return try {
+                file.writeText(content)
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        }
+    }
 }

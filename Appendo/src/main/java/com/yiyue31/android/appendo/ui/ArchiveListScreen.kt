@@ -297,8 +297,7 @@ fun ArchiveListScreen(
                     onClick = {
                         try {
                             val archiveContent = archiveToRestore!!.file.readText()
-                            val entries = parseMarkdownEntries(archiveContent)
-                            val count = entries.size
+                            val archiveEntries = parseMarkdownEntries(archiveContent)
 
                             val mdFile = MarkdownFileFactory.create(
                                 context,
@@ -307,33 +306,29 @@ fun ArchiveListScreen(
                                 fileRepository.getDefaultFile()
                             )
 
-                            // Get existing content to append after
+                            // Get existing entries and deduplicate
                             val existingContent = mdFile.readAll()
-                            val lines = existingContent.lines().toMutableList()
+                            val existingEntries = parseMarkdownEntries(existingContent)
+                            val existingKeys = existingEntries
+                                .map { "${it.timestamp}|${it.content}" }
+                                .toMutableSet()
 
-                            // Find entries in archive (skip header)
-                            val archiveLines = archiveContent.lines()
-                            var isContent = false
-                            for (line in archiveLines) {
-                                if (line.startsWith("# Link Collection") || line == "---") {
-                                    continue
-                                }
-                                if (line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))) {
-                                    isContent = true
-                                }
-                                if (isContent) {
-                                    lines.add(line)
+                            // Only append entries not already present
+                            var addedCount = 0
+                            for (entry in archiveEntries) {
+                                val key = "${entry.timestamp}|${entry.content}"
+                                if (key !in existingKeys) {
+                                    mdFile.append(entry.content)
+                                    existingKeys.add(key)
+                                    addedCount++
                                 }
                             }
 
-                            // Write back
-                            val newContent = lines.joinToString("\n")
-                            mdFile.clear()
-                            if (mdFile.append(newContent.dropWhile { it == '\n' })) {
+                            if (addedCount > 0) {
                                 fileRepository.setFileLastModified(System.currentTimeMillis())
-                                showToast(context, "已追加 $count 条内容")
+                                showToast(context, "已追加 $addedCount 条内容")
                             } else {
-                                showToast(context, "追加失败")
+                                showToast(context, "所有内容已存在，无需追加")
                             }
                         } catch (e: Exception) {
                             if (BuildConfig.DEBUG) {
