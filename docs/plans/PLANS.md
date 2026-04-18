@@ -1,4 +1,4 @@
-# Link Appending - 项目计划
+# Appendo - 项目计划
 
 ## 修订记录
 
@@ -83,7 +83,7 @@
 ## 文件结构
 
 ```
-src/main/java/com/example/linkappending/
+src/main/java/com/yiyue31/android/appendo/
 ├── MainActivity.kt
 ├── ShareReceiverActivity.kt
 ├── ui/
@@ -93,7 +93,7 @@ src/main/java/com/example/linkappending/
 └── util/
     └── MarkdownFile.kt        # 文件读写工具类
 
-src/test/java/com/example/linkappending/
+src/test/java/com/yiyue31/android/appendo/
 └── util/
     └── MarkdownFileTest.kt    # 单元测试
 ```

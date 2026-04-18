@@ -21,5 +21,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LinkAppending"
+rootProject.name = "Appendo"
 include(":Appendo")

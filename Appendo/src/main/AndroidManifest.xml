@@ -10,12 +10,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.LinkAppending">
+        android:theme="@style/Theme.Appendo">
 
         <activity
             android:name="com.yiyue31.android.appendo.MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.LinkAppending">
+            android:theme="@style/Theme.Appendo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -25,7 +25,7 @@
         <activity
             android:name="com.yiyue31.android.appendo.ShareReceiverActivity"
             android:exported="true"
-            android:theme="@style/Theme.LinkAppending"
+            android:theme="@style/Theme.Appendo"
             android:excludeFromRecents="true"
             android:taskAffinity=""
             android:noHistory="true">

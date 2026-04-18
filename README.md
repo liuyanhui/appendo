@@ -87,7 +87,7 @@ cd appendo
 
 ```
 Appendo/
-├── src/main/java/com/example/linkappending/
+├── src/main/java/com/yiyue31/android/appendo/
 │   ├── MainActivity.kt           # 主界面
 │   ├── ShareReceiverActivity.kt  # 分享接收入口
 │   ├── util/
