@@ -166,6 +166,7 @@ fun MainScreen(
     var inputContent by remember { mutableStateOf("") }
     var lastModified by remember { mutableStateOf(fileRepository.getFileLastModified()) }
     var showMenu by remember { mutableStateOf(false) }
+    var showSetupGuideDialog by remember { mutableStateOf(false) }
 
     // Helper function to get current MarkdownFileOperations instance
     fun getCurrentMarkdownFile(): MarkdownFileOperations {
@@ -207,6 +208,39 @@ fun MainScreen(
         }
     }
 
+    // Launcher for opening an existing file from external storage (setup guide)
+    val openFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            fileRepository.saveFileUri(uri)
+            useSAF = true
+            fileUri = uri
+            fileRepository.clearFileLastModified()
+            refreshEntryCount()
+            showSetupGuideDialog = false
+        }
+    }
+
+    // Launcher for creating a new file in external storage (setup guide)
+    val createExternalFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/markdown")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            fileRepository.saveFileUri(uri)
+            useSAF = true
+            fileUri = uri
+            fileRepository.clearFileLastModified()
+            // Initialize header for new file
+            val mdFile = getCurrentMarkdownFile()
+            if (!mdFile.exists()) {
+                mdFile.initHeader()
+            }
+            refreshEntryCount()
+            showSetupGuideDialog = false
+        }
+    }
+
     // Initialize on first launch
     LaunchedEffect(Unit) {
         // Check if SAF URI is still valid
@@ -229,6 +263,11 @@ fun MainScreen(
         }
 
         refreshEntryCount()
+
+        // Show setup guide on fresh install
+        if (fileRepository.isFirstLaunch()) {
+            showSetupGuideDialog = true
+        }
     }
 
     // Poll for file changes every 2 seconds with proper cancellation
@@ -565,6 +604,61 @@ fun MainScreen(
         }
     }
 
+    // Setup guide dialog (first launch)
+    if (showSetupGuideDialog) {
+        AlertDialog(
+            onDismissRequest = { showSetupGuideDialog = false },
+            title = {
+                Text(
+                    "选择存储位置",
+                    fontWeight = FontWeight.SemiBold,
+                    color = AppColors.Primary
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "建议将数据文件保存在外部存储位置，这样重装应用后数据不会丢失。",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        "你可以：",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "• 打开已有文件 — 恢复之前保存的数据\n• 新建文件 — 在外部位置创建新文件",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        openFileLauncher.launch(arrayOf("text/markdown", "text/*"))
+                    }
+                ) {
+                    Text("打开已有文件", color = AppColors.Primary)
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        createExternalFileLauncher.launch("Appendo.md")
+                    }) {
+                        Text("新建文件")
+                    }
+                    TextButton(onClick = { showSetupGuideDialog = false }) {
+                        Text("暂不设置")
+                    }
+                }
+            }
+        )
+    }
+
     // About dialog
     if (showAboutDialog) {
         AlertDialog(
@@ -791,7 +885,7 @@ private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOp
             return
         }
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("link_collection", content))
+        clipboard.setPrimaryClip(ClipData.newPlainText("appendo", content))
         showToast(context, "已复制到剪贴板")
     } catch (e: Exception) {
         if (BuildConfig.DEBUG) {

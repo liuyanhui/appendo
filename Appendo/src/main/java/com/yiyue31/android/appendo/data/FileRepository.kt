@@ -144,4 +144,20 @@ class FileRepository(private val context: Context) {
     fun clearFileLastModified() {
         prefs.edit().remove(KEY_FILE_LAST_MODIFIED).apply()
     }
+
+    /**
+     * Check if this is a fresh install with no data.
+     * Returns true when: no SAF configured AND default file doesn't exist (or is header-only).
+     */
+    fun isFirstLaunch(): Boolean {
+        if (isUsingSAF() || hasFileUri()) return false
+        return try {
+            val defaultFile = getDefaultFile()
+            if (!defaultFile.exists()) return true
+            val content = defaultFile.readText()
+            content.isBlank() || content.trim() == MarkdownFormatter.FILE_HEADER.trim()
+        } catch (e: Exception) {
+            true
+        }
+    }
 }
