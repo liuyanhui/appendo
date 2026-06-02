@@ -62,6 +62,18 @@ interface MarkdownFileOperations {
     fun deleteEntry(timestamp: String): Boolean
 
     /**
+     * Update the content of an existing entry identified by its timestamp.
+     * The timestamp remains unchanged; only the content is replaced.
+     *
+     * Thread-safe: uses FileOperationLock for atomicity.
+     *
+     * @param timestamp The timestamp identifying the entry (format: "YYYY-MM-DD HH:mm:ss")
+     * @param newContent The new content to replace the old content
+     * @return true if successful, false if entry not found or write failed
+     */
+    fun updateEntry(timestamp: String, newContent: String): Boolean
+
+    /**
      * Write all content to the file, replacing existing content.
      * Unlike append(), this does NOT add a timestamp or format the content.
      * Used for operations that need to write raw markdown content directly.
