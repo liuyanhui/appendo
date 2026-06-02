@@ -218,6 +218,93 @@ class SafMarkdownFile(
         }
     }
 
+    override fun updateEntry(timestamp: String, newContent: String): Boolean {
+        synchronized(FileOperationLock) {
+            return try {
+                val content = readAll()
+                val lines = content.lines().toMutableList()
+
+                // Find the entry with matching timestamp
+                // Same boundary logic as FileBasedMarkdownFile for consistency
+                var targetStartIndex = -1
+                var targetEndIndex = lines.size
+                var currentTimestamp = ""
+
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "updateEntry called for timestamp: $timestamp")
+                    Log.d(TAG, "Total lines in file: ${lines.size}")
+                }
+
+                for (i in lines.indices) {
+                    val line = lines[i]
+                    when {
+                        line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$")) -> {
+                            // Save previous entry if we found the target
+                            if (currentTimestamp == timestamp && targetStartIndex >= 0) {
+                                targetEndIndex = i
+                                if (BuildConfig.DEBUG) {
+                                    Log.d(TAG, "Found next entry boundary at line $i, setting end index")
+                                }
+                                break
+                            }
+
+                            currentTimestamp = line.substring(3).trim()
+                            if (currentTimestamp == timestamp) {
+                                targetStartIndex = i
+                                if (BuildConfig.DEBUG) {
+                                    Log.d(TAG, "Found target timestamp at line $i: $currentTimestamp")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (targetStartIndex < 0) {
+                    if (BuildConfig.DEBUG) {
+                        Log.e(TAG, "Failed to find timestamp: $timestamp")
+                    }
+                    return false
+                }
+
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "Updating entry from line $targetStartIndex to $targetEndIndex")
+                }
+
+                // Build new content: keep timestamp line, replace content between timestamp and next entry
+                val newLines = mutableListOf<String>()
+                // Add all lines before the target entry
+                newLines.addAll(lines.subList(0, targetStartIndex))
+                // Add the timestamp line (unchanged)
+                newLines.add(lines[targetStartIndex])
+                // Add the new content
+                newLines.add("")
+                newLines.add(newContent)
+                // If there's a next entry, add blank line separator and the rest
+                if (targetEndIndex < lines.size) {
+                    newLines.add("")
+                    newLines.addAll(lines.subList(targetEndIndex, lines.size))
+                }
+
+                // Write back using SAF API
+                val outputStream = context.contentResolver.openOutputStream(uri, "wt")
+                if (outputStream != null) {
+                    outputStream.use { output ->
+                        output.write(newLines.joinToString("\n").toByteArray(Charsets.UTF_8))
+                    }
+                    if (BuildConfig.DEBUG) {
+                        Log.d(TAG, "Update successful")
+                    }
+                    true
+                } else {
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update entry", e)
+                false
+            }
+        }
+    }
+
     override fun writeAll(content: String): Boolean {
         synchronized(FileOperationLock) {
             return try {
