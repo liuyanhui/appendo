@@ -24,6 +24,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
@@ -90,7 +92,6 @@ import com.yiyue31.android.appendo.util.SafMarkdownFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -167,6 +168,9 @@ fun MainScreen(
     var lastModified by remember { mutableStateOf(fileRepository.getFileLastModified()) }
     var showMenu by remember { mutableStateOf(false) }
     var showSetupGuideDialog by remember { mutableStateOf(false) }
+    var showDetailDialog by remember { mutableStateOf(false) }
+    var selectedEntry by remember { mutableStateOf<LinkEntry?>(null) }
+    var editContent by remember { mutableStateOf("") }
 
     // Helper function to get current MarkdownFileOperations instance
     fun getCurrentMarkdownFile(): MarkdownFileOperations {
@@ -530,6 +534,11 @@ fun MainScreen(
                     onEntrySwipeToDelete = { timestamp ->
                         entryToDeleteTimestamp = timestamp
                         showDeleteDialog = true
+                    },
+                    onEntryClick = { entry ->
+                        selectedEntry = entry
+                        editContent = entry.content
+                        showDetailDialog = true
                     }
                 )
 
@@ -764,6 +773,94 @@ fun MainScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // Detail/edit dialog
+    if (showDetailDialog && selectedEntry != null) {
+        val scrollState = rememberScrollState()
+
+        AlertDialog(
+            onDismissRequest = {
+                showDetailDialog = false
+                selectedEntry = null
+                editContent = ""
+            },
+            title = {
+                Text(
+                    "编辑条目",
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(scrollState)
+                ) {
+                    Text(
+                        text = selectedEntry!!.timestamp,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = editContent,
+                        onValueChange = { editContent = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 5,
+                        maxLines = 10,
+                        placeholder = { Text("无内容") }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (editContent.isBlank()) {
+                            showToast(context, "内容不能为空")
+                            return@TextButton
+                        }
+                        if (editContent == selectedEntry!!.content) {
+                            showDetailDialog = false
+                            selectedEntry = null
+                            editContent = ""
+                            return@TextButton
+                        }
+                        try {
+                            val mdFile = getCurrentMarkdownFile()
+                            if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
+                                fileRepository.setFileLastModified(System.currentTimeMillis())
+                                refreshEntryCount()
+                                showToast(context, "已保存")
+                            } else {
+                                showToast(context, "保存失败")
+                            }
+                        } catch (e: Exception) {
+                            if (BuildConfig.DEBUG) {
+                                android.util.Log.e("MainScreen", "Failed to update entry", e)
+                            }
+                            showToast(context, "保存失败")
+                        }
+                        showDetailDialog = false
+                        selectedEntry = null
+                        editContent = ""
+                    }
+                ) {
+                    Text("保存", color = AppColors.Primary)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDetailDialog = false
+                        selectedEntry = null
+                        editContent = ""
+                    }
+                ) {
                     Text("取消")
                 }
             }

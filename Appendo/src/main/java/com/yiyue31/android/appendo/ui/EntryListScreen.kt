@@ -72,7 +72,8 @@ fun EntryListScreen(
     sourceFileName: String? = null,
     readOnly: Boolean = false,
     onEntryLongClick: (String) -> Unit = { },
-    onEntrySwipeToDelete: (String) -> Unit = { }
+    onEntrySwipeToDelete: (String) -> Unit = { },
+    onEntryClick: (LinkEntry) -> Unit = { }
 ) {
     val context = LocalContext.current
     val listState = rememberLazyListState()
@@ -116,6 +117,9 @@ fun EntryListScreen(
                     },
                     onSwipeToDelete = {
                         onEntrySwipeToDelete(entry.timestamp)
+                    },
+                    onClick = {
+                        onEntryClick(entry)
                     }
                 )
             }
@@ -130,7 +134,8 @@ private fun EntryCard(
     index: Int,
     readOnly: Boolean = false,
     onLongClick: () -> Unit,
-    onSwipeToDelete: () -> Unit
+    onSwipeToDelete: () -> Unit,
+    onClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var offsetX by remember { mutableStateOf(0f) }
@@ -165,7 +170,7 @@ private fun EntryCard(
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = { },
+                onClick = { onClick() },
                 onLongClick = onLongClick
             )
             .pointerInput(Unit) {
