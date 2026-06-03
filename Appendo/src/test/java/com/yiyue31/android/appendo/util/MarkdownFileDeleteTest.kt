@@ -401,6 +401,55 @@ private class TestFileBasedMarkdownFile(private val file: File) : MarkdownFileOp
         }
     }
 
+    override fun updateEntry(timestamp: String, newContent: String): Boolean {
+        synchronized(lock) {
+            return try {
+                val content = readAll()
+                val lines = content.lines().toMutableList()
+
+                var targetStartIndex = -1
+                var targetEndIndex = lines.size
+                var currentTimestamp = ""
+
+                for (i in lines.indices) {
+                    val line = lines[i]
+                    when {
+                        line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$")) -> {
+                            if (currentTimestamp == timestamp && targetStartIndex >= 0) {
+                                targetEndIndex = i
+                                break
+                            }
+                            currentTimestamp = line.substring(3).trim()
+                            if (currentTimestamp == timestamp) {
+                                targetStartIndex = i
+                            }
+                        }
+                    }
+                }
+
+                if (targetStartIndex < 0) {
+                    return false
+                }
+
+                val newLines = mutableListOf<String>()
+                newLines.addAll(lines.subList(0, targetStartIndex))
+                newLines.add(lines[targetStartIndex])
+                newLines.add("")
+                newLines.add(newContent)
+                if (targetEndIndex < lines.size) {
+                    newLines.add("")
+                    newLines.addAll(lines.subList(targetEndIndex, lines.size))
+                }
+
+                file.writeText(newLines.joinToString("\n"))
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        }
+    }
+
     override fun writeAll(content: String): Boolean {
         synchronized(lock) {
             return try {
