@@ -9,14 +9,16 @@
 ```
 test/java/com/yiyue31/android/appendo/
 ├── data/
-│   └── FileRepositoryFirstLaunchTest.kt    — FileRepository 首次启动逻辑测试
+│   └── FileRepositoryFirstLaunchTest.kt        — FileRepository 首次启动逻辑测试
 ├── integration/
-│   └── EntryDeletionIntegrationTest.kt     — 条目删除端到端测试
+│   └── EntryDeletionIntegrationTest.kt         — 条目删除端到端测试（真文件）
 ├── ui/
-│   ├── MarkdownParserTest.kt               — Markdown 解析逻辑测试
-│   └── ArchiveRestoreDeduplicationTest.kt  — 归档恢复去重逻辑测试
+│   ├── MarkdownParserTest.kt                   — parseMarkdownEntries 包装器测试
+│   └── ArchiveRestoreDeduplicationTest.kt      — 归档恢复去重算法测试
 └── util/
-    └── MarkdownFileDeleteTest.kt           — 文件删除操作测试
+    ├── EntryParserTest.kt                      — EntryParser 全量（读/写/边界/恢复，~33 用例）
+    ├── FileBasedMarkdownFileTest.kt            — FileBasedMarkdownFile 真类（mock Context + 真 FS）
+    └── DuplicateHintThrottleTest.kt            — 重复提示节流
 ```
 
 ## 测试分类
@@ -31,8 +33,11 @@ test/java/com/yiyue31/android/appendo/
 ## 运行测试
 
 ```bash
-./gradlew test
+./gradlew :Appendo:testDebugUnitTest            # JVM 单测（Android 模块的 JVM 单测任务）
+# instrumented（SAF/UI，需真机）: ./gradlew :Appendo:connectedDebugAndroidTest
 ```
+
+> 本环境 Robolectric 不可用（SSL 无法下载 android-all jar）。FileBased 测试用纯 JVM + `mock<Context>()`（context 未使用）+ 真实临时文件；SAF/UI 测试需 instrumented（真机）。
 
 ## 编码规范
 
