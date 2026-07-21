@@ -65,6 +65,10 @@ class FileRepository(private val context: Context) {
      * Save the file URI and switch to SAF mode
      */
     fun saveFileUri(uri: Uri) {
+        // 切换前清旧 SAF 文件的恢复文件（v1.1）
+        val oldUri = if (isUsingSAF()) getFileUri() else null
+        if (oldUri != null && oldUri != uri) clearSafRecoveryFiles(oldUri)
+
         prefs.edit()
             .putBoolean(KEY_USE_SAF, true)
             .putString(KEY_FILE_URI, uri.toString())
@@ -87,6 +91,9 @@ class FileRepository(private val context: Context) {
     fun clearFileUri() {
         val uri = if (isUsingSAF()) getFileUri() else null
 
+        // 清该 URI 的 SAF 恢复文件（.bak/.pending），防切换后串档（v1.1）
+        if (uri != null) clearSafRecoveryFiles(uri)
+
         // First clear preferences to switch mode - this prevents race condition
         prefs.edit()
             .remove(KEY_USE_SAF)
@@ -102,6 +109,17 @@ class FileRepository(private val context: Context) {
             } catch (e: Exception) {
                 // Permission may not be held, ignore - prefs already cleared
             }
+        }
+    }
+
+    /**
+     * 清指定 SAF URI 的 .bak/.pending 恢复文件（应用私有目录，文件名按 URI 哈希派生）。v1.1。
+     */
+    private fun clearSafRecoveryFiles(uri: Uri) {
+        try {
+            val prefix = "appendo_saf_${uri.hashCode()}_"
+            context.filesDir.listFiles { f -> f.name.startsWith(prefix) }?.forEach { it.delete() }
+        } catch (_: Exception) {
         }
     }
 

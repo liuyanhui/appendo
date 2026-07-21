@@ -17,7 +17,8 @@ object MarkdownFormatter {
 
     /**
      * Formats content as a Markdown entry with timestamp.
-     * Thread-safe: uses shared SimpleDateFormat from companion object.
+     * NOTE: 共享 SimpleDateFormat 非线程安全；调用方须持 FileOperationLock（SafMarkdownFile.append 已持锁）。
+     * v1.1：新代码请用 EntryParser.format（java.time、线程安全、ZWSP 隔离）；本方法仅 SafMarkdownFile 过渡期使用，T-011 后移除。
      */
     fun formatEntry(content: String): String {
         val timestamp = TIMESTAMP_FORMATTER.format(Date())

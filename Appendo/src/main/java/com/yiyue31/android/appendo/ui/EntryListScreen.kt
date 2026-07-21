@@ -104,7 +104,9 @@ fun EntryListScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             itemsIndexed(
-                items = entries.reversed(),
+                // 按时间戳降序（决策 i）：恢复的旧时间戳条目回到历史位置，而非顶部。
+                // 时间戳格式零填充 ISO 风格，字符串降序 == 时间降序。
+                items = entries.sortedByDescending { it.timestamp },
                 key = { index, entry -> "${entry.timestamp}_$index" }
             ) { index, entry ->
                 EntryCard(
@@ -239,7 +241,7 @@ private fun EntryCard(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = entry.timestamp,
+                        text = entry.timestampDisplay,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium

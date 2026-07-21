@@ -69,6 +69,7 @@ import com.yiyue31.android.appendo.data.ArchiveFile
 import com.yiyue31.android.appendo.data.ArchiveRepository
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.ui.showToast
+import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -194,7 +195,7 @@ fun ArchiveListScreen(
                                 performVibration(context, VIBRATION_DURATION_SHORT_MS)
                                 // Copy all content from archive
                                 try {
-                                    val content = archive.file.readText()
+                                    val content = EntryParser.stripIsolationMarkers(archive.file.readText())
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("archive", content))
                                     showToast(context, "已复制全部内容")
@@ -306,30 +307,36 @@ fun ArchiveListScreen(
                                 fileRepository.getDefaultFile()
                             )
 
-                            // Get existing entries and deduplicate
+                            // 去重（timestamp|content），用 appendEntry 保留归档原时间戳（v1.1 B3：去重 key 才真正生效）
                             val existingContent = mdFile.readAll()
                             val existingEntries = parseMarkdownEntries(existingContent)
                             val existingKeys = existingEntries
                                 .map { "${it.timestamp}|${it.content}" }
                                 .toMutableSet()
 
-                            // Only append entries not already present
                             var addedCount = 0
+                            var skippedCount = 0
                             for (entry in archiveEntries) {
                                 val key = "${entry.timestamp}|${entry.content}"
                                 if (key !in existingKeys) {
-                                    mdFile.append(entry.content)
+                                    mdFile.appendEntry(entry.timestamp, entry.content)
                                     existingKeys.add(key)
                                     addedCount++
+                                } else {
+                                    skippedCount++
                                 }
                             }
 
                             if (addedCount > 0) {
                                 fileRepository.setFileLastModified(System.currentTimeMillis())
-                                showToast(context, "已追加 $addedCount 条内容")
-                            } else {
-                                showToast(context, "所有内容已存在，无需追加")
                             }
+                            // 透明提示（specs 43）：Y=0 不显示跳过后缀
+                            val msg = when {
+                                addedCount == 0 && skippedCount == 0 -> "归档为空，无需追加"
+                                skippedCount == 0 -> "已恢复 $addedCount 条"
+                                else -> "已恢复 $addedCount 条，跳过 $skippedCount 条已存在"
+                            }
+                            showToast(context, msg)
                         } catch (e: Exception) {
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.e("ArchiveListScreen", "Failed to restore archive", e)

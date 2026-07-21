@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.ui.showToast
+import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import com.yiyue31.android.appendo.util.SafMarkdownFile
@@ -36,57 +37,51 @@ class ShareReceiverActivity : ComponentActivity() {
 
             val content = resolveIntentContent(intent)
 
+            var priorDuplicates = 0
             // Try to write content
             val success = try {
                 // Check if SAF mode is still valid
                 val safValid = useSAF && fileUri != null && fileRepo.isFileUriValid()
-
-                if (safValid) {
-                    // Use SAF mode
-                    val markdownFile = SafMarkdownFile(this@ShareReceiverActivity, fileUri!!)
-
-                    // Initialize file if it doesn't exist
-                    if (!markdownFile.exists()) {
-                        markdownFile.initHeader()
-                    }
-
-                    if (content != null) {
-                        markdownFile.append(content)
-                    } else {
-                        false
-                    }
+                val markdownFile = if (safValid) {
+                    SafMarkdownFile(this@ShareReceiverActivity, fileUri!!)
                 } else {
-                    // SAF mode but URI is invalid - fallback to default file
+                    // SAF URI 无效 → 回退默认文件
                     if (useSAF && fileUri != null) {
                         Log.w(TAG, "SAF URI invalid, falling back to default file")
                         fileRepo.clearFileUri()
                     }
-
-                    // Use default file mode
-                    val markdownFile = FileBasedMarkdownFile(this@ShareReceiverActivity, defaultFile)
-
-                    // Initialize file if it doesn't exist
-                    if (!markdownFile.exists()) {
-                        markdownFile.initHeader()
+                    FileBasedMarkdownFile(this@ShareReceiverActivity, defaultFile)
+                }
+                if (!markdownFile.exists()) {
+                    markdownFile.initHeader()
+                }
+                if (content != null) {
+                    val appended = markdownFile.append(content)
+                    if (appended) {
+                        // 重复内容计数（追加后读，减去刚写入的 1 条）
+                        priorDuplicates = EntryParser.parse(markdownFile.readAll())
+                            .count { it.content == content } - 1
                     }
-
-                    if (content != null) {
-                        markdownFile.append(content)
-                    } else {
-                        false
-                    }
+                    appended
+                } else {
+                    false
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to append content", e)
                 false
             }
 
+            val dupCount = priorDuplicates
             // Update UI on main thread
             withContext(Dispatchers.Main) {
                 if (success) {
-                    // Update file last modified timestamp
                     fileRepo.setFileLastModified(System.currentTimeMillis())
-                    showToast(this@ShareReceiverActivity, "Appendo已收到")
+                    val msg = if (dupCount > 0) {
+                        "Appendo已收到（已有相同内容 $dupCount 条）"
+                    } else {
+                        "Appendo已收到"
+                    }
+                    showToast(this@ShareReceiverActivity, msg)
                 } else {
                     showToast(this@ShareReceiverActivity, "写入失败")
                 }

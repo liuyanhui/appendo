@@ -84,15 +84,19 @@ import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.ui.EntryListScreen
 import com.yiyue31.android.appendo.ui.showToast
+import com.yiyue31.android.appendo.util.DuplicateHintThrottle
+import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import com.yiyue31.android.appendo.util.MarkdownFormatter
 import com.yiyue31.android.appendo.util.MarkdownFileOperations
 import com.yiyue31.android.appendo.util.SafMarkdownFile
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 // Constants for magic numbers
@@ -100,51 +104,9 @@ private const val FILE_CHANGE_POLL_INTERVAL_MS = 2000L
 private const val VIBRATION_DURATION_LONG_MS = 200L
 private const val VIBRATION_DURATION_SHORT_MS = 100L
 
-// Data class to represent a single entry
-data class LinkEntry(
-    val timestamp: String,
-    val content: String
-)
-
-// Function to parse markdown content into entries
-fun parseMarkdownEntries(content: String): List<LinkEntry> {
-    val entries = mutableListOf<LinkEntry>()
-    val lines = content.lines()
-    var currentTimestamp = ""
-    var currentContent = StringBuilder()
-
-    for (line in lines) {
-        when {
-            // Check if this is a timestamp line
-            MarkdownFormatter.getTimestampRegex().matches(line) -> {
-                // Save previous entry if exists
-                if (currentTimestamp.isNotEmpty() && currentContent.isNotEmpty()) {
-                    entries.add(LinkEntry(currentTimestamp, currentContent.toString().trim()))
-                }
-                currentTimestamp = line.substring(3).trim()  // Remove "## " prefix
-                currentContent = StringBuilder()
-            }
-            // Skip header and separators
-            line.startsWith("# Appendo") || line == "---" -> {
-                // Skip these lines
-            }
-            // Otherwise, add to current content
-            else -> {
-                if (currentContent.isNotEmpty()) {
-                    currentContent.append("\n")
-                }
-                currentContent.append(line)
-            }
-        }
-    }
-
-    // Save last entry
-    if (currentTimestamp.isNotEmpty() && currentContent.isNotEmpty()) {
-        entries.add(LinkEntry(currentTimestamp, currentContent.toString().trim()))
-    }
-
-    return entries
-}
+// parseMarkdownEntries 委托给 EntryParser（v1.1 收敛）；保留至 T-016 迁移现有调用方后删除。
+fun parseMarkdownEntries(content: String): List<LinkEntry> =
+    EntryParser.parse(content).map { LinkEntry.from(it) }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -181,12 +143,19 @@ fun MainScreen(
     fun refreshEntryCount() {
         coroutineScope.launch {
             try {
-                val mdFile = getCurrentMarkdownFile()
-                if (!mdFile.exists()) {
-                    mdFile.initHeader()
+                // 文件 I/O + 解析下放 Dispatchers.IO（中-7：避免主线程 ANR，尤其 2s 轮询路径）
+                val (newEntries, recovered) = withContext(Dispatchers.IO) {
+                    val mdFile = getCurrentMarkdownFile()
+                    if (!mdFile.exists()) {
+                        mdFile.initHeader()
+                    }
+                    val result = mdFile.readAllWithStatus()
+                    Pair(parseMarkdownEntries(result.content), result.recovered)
                 }
-                val content = mdFile.readAll()
-                val newEntries = parseMarkdownEntries(content)
+                if (recovered) {
+                    // SAF 软恢复发生时透明提示（specs 46）；默认模式 recovered 恒 false
+                    showToast(context, "检测到上次异常退出，已从备份恢复，请检查近期改动")
+                }
                 entries = newEntries
                 entryCount = newEntries.size
             } catch (e: Exception) {
@@ -802,7 +771,7 @@ fun MainScreen(
                         .verticalScroll(scrollState)
                 ) {
                     Text(
-                        text = selectedEntry!!.timestamp,
+                        text = selectedEntry!!.timestampDisplay,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -908,10 +877,21 @@ fun MainScreen(
                         if (inputContent.isNotBlank()) {
                             try {
                                 val mdFile = getCurrentMarkdownFile()
+                                // 追加前查重（按内容，忽略时间戳）
+                                val existingSameCount = parseMarkdownEntries(mdFile.readAll())
+                                    .count { it.content == inputContent }
                                 if (mdFile.append(inputContent)) {
                                     fileRepository.setFileLastModified(System.currentTimeMillis())
                                     refreshEntryCount()
-                                    showToast(context, "内容已追加")
+                                    // 非阻塞提示：先确认成功，再旁注重复（5s 节流防刷屏，specs 42）
+                                    val msg = if (existingSameCount > 0 &&
+                                        DuplicateHintThrottle.shouldShow(inputContent)
+                                    ) {
+                                        "已追加（已有相同内容 $existingSameCount 条）"
+                                    } else {
+                                        "内容已追加"
+                                    }
+                                    showToast(context, msg)
                                 } else {
                                     showToast(context, "追加失败")
                                 }
@@ -975,7 +955,7 @@ private fun performVibration(context: android.content.Context, durationMs: Long)
 
 private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
     try {
-        val content = mdFile.readAll()
+        val content = mdFile.readAllForExternal() // 出口剥离 ZWSP，保证复制出去的内容干净（specs 38，B2）
         // Check if content is empty (only has header, no actual entries)
         if (content.isBlank() || !content.contains("## ")) {
             showToast(context, "暂无内容可复制")
@@ -994,7 +974,7 @@ private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOp
 
 private fun shareContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
     try {
-        val content = mdFile.readAll()
+        val content = mdFile.readAllForExternal() // 出口剥离 ZWSP，保证分享出去的内容干净（specs 38，B2）
         // Check if content is empty (only has header, no actual entries)
         if (content.isBlank() || !content.contains("## ")) {
             showToast(context, "暂无内容可分享")
@@ -1054,24 +1034,14 @@ private fun archiveFile(
             return
         }
 
-        // Create archive file and write current content to it
-        val archiveMdFile = FileBasedMarkdownFile(context, archiveFile)
-        archiveMdFile.initHeader()
-
-        // Copy current content to archive if not empty
-        if (currentContent.isNotBlank()) {
-            // Extract content after header
-            val contentWithoutHeader = if (currentContent.startsWith(MarkdownFormatter.FILE_HEADER)) {
-                currentContent.substring(MarkdownFormatter.FILE_HEADER.length)
-            } else {
-                currentContent
-            }
-
-            // Write to archive
-            java.io.FileOutputStream(archiveFile, true).use { output ->
-                output.write(contentWithoutHeader.toByteArray(Charsets.UTF_8))
-            }
+        // 通过 MarkdownFileOperations.writeAll 写归档（v1.1 CB6：享 atomicWrite + 锁 + 同源同格式 ZWSP）
+        val contentWithoutHeader = if (currentContent.startsWith(MarkdownFormatter.FILE_HEADER)) {
+            currentContent.substring(MarkdownFormatter.FILE_HEADER.length)
+        } else {
+            currentContent
         }
+        val archiveMdFile = FileBasedMarkdownFile(context, archiveFile)
+        archiveMdFile.writeAll(MarkdownFormatter.FILE_HEADER + contentWithoutHeader)
 
         showToast(context, "已归档到: ${archiveFile.name}")
         onComplete()
