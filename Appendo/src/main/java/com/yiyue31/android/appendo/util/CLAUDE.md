@@ -8,12 +8,16 @@
 
 | 文件 | 职责 | 设计角色 |
 |------|------|---------|
-| `MarkdownFileOperations.kt` | 文件操作接口 + 全局锁定义 | 策略接口 |
+| `EntryParser.kt` | **条目知识唯一收敛点（v1.1）**：parse/format/时间戳/边界算法/恢复判定，纯函数 | 核心（v1.1 新） |
+| `ParsedEntry.kt` / `ReadResult.kt` | util 纯数据（解析条目 / 读结果+恢复标志） | 数据类 |
+| `DuplicateHintThrottle.kt` | 重复内容提示 5s 节流（进程内单例） | 工具 |
+| `MarkdownFileOperations.kt` | 文件操作接口 + 全局锁 + 默认方法（appendEntry / readAllForExternal / readAllWithStatus） | 策略接口 |
 | `MarkdownFileFactory.kt` | 根据存储模式创建对应实现 | 工厂 |
-| `FileBasedMarkdownFile.kt` | 默认文件存储实现（应用私有目录） | 具体策略 A |
-| `SafMarkdownFile.kt` | SAF 存储实现（用户选择的外部文件） | 具体策略 B |
-| `MarkdownFormatter.kt` | Markdown 格式化工具、时间戳正则、常量 | 工具类 |
-| `MarkdownFile.kt` | **已废弃** — 旧版文件操作类 | — |
+| `FileBasedMarkdownFile.kt` | 默认文件存储：atomicWrite(temp+fsync+rename) + 读持锁 + EntryParser 化写侧 | 具体策略 A |
+| `SafMarkdownFile.kt` | SAF 存储：.pending/.bak 软恢复 + EntryParser 化 + exists 修歧义 | 具体策略 B |
+| `MarkdownFormatter.kt` | 文件级常量（FILE_HEADER、归档文件名）；formatEntry 仅 SafMarkdownFile 过渡期用 | 工具类（v1.1 缩减） |
+
+> **v1.1 变更**：`MarkdownFile.kt`（旧 SAF 实现）已删除；条目 parse/format/边界/恢复逻辑统一收敛到 `EntryParser`（此前在 FileBasedMarkdownFile / SafMarkdownFile 各 ~80 行 ×2 重复）。时间戳改毫秒级（java.time），写入原子化（默认真原子 / SAF 软恢复），内容零宽空格隔离。详见 `docs/design.md` v1.1 章节。
 
 ## 设计模式
 

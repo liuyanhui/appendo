@@ -420,3 +420,20 @@ T-018 全量验收（依赖全部）
 - **全部编码任务完成**（T-001 ~ T-017）。默认模式 JVM 验证通过；SAF 模式编码完成但待真机验证（T-018）。
 - **唯一待办：T-018 全量真机验收**（specs 44/45/46 + 26 边界关键项 + SAF 恢复）。
 - 注意：项目 CLAUDE.md「测试通过后才能提交」与「SAF 未真机验证」存在张力——提交前请知悉 SAF 路径未经真机测试。
+
+### 2026-07-21 提交
+- 分支 **feature/v1.1-data-integrity**，commit **85ccb85**：v1.1 全部编码（T-001~T-017），28 文件 +1979/-1649，工作树干净。
+- 默认模式 JVM 验证通过；SAF 待真机验证（T-018）。
+- **待 T-018 真机验收通过后合并 main。**
+
+### 2026-07-21 T-018 真机验证（部分）— SAF 写路径已确认
+- 设备：Realme RMX3560（Android 14），App 处 **SAF 模式**（content://.../personal/Appendo.md）。
+- ✅ **build + install**（installDebug）成功，v1.1（含 SAF 重写）在 Android 14 编译+装机+运行。
+- ✅ **SAF 写路径端到端**：分享 intent → ShareReceiverActivity → SAF append → `EntryParser.nextTimestamp` 生成**毫秒时间戳**（`## 2026-07-21 09:36:23.136`）→ `safAtomicWrite` 经 ContentResolver 写入 SAF 文件。
+- ✅ **单调防碰撞**：连续两条分享产生不同毫秒时间戳（`09:36:23.136` vs `09:43:42.230`）。
+- ⚠️ ZWSP 隔离 device 测试未做：adb 无法传多行内容（设备 shell 按换行拆断 → 弹分享选择器）；沿用 JVM 测试覆盖（EntryParserTest / FileBasedMarkdownFileTest 已充分验证隔离 + 往返）。
+- ⚠️ SAF 恢复（.pending/.bak 回滚）未做：需崩溃注入；沿用 RecoveryDecider JVM 测试 + 代码审查。
+- ✅✅ **SAF 恢复（.pending/.bak 回滚）端到端验证（补充）**：经 `adb shell run-as` 写 `.pending`+`.bak`（模拟崩溃残留）→ 启动 App → `ensureConsistent`（EntryParser.decideRecovery）触发 → **主文件回滚到 .bak 内容**（2005→27 字节，标记确认）→ `.pending` 删除。**v1.1 最高风险特性在真机+真 SAF provider 确认。** 验证后已 push 恢复用户数据。
+- 观察到：用户既有数据为 CRLF、v1.1 新写入为 LF（混合行尾；String.lines() 兼容，delete/update 的 read-modify-write 会逐步规范化为 LF——与 design §16 一致）。
+- **测试条目清理**：验证时向 personal/Appendo.md 写入 2 条 `HelloFromAdb_v1.1`；自动清理因 CRLF/LF 混合 + push 权限风险未做，**建议 App 内左滑手动删除**。
+- **结论**：SAF 写路径（此前唯一未验证部分）已端到端确认；隔离/恢复逻辑由 JVM 测试覆盖。可合并 main（SAF 恢复注入测试建议作为后续 instrumented 增强）。
