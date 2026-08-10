@@ -84,6 +84,8 @@ import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.ui.EntryListScreen
 import com.yiyue31.android.appendo.ui.showToast
+import com.yiyue31.android.appendo.util.CalendarEntryMapper
+import com.yiyue31.android.appendo.util.CalendarLauncher
 import com.yiyue31.android.appendo.util.DuplicateHintThrottle
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
@@ -784,6 +786,27 @@ fun MainScreen(
                         maxLines = 10,
                         placeholder = { Text("无内容") }
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = {
+                            if (editContent.isBlank()) {
+                                showToast(context, "内容不能为空")
+                                return@OutlinedButton
+                            }
+                            // A 方案：拉起系统日历新建事件编辑器，预填当前内容；时间与告警由用户在日历内设。
+                            val entry = CalendarEntryMapper.map(editContent)
+                            if (!CalendarLauncher.launch(context, entry)) {
+                                showToast(context, "未找到日历应用")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = AppColors.Primary
+                        )
+                    ) {
+                        Text("添加到日历", fontWeight = FontWeight.Medium)
+                    }
                 }
             },
             confirmButton = {
