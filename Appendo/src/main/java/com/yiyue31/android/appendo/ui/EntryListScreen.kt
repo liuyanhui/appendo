@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -52,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yiyue31.android.appendo.BuildConfig
+import com.yiyue31.android.appendo.reminder.ReminderStore
+import com.yiyue31.android.appendo.util.ReminderText
 
 private const val VIBRATION_DURATION_SHORT_MS = 100L
 private const val SWIPE_THRESHOLD_DP = 120f
@@ -69,6 +72,7 @@ private const val SWIPE_THRESHOLD_DP = 120f
 fun EntryListScreen(
     entries: List<LinkEntry>,
     entryCount: Int,
+    listState: LazyListState? = null,
     sourceFileName: String? = null,
     readOnly: Boolean = false,
     onEntryLongClick: (String) -> Unit = { },
@@ -76,7 +80,8 @@ fun EntryListScreen(
     onEntryClick: (LinkEntry) -> Unit = { }
 ) {
     val context = LocalContext.current
-    val listState = rememberLazyListState()
+    val reminderMap = ReminderStore.get(context).reminders.value
+    val listStateResolved = listState ?: rememberLazyListState()
 
     // Header
     Column {
@@ -97,7 +102,7 @@ fun EntryListScreen(
         )
 
         LazyColumn(
-            state = listState,
+            state = listStateResolved,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
@@ -112,6 +117,9 @@ fun EntryListScreen(
                 EntryCard(
                     entry = entry,
                     index = index,
+                    reminderLabel = reminderMap[entry.timestamp]?.let { m ->
+                        if (!m.fired) ReminderText.timeLabel(m.effectiveTrigger) else null
+                    },
                     readOnly = readOnly,
                     onLongClick = {
                         performVibration(context, VIBRATION_DURATION_SHORT_MS)
@@ -134,6 +142,7 @@ fun EntryListScreen(
 private fun EntryCard(
     entry: LinkEntry,
     index: Int,
+    reminderLabel: String? = null,
     readOnly: Boolean = false,
     onLongClick: () -> Unit,
     onSwipeToDelete: () -> Unit,
@@ -254,6 +263,14 @@ private fun EntryCard(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (reminderLabel != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "⏰ $reminderLabel 提醒",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AppColors.Primary
+                        )
+                    }
                 }
             }
         }

@@ -1,10 +1,13 @@
 package com.yiyue31.android.appendo
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -15,24 +18,35 @@ import androidx.navigation.navArgument
 import com.yiyue31.android.appendo.data.ArchiveFile
 import com.yiyue31.android.appendo.data.ArchiveRepository
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.reminder.ReminderIntents
 import com.yiyue31.android.appendo.ui.ArchiveDetailScreen
 import com.yiyue31.android.appendo.ui.ArchiveListScreen
 import com.yiyue31.android.appendo.ui.MainScreen
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+
+    /** 来自提醒通知点按的"待滚动到"记录时间戳（深链）。 */
+    private val scrollTs = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (BuildConfig.DEBUG) {
             android.util.Log.d("MainActivity", "onCreate called")
         }
+        scrollTs.value = intent?.getStringExtra(ReminderIntents.EXTRA_ENTRY_TIMESTAMP)
         val fileRepository = FileRepository(this)
         if (BuildConfig.DEBUG) {
             android.util.Log.d("MainActivity", "FileRepository created, URI: ${fileRepository.getFileUri()}")
         }
         setContent {
-            AppendoNavHost(fileRepository)
+            AppendoNavHost(fileRepository, scrollTs)
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        scrollTs.value = intent.getStringExtra(ReminderIntents.EXTRA_ENTRY_TIMESTAMP)
     }
 
     override fun onResume() {
@@ -44,7 +58,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppendoNavHost(fileRepository: FileRepository) {
+fun AppendoNavHost(fileRepository: FileRepository, scrollTs: State<String?>) {
     val navController = rememberNavController()
 
     NavHost(
@@ -54,6 +68,7 @@ fun AppendoNavHost(fileRepository: FileRepository) {
         composable("main") {
             MainScreen(
                 fileRepository = fileRepository,
+                scrollToTs = scrollTs.value,
                 onNavigateToArchiveList = {
                     navController.navigate("archive_list")
                 }

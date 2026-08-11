@@ -39,6 +39,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -82,6 +84,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.reminder.AlarmScheduler
+import com.yiyue31.android.appendo.reminder.ReminderStore
+import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
+import com.yiyue31.android.appendo.reminder.ReminderIntents
+import com.yiyue31.android.appendo.util.ReminderMeta
+import com.yiyue31.android.appendo.util.ReminderLogic
 import com.yiyue31.android.appendo.ui.EntryListScreen
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.util.CalendarEntryMapper
@@ -114,6 +123,7 @@ fun parseMarkdownEntries(content: String): List<LinkEntry> =
 @Composable
 fun MainScreen(
     fileRepository: FileRepository,
+    scrollToTs: String? = null,
     onNavigateToArchiveList: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -128,6 +138,7 @@ fun MainScreen(
     var showClearDialog by remember { mutableStateOf(false) }
     var showInputDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showSelfCheck by remember { mutableStateOf(false) }
     var inputContent by remember { mutableStateOf("") }
     var lastModified by remember { mutableStateOf(fileRepository.getFileLastModified()) }
     var showMenu by remember { mutableStateOf(false) }
@@ -135,6 +146,48 @@ fun MainScreen(
     var showDetailDialog by remember { mutableStateOf(false) }
     var selectedEntry by remember { mutableStateOf<LinkEntry?>(null) }
     var editContent by remember { mutableStateOf("") }
+
+    // 深链：从提醒通知点按进来后，滚动到该记录（仅滚一次）
+    val entryListState = rememberLazyListState()
+    val scrolledTs = remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(scrollToTs, entries) {
+        val ts = scrollToTs ?: return@LaunchedEffect
+        if (ts == scrolledTs.value) return@LaunchedEffect
+        val idx = entries.sortedByDescending { it.timestamp }.indexOfFirst { it.timestamp == ts }
+        if (idx >= 0) {
+            entryListState.animateScrollToItem(idx)
+            scrolledTs.value = ts
+        }
+    }
+
+    // —— 提醒（C 方案）——
+    var showReminderPicker by remember { mutableStateOf(false) }
+    var pendingReminderTs by remember { mutableStateOf<String?>(null) }
+    var showOverwriteReminder by remember { mutableStateOf(false) }
+    var pendingSchedule by remember { mutableStateOf<Pair<String, Long>?>(null) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val p = pendingSchedule
+        pendingSchedule = null
+        if (p != null) {
+            if (granted) scheduleReminder(context, p.first, p.second)
+            else showToast(context, "未授予通知权限，提醒将不会显示")
+        }
+    }
+
+    fun startSetReminder(ts: String, triggerAt: Long) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingSchedule = ts to triggerAt
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            scheduleReminder(context, ts, triggerAt)
+        }
+    }
 
     // Helper function to get current MarkdownFileOperations instance
     fun getCurrentMarkdownFile(): MarkdownFileOperations {
@@ -160,6 +213,16 @@ fun MainScreen(
                 }
                 entries = newEntries
                 entryCount = newEntries.size
+                // 对账：清掉 sidecar 中已不存在的条目（外部编辑/换文件导致的孤儿提醒）
+                val timestamps = newEntries.map { it.timestamp }.toSet()
+                val store = ReminderStore.get(context)
+                val orphans = ReminderLogic.findOrphans(store.allKeys(), timestamps)
+                if (orphans.isNotEmpty()) {
+                    orphans.forEach { ts ->
+                        AlarmScheduler.cancel(context, ts)
+                        store.remove(ts)
+                    }
+                }
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) {
                     android.util.Log.e("MainScreen", "Failed to refresh entries", e)
@@ -320,6 +383,13 @@ fun MainScreen(
                             onClick = {
                                 showMenu = false
                                 changeFileLauncher.launch("Appendo.md")
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("提醒自检") },
+                            onClick = {
+                                showMenu = false
+                                showSelfCheck = true
                             }
                         )
                         DropdownMenuItem(
@@ -496,6 +566,7 @@ fun MainScreen(
                 EntryListScreen(
                     entries = entries,
                     entryCount = entryCount,
+                    listState = entryListState,
                     onEntryLongClick = { content ->
                         // Copy to clipboard
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -550,6 +621,9 @@ fun MainScreen(
                                             fileRepository.setFileLastModified(System.currentTimeMillis())
                                             refreshEntryCount()
                                             showToast(context, "已删除")
+                                            // 联动取消该条提醒
+                                            AlarmScheduler.cancel(context, entryToDeleteTimestamp)
+                                            ReminderStore.get(context).remove(entryToDeleteTimestamp)
                                         } else {
                                             if (BuildConfig.DEBUG) {
                                                 android.util.Log.e("MainScreen", "Delete returned false")
@@ -728,6 +802,10 @@ fun MainScreen(
                                 entryCount = 0
                                 entries = emptyList()
                                 showToast(context, "已清空")
+                                // 联动清空所有提醒（cancel 全部闹钟 + 清 sidecar）
+                                val store = ReminderStore.get(context)
+                                store.allKeys().forEach { AlarmScheduler.cancel(context, it) }
+                                store.removeAll()
                             } else {
                                 showToast(context, "清空失败")
                             }
@@ -787,25 +865,37 @@ fun MainScreen(
                         placeholder = { Text("无内容") }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
+                    // C 设提醒（主操作）
                     OutlinedButton(
                         onClick = {
-                            if (editContent.isBlank()) {
-                                showToast(context, "内容不能为空")
-                                return@OutlinedButton
-                            }
-                            // A 方案：拉起系统日历新建事件编辑器，预填当前内容；时间与告警由用户在日历内设。
-                            val entry = CalendarEntryMapper.map(editContent)
-                            if (!CalendarLauncher.launch(context, entry)) {
-                                showToast(context, "未找到日历应用")
+                            val ts = selectedEntry!!.timestamp
+                            pendingReminderTs = ts
+                            if (ReminderStore.get(context).hasUnfired(ts)) {
+                                showOverwriteReminder = true
+                            } else {
+                                showReminderPicker = true
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = AppColors.Primary
-                        )
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
                     ) {
-                        Text("添加到日历", fontWeight = FontWeight.Medium)
+                        Text("⏰ 设提醒", fontWeight = FontWeight.Medium)
+                    }
+                    // A 添加到日历（次要，缩小）
+                    TextButton(
+                        onClick = {
+                            if (editContent.isBlank()) {
+                                showToast(context, "内容不能为空")
+                                return@TextButton
+                            }
+                            val entry = CalendarEntryMapper.map(editContent)
+                            if (!CalendarLauncher.launch(context, entry)) {
+                                showToast(context, "未找到日历应用")
+                            }
+                        }
+                    ) {
+                        Text("添加到日历", style = MaterialTheme.typography.labelMedium)
                     }
                 }
             },
@@ -855,6 +945,118 @@ fun MainScreen(
                 ) {
                     Text("取消")
                 }
+            }
+        )
+    }
+
+    // 提醒自检（验证本机提醒能否触发：通知权限 + 电池白名单 + 测试提醒）
+    if (showSelfCheck) {
+        val notifEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        val batteryOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            context.getSystemService(android.os.PowerManager::class.java)
+                .isIgnoringBatteryOptimizations(context.packageName)
+        } else true
+        AlertDialog(
+            onDismissRequest = { showSelfCheck = false },
+            title = { Text("提醒自检") },
+            text = {
+                Column {
+                    Text(if (notifEnabled) "通知权限：✅ 已开启" else "通知权限：❌ 未开启（提醒不会显示）")
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        if (batteryOk) "后台运行：✅ 已加白名单"
+                        else "后台运行：❌ 未加白名单（realme 等可能杀后台，导致提醒不响）"
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text("自启动：⚠️ 无法自动检测——重启后提醒的重注册依赖它；realme 需到 应用设置→自启动 开启")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "点“发送测试提醒”，约 1 分钟后若响起 = 此机支持本地提醒（短时正证明）。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    AlarmScheduler.schedule(
+                        context,
+                        ReminderIntents.TEST_REMINDER_TS,
+                        System.currentTimeMillis() + 60_000L
+                    )
+                    showToast(context, "测试提醒已排，约 1 分钟后响")
+                }) { Text("发送测试提醒") }
+            },
+            dismissButton = {
+                Row {
+                    if (!batteryOk) {
+                        TextButton(onClick = {
+                            try {
+                                val intent = android.content.Intent(
+                                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    android.net.Uri.parse("package:${context.packageName}")
+                                )
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                showToast(context, "无法跳转，请到系统设置手动允许后台运行")
+                            }
+                        }) { Text("允许后台运行") }
+                    }
+                    TextButton(onClick = {
+                        try {
+                            val intent = android.content.Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.parse("package:${context.packageName}")
+                            )
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            showToast(context, "无法跳转，请手动到设置开启自启动")
+                        }
+                    }) { Text("自启动设置") }
+                    TextButton(onClick = { showSelfCheck = false }) { Text("关闭") }
+                }
+            }
+        )
+    }
+
+    // 提醒时间选择
+    if (showReminderPicker) {
+        val ts = pendingReminderTs
+        if (ts != null) {
+            ReminderTimePickerDialog(
+                onPick = { triggerAt ->
+                    showReminderPicker = false
+                    if (triggerAt <= System.currentTimeMillis()) {
+                        showToast(context, "请选择未来时间")
+                    } else {
+                        startSetReminder(ts, triggerAt)
+                    }
+                },
+                onDismiss = { showReminderPicker = false }
+            )
+        }
+    }
+
+    // 覆盖确认（已有提醒时）
+    if (showOverwriteReminder) {
+        AlertDialog(
+            onDismissRequest = {
+                showOverwriteReminder = false
+                pendingReminderTs = null
+            },
+            title = { Text("替换已有提醒？") },
+            text = { Text("该记录已设提醒，确定替换为新时间？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showOverwriteReminder = false
+                    showReminderPicker = true
+                }) { Text("替换") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showOverwriteReminder = false
+                    pendingReminderTs = null
+                }) { Text("取消") }
             }
         )
     }
@@ -974,6 +1176,12 @@ private fun performVibration(context: android.content.Context, durationMs: Long)
         }
         // Ignore vibration errors - not critical
     }
+}
+
+private fun scheduleReminder(context: android.content.Context, ts: String, triggerAt: Long) {
+    AlarmScheduler.schedule(context, ts, triggerAt)
+    ReminderStore.get(context).set(ts, ReminderMeta(triggerAt = triggerAt, fired = false, snoozedUntil = 0))
+    showToast(context, "已设置提醒")
 }
 
 private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
