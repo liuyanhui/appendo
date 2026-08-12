@@ -26,4 +26,15 @@ object ReminderText {
             else -> t.format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
         }
     }
+
+    /** 徽标完整文案：重复加前缀（每天/每周 HH:mm），一次性用 timeLabel。 */
+    fun fullLabel(meta: ReminderMeta): String = when (meta.recurrence) {
+        Recurrence.DAILY -> "每天 " + hm(meta.effectiveTrigger)
+        Recurrence.WEEKLY -> "每周 " + hm(meta.effectiveTrigger)
+        Recurrence.NONE -> timeLabel(meta.effectiveTrigger)
+    }
+
+    private fun hm(t: Long): String =
+        java.time.Instant.ofEpochMilli(t).atZone(java.time.ZoneId.systemDefault())
+            .toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
 }

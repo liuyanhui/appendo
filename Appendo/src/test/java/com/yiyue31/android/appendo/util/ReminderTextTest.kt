@@ -45,4 +45,13 @@ class ReminderTextTest {
         assertEquals("明天 09:00", ReminderText.timeLabel(nextDay, now))
         assertEquals("08-16 09:00", ReminderText.timeLabel(other, now))
     }
+
+    @Test
+    fun `fullLabel prefixes recurrence for daily and weekly`() {
+        val zone = java.time.ZoneId.systemDefault()
+        val t = java.time.ZonedDateTime.of(2026, 8, 12, 9, 30, 0, 0, zone).toInstant().toEpochMilli()
+        assertEquals("每天 09:30", ReminderText.fullLabel(ReminderMeta(t, false, 0, Recurrence.DAILY)))
+        assertEquals("每周 09:30", ReminderText.fullLabel(ReminderMeta(t, false, 0, Recurrence.WEEKLY)))
+        assertTrue(ReminderText.fullLabel(ReminderMeta(t, false, 0, Recurrence.NONE)).contains("09:30"))
+    }
 }

@@ -118,7 +118,7 @@ fun EntryListScreen(
                     entry = entry,
                     index = index,
                     reminderLabel = reminderMap[entry.timestamp]?.let { m ->
-                        if (!m.fired) ReminderText.timeLabel(m.effectiveTrigger) else null
+                        if (!m.fired) ReminderText.fullLabel(m) else null
                     },
                     readOnly = readOnly,
                     onLongClick = {

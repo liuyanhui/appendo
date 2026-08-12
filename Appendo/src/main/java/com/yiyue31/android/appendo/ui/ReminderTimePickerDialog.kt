@@ -1,5 +1,6 @@
 package com.yiyue31.android.appendo.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,9 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -23,40 +26,36 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.yiyue31.android.appendo.util.Recurrence
 import java.util.Calendar
 
 /**
- * 微信式提醒时间选择：预设网格（2 列）+ 自定义（日期 → 时间）。[onPick] 回传触发时刻（epoch 毫秒）。
+ * 提醒时间选择：预设网格（2 列，全部相对当前时刻）+ 重复（无/每天/每周）+ 自定义（日期 → 时间）。
+ * [onPick] 回传 (触发时刻 epoch 毫秒, 重复类型)。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReminderTimePickerDialog(
-    onPick: (Long) -> Unit,
+    onPick: (Long, Recurrence) -> Unit,
     onDismiss: () -> Unit
 ) {
     var stage by remember { mutableStateOf(Stage.MAIN) }
     var dateMillis by remember { mutableStateOf<Long?>(null) }
+    var recurrence by remember { mutableStateOf(Recurrence.NONE) }
     val nowMs = remember { System.currentTimeMillis() }
-
-    fun atDaysAhead(hour: Int, minute: Int, daysAhead: Int): Long =
-        Calendar.getInstance().apply {
-            add(Calendar.DATE, daysAhead)
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
+    val dayMs = 24L * 3_600_000L
 
     data class Preset(val label: String, val triggerAt: Long)
     val presets = remember(nowMs) {
         listOf(
             Preset("1 小时后", nowMs + 3_600_000L),
             Preset("2 小时后", nowMs + 7_200_000L),
-            Preset("明天 9:00", atDaysAhead(9, 0, 1)),
-            Preset("后天 9:00", atDaysAhead(9, 0, 2)),
-            Preset("3 天后 9:00", atDaysAhead(9, 0, 3)),
-            Preset("一周后", nowMs + 7L * 24 * 3_600_000L)
+            Preset("明天此刻", nowMs + dayMs),
+            Preset("后天此刻", nowMs + 2 * dayMs),
+            Preset("一周后", nowMs + 7 * dayMs)
         )
     }
 
@@ -73,7 +72,7 @@ fun ReminderTimePickerDialog(
                         ) {
                             rowItems.forEach { p ->
                                 OutlinedButton(
-                                    onClick = { onPick(p.triggerAt) },
+                                    onClick = { onPick(p.triggerAt, recurrence) },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(12.dp)
                                 ) { Text(p.label) }
@@ -82,6 +81,41 @@ fun ReminderTimePickerDialog(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                     }
+                    Text("重复", style = MaterialTheme.typography.labelMedium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf(Recurrence.NONE to "无", Recurrence.DAILY to "每天", Recurrence.WEEKLY to "每周")
+                            .forEach { (r, label) ->
+                                val selected = recurrence == r
+                                OutlinedButton(
+                                    onClick = { recurrence = r },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (selected) AppColors.Primary
+                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                    ),
+                                    colors = if (selected) {
+                                        ButtonDefaults.outlinedButtonColors(
+                                            containerColor = AppColors.Primary,
+                                            contentColor = AppColors.lightOnPrimary()
+                                        )
+                                    } else {
+                                        ButtonDefaults.outlinedButtonColors(
+                                            containerColor = Color.Transparent,
+                                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                ) {
+                                    Text(label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                                }
+                            }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = { stage = Stage.DATE },
                         modifier = Modifier.fillMaxWidth(),
@@ -128,7 +162,7 @@ fun ReminderTimePickerDialog(
                             set(Calendar.SECOND, 0)
                             set(Calendar.MILLISECOND, 0)
                         }
-                        onPick(cal.timeInMillis)
+                        onPick(cal.timeInMillis, recurrence)
                     }) { Text("确定") }
                 },
                 dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }

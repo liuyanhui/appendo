@@ -17,24 +17,20 @@ class ReminderBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val store = ReminderStore.get(context)
         val now = System.currentTimeMillis()
-        val current = store.reminders.value
-        val (updated, toFire) = ReminderLogic.advanceToBooted(current, now)
-
-        // 1) 补发已错过（持久化 fired=true + 发"已过期"通知）
-        for (ts in toFire) {
-            val meta = updated[ts] ?: continue
-            store.set(ts, meta)
-            val content = findEntryContent(context, ts)
-            if (content != null) {
-                NotificationHelper.show(context, ts, content, missed = true)
-            } else {
-                AlarmScheduler.cancel(context, ts)
-                store.remove(ts)
+        for ((ts, meta) in store.reminders.value) {
+            val d = ReminderLogic.bootDecide(meta, now)
+            if (d.newMeta != meta) store.set(ts, d.newMeta)
+            if (d.fireMissed) {
+                val content = findEntryContent(context, ts)
+                if (content != null) {
+                    NotificationHelper.show(context, ts, content, missed = true)
+                } else {
+                    AlarmScheduler.cancel(context, ts)
+                    store.remove(ts)
+                    continue
+                }
             }
-        }
-        // 2) 重注册所有未触发的（含未到点）
-        for ((ts, meta) in updated) {
-            if (!meta.fired) AlarmScheduler.schedule(context, ts, meta.effectiveTrigger)
+            if (d.rearm) AlarmScheduler.schedule(context, ts, d.newMeta.effectiveTrigger)
         }
     }
 }

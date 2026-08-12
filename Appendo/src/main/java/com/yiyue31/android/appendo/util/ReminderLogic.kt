@@ -40,4 +40,36 @@ object ReminderLogic {
         }
         return updated to toFire.toList()
     }
+
+    /** 下一次触发时刻（保留 HH:mm:ss.SSS；DAILY +1 天，WEEKLY +7 天，用 Calendar 跨夏令时）。 */
+    fun nextOccurrence(triggerAt: Long, recurrence: Recurrence): Long =
+        java.util.Calendar.getInstance().apply {
+            timeInMillis = triggerAt
+            add(java.util.Calendar.DATE, if (recurrence == Recurrence.WEEKLY) 7 else 1)
+        }.timeInMillis
+
+    /** 把重复提醒推进到 now 之后的下一次触发（关机错过补发后跳过中间次数，不刷屏）。 */
+    fun advanceToNextFuture(triggerAt: Long, recurrence: Recurrence, now: Long): Long {
+        var t = triggerAt
+        while (t <= now) t = nextOccurrence(t, recurrence)
+        return t
+    }
+
+    /** 开机/启动后单条提醒的处置决策（纯）。 */
+    data class BootDecision(val newMeta: ReminderMeta, val fireMissed: Boolean, val rearm: Boolean)
+
+    fun bootDecide(meta: ReminderMeta, now: Long): BootDecision {
+        if (meta.fired) return BootDecision(meta, fireMissed = false, rearm = false)
+        val eff = meta.effectiveTrigger
+        return if (eff <= now) {
+            if (meta.recurrence == Recurrence.NONE) {
+                BootDecision(meta.copy(fired = true), fireMissed = true, rearm = false)
+            } else {
+                val next = advanceToNextFuture(eff, meta.recurrence, now)
+                BootDecision(meta.copy(triggerAt = next, snoozedUntil = 0), fireMissed = true, rearm = true)
+            }
+        } else {
+            BootDecision(meta, fireMissed = false, rearm = true)
+        }
+    }
 }

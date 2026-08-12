@@ -89,6 +89,7 @@ import com.yiyue31.android.appendo.reminder.ReminderStore
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationManagerCompat
 import com.yiyue31.android.appendo.reminder.ReminderIntents
+import com.yiyue31.android.appendo.util.Recurrence
 import com.yiyue31.android.appendo.util.ReminderMeta
 import com.yiyue31.android.appendo.util.ReminderLogic
 import com.yiyue31.android.appendo.ui.EntryListScreen
@@ -164,7 +165,7 @@ fun MainScreen(
     var showReminderPicker by remember { mutableStateOf(false) }
     var pendingReminderTs by remember { mutableStateOf<String?>(null) }
     var showOverwriteReminder by remember { mutableStateOf(false) }
-    var pendingSchedule by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    var pendingSchedule by remember { mutableStateOf<Triple<String, Long, Recurrence>?>(null) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -172,20 +173,20 @@ fun MainScreen(
         val p = pendingSchedule
         pendingSchedule = null
         if (p != null) {
-            if (granted) scheduleReminder(context, p.first, p.second)
+            if (granted) scheduleReminder(context, p.first, p.second, p.third)
             else showToast(context, "未授予通知权限，提醒将不会显示")
         }
     }
 
-    fun startSetReminder(ts: String, triggerAt: Long) {
+    fun startSetReminder(ts: String, triggerAt: Long, recurrence: Recurrence) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
                 android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            pendingSchedule = ts to triggerAt
+            pendingSchedule = Triple(ts, triggerAt, recurrence)
             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            scheduleReminder(context, ts, triggerAt)
+            scheduleReminder(context, ts, triggerAt, recurrence)
         }
     }
 
@@ -897,6 +898,15 @@ fun MainScreen(
                     ) {
                         Text("添加到日历", style = MaterialTheme.typography.labelMedium)
                     }
+                    if (ReminderStore.get(context).hasUnfired(selectedEntry!!.timestamp)) {
+                        TextButton(
+                            onClick = {
+                                AlarmScheduler.cancel(context, selectedEntry!!.timestamp)
+                                ReminderStore.get(context).remove(selectedEntry!!.timestamp)
+                                showToast(context, "已取消提醒")
+                            }
+                        ) { Text("取消提醒", color = AppColors.Danger) }
+                    }
                 }
             },
             confirmButton = {
@@ -1024,12 +1034,12 @@ fun MainScreen(
         val ts = pendingReminderTs
         if (ts != null) {
             ReminderTimePickerDialog(
-                onPick = { triggerAt ->
+                onPick = { triggerAt, recurrence ->
                     showReminderPicker = false
                     if (triggerAt <= System.currentTimeMillis()) {
                         showToast(context, "请选择未来时间")
                     } else {
-                        startSetReminder(ts, triggerAt)
+                        startSetReminder(ts, triggerAt, recurrence)
                     }
                 },
                 onDismiss = { showReminderPicker = false }
@@ -1085,16 +1095,82 @@ fun MainScreen(
                 )
             },
             text = {
-                OutlinedTextField(
-                    value = inputContent,
-                    onValueChange = { inputContent = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester),
-                    minLines = 3,
-                    maxLines = 6,
-                    placeholder = { Text("请输入要追加的内容") }
-                )
+                Column {
+                    OutlinedTextField(
+                        value = inputContent,
+                        onValueChange = { inputContent = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                        minLines = 3,
+                        maxLines = 6,
+                        placeholder = { Text("请输入要追加的内容") }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // 并列次要入口：先追加，再用新条目时间戳开提醒选择器（默认「追加」流不变）
+                    OutlinedButton(
+                        onClick = {
+                            if (inputContent.isBlank()) {
+                                showToast(context, "内容不能为空")
+                                return@OutlinedButton
+                            }
+                            try {
+                                val mdFile = getCurrentMarkdownFile()
+                                if (mdFile.append(inputContent)) {
+                                    fileRepository.setFileLastModified(System.currentTimeMillis())
+                                    refreshEntryCount()
+                                    val newTs = parseMarkdownEntries(mdFile.readAll()).lastOrNull()?.timestamp
+                                    inputContent = ""
+                                    showInputDialog = false
+                                    keyboardController?.hide()
+                                    if (newTs != null) {
+                                        pendingReminderTs = newTs
+                                        showReminderPicker = true
+                                    } else {
+                                        showToast(context, "已追加，未能定位新条目")
+                                    }
+                                } else {
+                                    showToast(context, "追加失败")
+                                }
+                            } catch (_: Exception) {
+                                showToast(context, "追加失败")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
+                    ) {
+                        Text("⏰ 设提醒", fontWeight = FontWeight.Medium)
+                    }
+                    TextButton(
+                        onClick = {
+                            if (inputContent.isBlank()) {
+                                showToast(context, "内容不能为空")
+                                return@TextButton
+                            }
+                            try {
+                                val mdFile = getCurrentMarkdownFile()
+                                if (mdFile.append(inputContent)) {
+                                    fileRepository.setFileLastModified(System.currentTimeMillis())
+                                    refreshEntryCount()
+                                    val entry = CalendarEntryMapper.map(inputContent)
+                                    if (!CalendarLauncher.launch(context, entry)) {
+                                        showToast(context, "未找到日历应用")
+                                    }
+                                    inputContent = ""
+                                    showInputDialog = false
+                                    keyboardController?.hide()
+                                } else {
+                                    showToast(context, "追加失败")
+                                }
+                            } catch (_: Exception) {
+                                showToast(context, "追加失败")
+                            }
+                        }
+                    ) {
+                        Text("添加到日历", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
@@ -1178,9 +1254,9 @@ private fun performVibration(context: android.content.Context, durationMs: Long)
     }
 }
 
-private fun scheduleReminder(context: android.content.Context, ts: String, triggerAt: Long) {
+private fun scheduleReminder(context: android.content.Context, ts: String, triggerAt: Long, recurrence: Recurrence = Recurrence.NONE) {
     AlarmScheduler.schedule(context, ts, triggerAt)
-    ReminderStore.get(context).set(ts, ReminderMeta(triggerAt = triggerAt, fired = false, snoozedUntil = 0))
+    ReminderStore.get(context).set(ts, ReminderMeta(triggerAt = triggerAt, fired = false, snoozedUntil = 0, recurrence = recurrence))
     showToast(context, "已设置提醒")
 }
 

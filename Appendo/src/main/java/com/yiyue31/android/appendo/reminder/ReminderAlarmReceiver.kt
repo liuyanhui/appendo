@@ -6,6 +6,7 @@ import android.content.Intent
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
+import com.yiyue31.android.appendo.util.Recurrence
 import com.yiyue31.android.appendo.util.ReminderLogic
 
 /**
@@ -23,23 +24,28 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    /** 到点触发：发通知 + 标记 fired（徽标随即消失）。 */
+    /** 到点触发：发通知；重复提醒自动排下一次（fired 保持 false），一次性标记 fired。 */
     private fun handleFire(context: Context, ts: String) {
-        // 自检测试提醒：不对应真实条目，直接发测试通知
         if (ts == ReminderIntents.TEST_REMINDER_TS) {
             NotificationHelper.showTestNotification(context)
             return
         }
         val store = ReminderStore.get(context)
+        val meta = store.get(ts)
         val content = findEntryContent(context, ts)
         if (content == null) {
-            // 条目已不存在（外部删除/归档未清理）→ 收尾
             AlarmScheduler.cancel(context, ts)
             store.remove(ts)
             return
         }
         NotificationHelper.show(context, ts, content, missed = false)
-        store.update(ts) { it.copy(fired = true) }
+        if (meta != null && meta.recurrence != Recurrence.NONE) {
+            val next = ReminderLogic.nextOccurrence(meta.effectiveTrigger, meta.recurrence)
+            AlarmScheduler.schedule(context, ts, next)
+            store.set(ts, meta.copy(triggerAt = next, fired = false, snoozedUntil = 0))
+        } else {
+            store.update(ts) { it.copy(fired = true) }
+        }
     }
 
     /** 贪睡：重排闹钟到 now+minutes，fired 复位（徽标重现），撤掉当前通知。 */
@@ -51,10 +57,18 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         NotificationHelper.cancel(context, ts)
     }
 
-    /** 完成：取消闹钟 + 删 sidecar + 撤通知。 */
+    /** 完成：重复提醒=排下一次（保留系列）；一次性=取消+删除。 */
     private fun handleComplete(context: Context, ts: String) {
-        AlarmScheduler.cancel(context, ts)
-        ReminderStore.get(context).remove(ts)
+        val store = ReminderStore.get(context)
+        val meta = store.get(ts)
+        if (meta != null && meta.recurrence != Recurrence.NONE) {
+            val next = ReminderLogic.nextOccurrence(meta.effectiveTrigger, meta.recurrence)
+            AlarmScheduler.schedule(context, ts, next)
+            store.set(ts, meta.copy(triggerAt = next, fired = false, snoozedUntil = 0))
+        } else {
+            AlarmScheduler.cancel(context, ts)
+            store.remove(ts)
+        }
         NotificationHelper.cancel(context, ts)
     }
 }
