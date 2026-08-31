@@ -1,7 +1,9 @@
 # 本地提醒功能（方案 C：自建 AlarmManager） — 设计文档
 
 > 日期: 2026-08-10
-> 状态: 待实现（Phase 1 未开工）
+> 状态: ✅ Phase 1 已实现（v1.1.0，2026-08-11）；Phase 2 重复提醒已实现（v1.2.0，2026-08-12，**无独立详细设计文档**，事后现状记录见 architecture.md §5）
+> 与实现的偏差（实现期漂移）：本文的 `ReminderSidecar`（util）实际落地为 `reminder/ReminderStore`（sidecar 单例，Compose State）+ `util/ReminderMetaCodec`（编解码）+ `util/ReminderLogic`（决策纯函数）；sidecar 由"单 JSON blob"改为 per-key 独立存储（避免读改写竞态）；文中引用的 `MainScreen.kt` 行号已失效
+> 现状架构见 [../architecture.md](../architecture.md)（本文为历史设计记录）
 > 关联: `docs/plans/reminder-plan.md`（任务进度，便于冷启动）
 
 ---

@@ -1,7 +1,9 @@
 # 笔记条目详情查看与编辑功能 — 设计文档
 
 > 日期: 2026-06-02
-> 状态: 待实现
+> 状态: ✅ 已实现（v1.0.1，2026-06-03）
+> 与实现的偏差：本文所述 `MarkdownFileUpdateTest` 已随 v1.1 测试重构移除（updateEntry 行为由 `EntryParserTest` 覆盖）；条目定位算法已收敛进 `EntryParser.findEntryBounds`/`buildUpdatedLines`
+> 现状架构见 [../architecture.md](../architecture.md)（本文为历史设计记录）
 
 ---
 

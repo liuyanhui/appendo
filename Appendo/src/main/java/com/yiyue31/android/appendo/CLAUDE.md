@@ -8,9 +8,9 @@
 
 | 文件 | 职责 |
 |------|------|
-| `MainActivity.kt` | 主 Activity，初始化 FileRepository 并通过 Navigation Compose 管理三个页面路由 |
-| `ShareReceiverActivity.kt` | 独立 Activity，处理外部分享 Intent（ACTION_SEND），写入后自动关闭 |
-| `AppendoApplication.kt` | Application 子类，应用启动时创建通知渠道 |
+| `MainActivity.kt` | 主 Activity，初始化 FileRepository 并通过 Navigation Compose 管理三个页面路由；接收提醒通知深链时间戳（`scrollTs`，经 `onNewIntent` 更新） |
+| `ShareReceiverActivity.kt` | 独立 Activity，处理外部分享 Intent（ACTION_SEND），IO 协程写入后自动关闭 |
+| `AppendoApplication.kt` | Application 子类，启动时创建遗留 `write_feedback` 通知渠道（提醒渠道由 `reminder/NotificationHelper` 按需创建） |
 
 ## 架构要点
 
@@ -35,6 +35,10 @@ MainActivity
 
 - 路由参数使用 `Uri.encode()`/`Uri.decode()` 处理文件路径
 - 归档详情页通过解析文件名提取时间戳（格式：`Appendo_yyyyMMdd_HHmmss.md`）
+
+### 业务子包
+
+`data/`（存储偏好与归档）、`ui/`（Compose 界面）、`util/`（纯逻辑核心与文件协议）、`reminder/`（本地提醒的 Android 侧：闹钟调度/通知/接收器/sidecar 单例）。各子包详见各自 CLAUDE.md；跨模块协作与数据协议见 `docs/architecture.md`。
 
 ## 依赖关系
 

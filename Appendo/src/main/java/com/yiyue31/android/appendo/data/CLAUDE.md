@@ -8,9 +8,8 @@
 
 | 文件 | 职责 |
 |------|------|
-| `FileRepository.kt` | 文件存储偏好管理、SAF URI 持久化、首次启动检测 |
-| `ArchiveRepository.kt` | 归档文件的增删查、时间戳解析、内容读取 |
-| `ArchiveFile.kt` | 归档文件数据类（file, name, timestamp, entryCount） |
+| `FileRepository.kt` | 文件存储偏好管理、SAF URI 持久化、首次启动检测、SAF 恢复文件（.bak/.pending）清理 |
+| `ArchiveRepository.kt` | 归档文件的增删查、时间戳解析、内容读取（`ArchiveFile` 数据类定义在此文件内，无独立文件） |
 
 ## 存储架构：双模式设计
 
@@ -44,6 +43,11 @@ FileRepository
 - `FileRepository` 和 `ArchiveRepository` 本身不是线程安全的
 - 文件并发写入通过 `util/FileOperationLock`（全局锁）保护
 - ShareReceiverActivity 在 IO 线程执行写入，通过 FileOperationLock 与 MainScreen 互斥
+
+## 已知问题
+
+- ✅ TD-010 已修复（v1.2.1）：`ArchiveRepository` 归档计数改用 `EntryParser.getTimestampRegex()`（宽松正则，秒/毫秒都数得到）。
+- `file_last_modified` 是应用每次写完自维护的 SP 逻辑时间戳（非文件系统 mtime），用于 MainScreen 2 秒轮询；外部编辑不会触发刷新。
 
 ## 依赖关系
 

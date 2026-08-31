@@ -9,20 +9,25 @@
 ```
 CLAUDE.md                 # 项目规则和开发指南
 CODINGRULES.md            # 编码规范（测试、Bug修复、常量等）
+AGENT.md                  # AI 代理入口（指向 CLAUDE.md）
+README.md                 # 面向用户/贡献者的项目说明
+CHANGELOG.md              # 版本变更记录
 docs/                     # 项目文档目录
-├── specs/                # 需求文档目录
-├── design/               # 设计文档目录
-│   └── DESIGN.md         # 系统设计文档（架构、模块、接口等）
+├── specs.md              # 需求文档（追加式变更史）
+├── architecture.md       # 架构文档（现状快照，面向开发者的唯一权威源）
+├── design.md             # 系统设计（历史变更史；现状见 architecture.md）
+├── design/               # 特性设计文档（历史设计记录，含状态标注）
 ├── plans/                # 项目计划文档目录
 │   ├── PLANS.md          # 项目计划（里程碑、排期等）
 │   ├── active/           # 进行中的执行计划目录
 │   ├── completed/        # 已完成的执行计划目录
 │   └── debt-tracker.md   # 技术债务追踪
 ├── background/           # 参考资料（技术选型依据、竞品分析等）
-└── README.md             # 项目说明
-src/                      # 源代码目录
-tests/                    # 测试目录
-scripts/                  # 构建、部署等脚本目录
+└── directory-documentation-analysis.md  # 目录文档体系分析（历史）
+Appendo/                  # Android 应用模块
+├── src/main/             # 主源码与资源
+└── src/test/             # 单元测试
+gradle/                   # Gradle wrapper 与版本目录（libs.versions.toml）
 ```
 
 **目录维护规则**：
@@ -62,18 +67,18 @@ scripts/                  # 构建、部署等脚本目录
 - 理解项目的目标和功能范围
 - 确认用户场景、业务约束、性能要求、安全要求等
 - 确认技术栈偏好和第三方依赖限制
-- 追加到 `docs/specs/` 目录文档（经用户确认）
+- 追加到 `docs/specs.md`（经用户确认）
 - 需求不要轻易定稿。要努力思考是否有遗漏，如有遗漏需跟用户确认
 - 启用subagent评估需求是否完备合理。
 
 **阶段2：方案设计**
-- 完成系统架构设计，保存到 `docs/design/DESIGN.md`
+- 完成系统架构设计，保存到 `docs/design.md`（系统级追加）或 `docs/design/<特性>-design.md`（特性级新文档）
 - 内容包括：模块划分、数据模型、接口设计、技术选型及理由
 - 校验设计是否满足需求文档中的功能和约束
 - 可设计多个方案供用户选择
 
 **阶段3：制定执行计划**
-- 根据 `docs/design/DESIGN.md` 完成执行计划，保存到 `docs/plans/PLANS.md`
+- 根据设计文档（`docs/design.md` / `docs/design/`）完成执行计划，保存到 `docs/plans/PLANS.md`
 - 计划包括：开发任务拆分、任务依赖关系、优先级、验收标准
 - 计划要满足需求文档和设计文档的要求和约束
 - 执行时以设计文档为主要参考，必要时可查阅需求文档澄清歧义
@@ -149,5 +154,5 @@ scripts/                  # 构建、部署等脚本目录
 
 ## 任务完成检查
 
-- **文档更新评估**：每个任务完成后，必须评估是否需要更新以下文档：`CLAUDE.md`、`docs/specs/`、`docs/design/DESIGN.md`、`README.md`、`CHANGELOG.md`。如需更新，在提交代码前完成
+- **文档更新评估**：每个任务完成后，必须评估是否需要更新以下文档：`CLAUDE.md`、`docs/specs.md`、`docs/design/`、`docs/architecture.md`（涉及数据协议/完整性语义的代码改动**必须**同步修订）、`README.md`、`CHANGELOG.md`。如需更新，在提交代码前完成
 - **强制测试**：编码任务完成后，必须执行单元测试和功能测试（真机或模拟器验证），测试通过后才能提交
