@@ -104,10 +104,11 @@ interface MarkdownFileOperations {
     fun readAllForExternal(): String = EntryParser.stripIsolationMarkers(readAll())
 
     /**
-     * 读取全部内容并附带恢复标志（v1.1）。SAF 软恢复发生时 recovered=true（已从 .bak 回滚）；
-     * 默认文件模式恒为 false。UI 据此提示用户（specs 46）。
+     * 读取全部内容并附带恢复/失败标志（v1.1；failed 为 TD-012 新增）。SAF 软恢复发生时
+     * recovered=true（已从 .bak 回滚）；默认文件模式恒为 false。读失败时 failed=true 且
+     * content=""——**上层不得当空文件处理**（TD-012，architecture.md §4.4）。
      *
-     * 默认实现 = ReadResult([readAll], false)；SAF 在 T-010 覆写。
+     * 默认实现无法感知失败（readAll 吞异常返回空串）；具体实现应覆写以准确上报 failed。
      */
     fun readAllWithStatus(): ReadResult = ReadResult(readAll(), recovered = false)
 }

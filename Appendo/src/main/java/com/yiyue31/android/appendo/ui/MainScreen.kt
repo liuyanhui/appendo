@@ -86,6 +86,7 @@ import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.reminder.AlarmScheduler
 import com.yiyue31.android.appendo.reminder.ReminderStore
+import com.yiyue31.android.appendo.reminder.rescheduleAll
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationManagerCompat
 import com.yiyue31.android.appendo.reminder.ReminderIntents
@@ -200,13 +201,22 @@ fun MainScreen(
         coroutineScope.launch {
             try {
                 // 文件 I/O + 解析下放 Dispatchers.IO（中-7：避免主线程 ANR，尤其 2s 轮询路径）
-                val (newEntries, recovered) = withContext(Dispatchers.IO) {
+                val (newEntries, recovered, readFailed) = withContext(Dispatchers.IO) {
                     val mdFile = getCurrentMarkdownFile()
                     if (!mdFile.exists()) {
                         mdFile.initHeader()
                     }
                     val result = mdFile.readAllWithStatus()
-                    Pair(parseMarkdownEntries(result.content), result.recovered)
+                    Triple(parseMarkdownEntries(result.content), result.recovered, result.failed)
+                }
+                if (readFailed) {
+                    // 读失败 ≠ 空文件：保留现有列表与提醒，跳过本次刷新与对账（TD-012，architecture.md §4.4）
+                    return@launch
+                }
+                if (newEntries.isEmpty() && entries.isNotEmpty()) {
+                    // 结果为空但上一轮非空：疑似异常读取，跳过刷新与对账，防止误杀全部提醒（TD-012）。
+                    // 合法的清空路径（clear()）会先把 entries 置空再落盘，不会命中此守卫。
+                    return@launch
                 }
                 if (recovered) {
                     // SAF 软恢复发生时透明提示（specs 46）；默认模式 recovered 恒 false
@@ -302,6 +312,9 @@ fun MainScreen(
         }
 
         refreshEntryCount()
+
+        // 应用启动即重排提醒（TD-014：覆盖安装/force-stop 会丢闹钟，不能只等开机广播）
+        coroutineScope.launch(Dispatchers.IO) { rescheduleAll(context) }
 
         // Show setup guide on fresh install
         if (fileRepository.isFirstLaunch()) {

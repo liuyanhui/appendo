@@ -6,9 +6,12 @@ import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.ArchiveFile
@@ -72,16 +76,20 @@ fun ArchiveDetailScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    // 文件名紧跟标题同一行弱化展示（小号灰字），不占正文空间
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "归档详情",
                             fontWeight = FontWeight.SemiBold,
                             color = AppColors.Primary
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             archive.name.removeSuffix(".md"),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 },
@@ -128,7 +136,6 @@ fun ArchiveDetailScreen(
                 EntryListScreen(
                     entries = entries,
                     entryCount = entryCount,
-                    sourceFileName = archive.name.removeSuffix(".md"),
                     readOnly = true,
                     onEntryLongClick = { content ->
                         // Vibration is handled by EntryListScreen

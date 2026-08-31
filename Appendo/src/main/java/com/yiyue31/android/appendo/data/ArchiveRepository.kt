@@ -1,6 +1,7 @@
 package com.yiyue31.android.appendo.data
 
 import android.content.Context
+import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.MarkdownFormatter
 import java.io.File
 import java.text.SimpleDateFormat
@@ -86,10 +87,8 @@ class ArchiveRepository(private val context: Context) {
      */
     private fun countEntries(file: File): Int {
         return try {
-            val content = file.readText()
-            content.lines().count { line ->
-                line.matches(MarkdownFormatter.getTimestampRegex())
-            }
+            // 宽松正则（TD-010）：秒级/毫秒级条目都数得到，与主列表计数同源
+            EntryParser.getTimestampRegex().findAll(file.readText()).count()
         } catch (e: Exception) {
             0
         }

@@ -20,6 +20,7 @@ import com.yiyue31.android.appendo.data.ArchiveRepository
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.reminder.ReminderIntents
 import com.yiyue31.android.appendo.ui.ArchiveDetailScreen
+import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.ui.ArchiveListScreen
 import com.yiyue31.android.appendo.ui.MainScreen
 import java.io.File
@@ -126,10 +127,8 @@ private fun parseTimestampFromFileName(filename: String): java.util.Date? {
 
 private fun countEntries(file: File): Int {
     return try {
-        val content = file.readText()
-        content.lines().count { line ->
-            line.matches(Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"))
-        }
+        // 宽松正则（TD-010）：秒级/毫秒级条目都数得到，与 EntryParser 同源
+        EntryParser.getTimestampRegex().findAll(file.readText()).count()
     } catch (e: Exception) {
         0
     }

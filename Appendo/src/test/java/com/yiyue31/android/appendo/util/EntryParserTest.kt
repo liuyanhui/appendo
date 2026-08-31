@@ -235,6 +235,79 @@ class EntryParserTest {
         assertEquals(content, EntryParser.stripIsolationMarkers(content))
     }
 
+    // ---------- 分隔形态隔离（TD-015）----------
+
+    @Test
+    fun isSkippableLine_matchesSeparatorAndHeaderShapes() {
+        assertTrue(EntryParser.isSkippableLine("---"))
+        assertTrue(EntryParser.isSkippableLine("# Appendo"))
+        assertTrue(EntryParser.isSkippableLine("# Appendo 备忘"))
+        assertFalse("四个连字符不在形态内", EntryParser.isSkippableLine("----"))
+        assertFalse(EntryParser.isSkippableLine("普通内容"))
+        assertFalse(EntryParser.isSkippableLine(""))
+    }
+
+    @Test
+    fun format_isolatesSeparatorAndHeaderShapeLines() {
+        val block = EntryParser.format("2026-08-31 09:00:00.000", "---\n# Appendo 备忘\n正常行")
+        assertTrue(block.contains("${EntryParser.ISOLATION_MARKER}---"))
+        assertTrue(block.contains("${EntryParser.ISOLATION_MARKER}# Appendo 备忘"))
+        assertFalse("正常行不应被隔离", block.contains("${EntryParser.ISOLATION_MARKER}正常行"))
+    }
+
+    @Test
+    fun format_parse_roundTrip_preservesSeparatorShapeLines() {
+        val original = "---\n# Appendo 备忘\n## 2026-01-01 10:00:00\n末行"
+        val parsed = EntryParser.parse(EntryParser.format("2026-08-31 09:00:00.000", original))
+        assertEquals(1, parsed.size)
+        assertEquals("往返不应丢行（TD-015）", original, parsed[0].content)
+    }
+
+    @Test
+    fun format_isolationOfSeparatorShape_idempotent() {
+        val once = EntryParser.format("2026-08-31 09:00:00.000", "---")
+        val restored = EntryParser.parse(once)[0].content // parse 已还原
+        val twice = EntryParser.format("2026-08-31 09:30:00.000", restored) // read-modify-write 再隔离
+        val isolatedLines = twice.lineSequence().filter { it.startsWith(EntryParser.ISOLATION_MARKER) }.toList()
+        assertEquals("只应有 1 个被隔离行", 1, isolatedLines.size)
+        assertEquals("ZWSP 不叠加", 1, isolatedLines[0].count { it == zwsp })
+    }
+
+    @Test
+    fun buildUpdatedLines_roundTrip_preservesSeparatorShapeLines() {
+        // updateEntry 路径：新内容含分隔形态行 → 隔离写入 → 重新 parse 不丢行
+        val lines = listOf("# Appendo", "", "---", "", "## 2026-08-31 09:00:00.000", "", "旧内容", "", "---")
+        val bounds = EntryParser.findEntryBounds(lines, "2026-08-31 09:00:00.000")!!
+        val newContent = "新内容\n---\n# Appendo 备忘"
+        val updated = EntryParser.buildUpdatedLines(lines, bounds, newContent).joinToString("\n")
+        assertTrue(updated.contains("${EntryParser.ISOLATION_MARKER}---"))
+        val reparsed = EntryParser.parse(updated)
+        assertEquals(1, reparsed.size)
+        assertEquals("编辑不应丢行（TD-015）", newContent, reparsed[0].content)
+    }
+
+    @Test
+    fun parse_legacyUnisolatedSeparatorLine_stillSkipped() {
+        // 旧文件兼容：无 ZWSP 的 --- 行维持现状（跳过），条目数不变
+        val content = "# Appendo\n\n---\n\n## 2026-08-31 09:00:00.000\n\n---\n内容\n\n---\n"
+        val entries = EntryParser.parse(content)
+        assertEquals(1, entries.size)
+        assertEquals("内容", entries[0].content.trim())
+    }
+
+    @Test
+    fun stripIsolationMarkers_stripsSeparatorShapeLines() {
+        val content = "正常行\n${EntryParser.ISOLATION_MARKER}---\n${EntryParser.ISOLATION_MARKER}# Appendo 备忘\n另一行"
+        val stripped = EntryParser.stripIsolationMarkers(content)
+        assertEquals("正常行\n---\n# Appendo 备忘\n另一行", stripped)
+    }
+
+    @Test
+    fun timestampRegex_countsMixedSecondAndMillisecondLines() { // TD-010：归档计数同源
+        val content = "## 2020-01-01 10:00:00\na\n## 2021-01-01 10:00:00.123\nb\n## 2022-01-01 10:00:00.1\nc\n"
+        assertEquals(3, EntryParser.getTimestampRegex().findAll(content).count())
+    }
+
     // ---------- 边界算法（T-004）----------
 
     private val twoEntryLines = listOf(

@@ -17,9 +17,10 @@ import java.util.Locale
  * 设计要点：
  * - **纯函数、不碰 I/O**，全部可在纯 JVM 单测中覆盖。
  * - **宽松时间戳正则**：同时匹配旧秒级与新毫秒级（specs 37）。
- * - **内容隔离**：用户内容中恰好匹配时间戳标记格式的行，写入时（[format]）加
- *   [ISOLATION_MARKER] 前缀；读取时（[parse]）该行因前缀不匹配边界、被当作内容，
- *   并在收集时剥离前缀还原原文。用户自有的、非时间戳行的 ZWSP 不受影响（specs 38）。
+ * - **内容隔离**：用户内容中恰好匹配时间戳标记格式**或分隔形态（`---` / `# Appendo` 开头，
+ *   [isSkippableLine]）**的行，写入时（[format]）加 [ISOLATION_MARKER] 前缀；读取时（[parse]）
+ *   该行因前缀不匹配边界、被当作内容，并在收集时剥离前缀还原原文。用户自有的、非此类行的
+ *   ZWSP 不受影响（specs 38；TD-015 扩展）。
  * - **单调防碰撞**：[nextTimestamp] 保证文件内时间戳严格递增唯一（仅 append() now 路径）。
  * - **边界算法不依赖唯一性**：[findEntryBounds] 按首条匹配 + 区间，保留"找首条"语义。
  *
@@ -56,6 +57,14 @@ object EntryParser {
     /** 单行是否为时间戳标题行 `## YYYY-MM-DD HH:mm:ss[.SSS]`。带 [ISOLATION_MARKER] 前缀返回 false（视为内容）。 */
     fun isTimestampLine(line: String): Boolean = TIMESTAMP_LINE_REGEX.matches(line)
 
+    /**
+     * parse 会跳过的"分隔形态"内容行：恰为 `---` 或以 `# Appendo` 开头。
+     * **写侧隔离（isolateLine）与读侧跳过（parse）共用本谓词（TD-015）**——
+     * 保护范围与丢失范围必须由同一函数定义，否则两者会分叉。
+     */
+    fun isSkippableLine(line: String): Boolean =
+        line == MarkdownFormatter.SEPARATOR_LINE || line.startsWith(MarkdownFormatter.FILE_HEADER_PREFIX)
+
     // ==================== 读侧：parse ====================
 
     /**
@@ -80,8 +89,8 @@ object EntryParser {
                     currentTimestamp = line.removePrefix(TIMESTAMP_LINE_PREFIX).trim()
                     currentContent = StringBuilder()
                 }
-                line.startsWith("# Appendo") || line == "---" -> {
-                    // 跳过文件头与分隔线
+                isSkippableLine(line) -> {
+                    // 跳过未隔离的历史遗留行（文件头与分隔线）；带隔离标记的行走 else 分支被还原为内容（TD-015）
                 }
                 else -> {
                     if (currentContent.isNotEmpty()) currentContent.append("\n")
@@ -95,11 +104,11 @@ object EntryParser {
         return entries
     }
 
-    /** 还原被隔离的内容行：去所有前导 [ISOLATION_MARKER] 后若为时间戳行则剥离；否则原样保留用户 ZWSP。 */
+    /** 还原被隔离的内容行：去所有前导 [ISOLATION_MARKER] 后若为时间戳行或分隔形态则剥离；否则原样保留用户 ZWSP。 */
     private fun restoreLine(line: String): String {
         if (!line.startsWith(ISOLATION_MARKER)) return line
         val stripped = line.dropWhile { it == ISOLATION_MARKER.first() }
-        return if (isTimestampLine(stripped)) stripped else line
+        return if (isTimestampLine(stripped) || isSkippableLine(stripped)) stripped else line
     }
 
     // ==================== 写侧：format / nextTimestamp / strip（T-003）====================
@@ -135,7 +144,7 @@ object EntryParser {
     private fun isolateLine(line: String): String {
         // 幂等：已以 ZWSP 开头则不再加（防 read-modify-write 重复隔离）
         if (line.startsWith(ISOLATION_MARKER)) return line
-        return if (isTimestampLine(line)) ISOLATION_MARKER + line else line
+        return if (isTimestampLine(line) || isSkippableLine(line)) ISOLATION_MARKER + line else line
     }
 
     /**
@@ -154,7 +163,7 @@ object EntryParser {
 
     /**
      * 剥离内容隔离标记，供"离开应用"的出口（复制/分享）使用。
-     * 仅剥离"行首 ZWSP + 紧跟时间戳模式"的行；用户自有非时间戳 ZWSP 与正常内容保留。
+     * 仅剥离"行首 ZWSP + 紧跟时间戳或分隔形态"的行；用户自有非此类行的 ZWSP 与正常内容保留。
      */
     fun stripIsolationMarkers(content: String): String =
         content.lines().joinToString("\n") { restoreLine(it) }

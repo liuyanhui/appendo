@@ -13,8 +13,8 @@ android {
         applicationId = "com.yiyue31.android.appendo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.2.0"
+        versionCode = 7
+        versionName = "1.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -42,6 +42,9 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // 纯 JVM 单测中 android.util.Log 等 API 返回默认值而非抛异常
+            // （TD-012 失败路径测试会触达存储层 catch 分支里的 Log 调用）
+            isReturnDefaultValues = true
         }
     }
 }

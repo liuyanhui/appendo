@@ -40,20 +40,42 @@ class SafMarkdownFile(
 
     override fun readAll(): String = readAllWithStatus().content
 
-    /** 读前 ensureConsistent（.pending 存在则从 .bak 回滚），返回内容 + recovered 标志（覆写接口默认）。 */
+    /** 读前 ensureConsistent（.pending 存在则从 .bak 回滚），返回内容 + recovered/failed 标志（覆写接口默认）。 */
     override fun readAllWithStatus(): ReadResult = synchronized(FileOperationLock) {
         val recovered = ensureConsistent()
-        ReadResult(readMainOnly(), recovered)
+        val (content, readFailed) = readMainForStatus()
+        ReadResult(content, recovered, readFailed)
     }
 
-    private fun readMainOnly(): String {
+    private fun readMainOnly(): String = readMainForStatus().first
+
+    /**
+     * 写路径专用读（TD-013）：先恢复（.pending 残留 → 从 .bak 回滚）再读主文件，
+     * 确保 .bak 始终基于上次确认良好的状态、崩溃后的脏内容不会经写路径固化。调用方持锁。
+     */
+    private fun readMainForWrite(): Pair<String, Boolean> {
+        ensureConsistent()
+        return readMainForStatus()
+    }
+
+    /**
+     * 读主文件并区分失败（TD-012）：Pair(内容, 是否读失败)。调用方持锁。
+     * openInputStream 返回 null（无法打开流）同样视为读失败——不得当空文件处理。
+     */
+    private fun readMainForStatus(): Pair<String, Boolean> {
         return try {
-            contentResolver.openInputStream(uri)?.use { input ->
+            val content = contentResolver.openInputStream(uri)?.use { input ->
                 BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { it.readText() }
-            } ?: ""
+            }
+            if (content != null) {
+                content to false
+            } else {
+                Log.w(TAG, "openInputStream returned null")
+                "" to true
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read file", e)
-            ""
+            "" to true
         }
     }
 
@@ -103,7 +125,8 @@ class SafMarkdownFile(
 
     override fun append(content: String): Boolean = synchronized(FileOperationLock) {
         try {
-            val current = readMainOnly()
+            val (current, readFailed) = readMainForWrite()
+            if (readFailed) return@synchronized false // 读失败中止：禁止全量重写（TD-012）
             val timestamp = EntryParser.nextTimestamp(current)
             appendEntryInternal(timestamp, content, current)
         } catch (e: Exception) {
@@ -115,7 +138,8 @@ class SafMarkdownFile(
     /** 覆写接口默认实现，真正保留传入时间戳（归档恢复用）。 */
     override fun appendEntry(timestamp: String, content: String): Boolean = synchronized(FileOperationLock) {
         try {
-            val current = readMainOnly()
+            val (current, readFailed) = readMainForWrite()
+            if (readFailed) return@synchronized false // 读失败中止（TD-012）
             appendEntryInternal(timestamp, content, current)
         } catch (e: Exception) {
             Log.e(TAG, "appendEntry failed", e)
@@ -131,7 +155,8 @@ class SafMarkdownFile(
 
     override fun deleteEntry(timestamp: String): Boolean = synchronized(FileOperationLock) {
         try {
-            val current = readMainOnly()
+            val (current, readFailed) = readMainForWrite()
+            if (readFailed) return@synchronized false // 读失败中止（TD-012）
             val lines = current.lines()
             val bounds = EntryParser.findEntryBounds(lines, timestamp)
                 ?: return@synchronized false
@@ -145,7 +170,8 @@ class SafMarkdownFile(
 
     override fun updateEntry(timestamp: String, newContent: String): Boolean = synchronized(FileOperationLock) {
         try {
-            val current = readMainOnly()
+            val (current, readFailed) = readMainForWrite()
+            if (readFailed) return@synchronized false // 读失败中止（TD-012）
             val lines = current.lines()
             val bounds = EntryParser.findEntryBounds(lines, timestamp)
                 ?: return@synchronized false
@@ -163,12 +189,15 @@ class SafMarkdownFile(
     }
 
     override fun initHeader(): Boolean = synchronized(FileOperationLock) {
-        val content = readMainOnly()
+        val (content, readFailed) = readMainForWrite()
+        if (readFailed) return@synchronized false // 读失败不得当空文件覆写（TD-012）
         if (content.isBlank()) writeMain(MarkdownFormatter.FILE_HEADER) else true
     }
 
     override fun writeAll(content: String): Boolean = synchronized(FileOperationLock) {
-        safAtomicWrite(content, readMainOnly())
+        val (current, readFailed) = readMainForWrite()
+        if (readFailed) return@synchronized false // 读失败不写、不污染 .bak（TD-012）
+        safAtomicWrite(content, current)
     }
 
     /**

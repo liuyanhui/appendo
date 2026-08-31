@@ -18,7 +18,8 @@ class FileBasedMarkdownFile(
 
     override fun append(content: String): Boolean = synchronized(FileOperationLock) {
         try {
-            val current = readAll()
+            val (current, readFailed) = readForStatus()
+            if (readFailed) return@synchronized false // 读失败中止：禁止 header+新条目全量重写（TD-012）
             val timestamp = EntryParser.nextTimestamp(current)
             appendEntryInternal(timestamp, content, current)
         } catch (e: Exception) {
@@ -33,7 +34,8 @@ class FileBasedMarkdownFile(
      */
     override fun appendEntry(timestamp: String, content: String): Boolean = synchronized(FileOperationLock) {
         try {
-            val current = readAll()
+            val (current, readFailed) = readForStatus()
+            if (readFailed) return@synchronized false // 读失败中止（TD-012）
             appendEntryInternal(timestamp, content, current)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to appendEntry content", e)
@@ -48,15 +50,22 @@ class FileBasedMarkdownFile(
         return atomicWrite(full.toByteArray(Charsets.UTF_8))
     }
 
-    override fun readAll(): String = synchronized(FileOperationLock) {
-        try {
-            FileInputStream(file).use { input ->
-                input.readBytes().toString(Charsets.UTF_8)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to read file", e)
-            ""
-        }
+    override fun readAll(): String = synchronized(FileOperationLock) { readForStatus().first }
+
+    /** 覆写以准确上报读失败（TD-012）：失败时 content="" 且 failed=true，不得当空文件处理。 */
+    override fun readAllWithStatus(): ReadResult = synchronized(FileOperationLock) {
+        val (content, readFailed) = readForStatus()
+        ReadResult(content, recovered = false, failed = readFailed)
+    }
+
+    /** 读当前内容并区分失败（TD-012）：Pair(内容, 是否读失败)。调用方持锁。 */
+    private fun readForStatus(): Pair<String, Boolean> = try {
+        FileInputStream(file).use { input ->
+            input.readBytes().toString(Charsets.UTF_8)
+        } to false
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to read file", e)
+        "" to true
     }
 
     override fun clear(): Boolean = synchronized(FileOperationLock) {
@@ -79,7 +88,8 @@ class FileBasedMarkdownFile(
             file.parentFile?.mkdirs()
             file.createNewFile()
         }
-        val content = readAll()
+        val (content, readFailed) = readForStatus()
+        if (readFailed) return@synchronized false // 读失败不得当空文件覆写既有内容（TD-012）
         if (content.isBlank()) {
             atomicWrite(MarkdownFormatter.FILE_HEADER.toByteArray(Charsets.UTF_8))
         } else {

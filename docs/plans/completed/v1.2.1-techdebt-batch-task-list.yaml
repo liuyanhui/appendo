@@ -1,0 +1,199 @@
+# ==============================================================================
+# 项目: appendo 技术债修复批次（TD-010 ~ TD-015）— v1.2.1 bugfix
+# 目标: 修复 5 项缺陷 + 1 项优化，合并发版 v1.2.1；每项附回归测试；完成后同步文档
+# 范围外: TD-007/TD-008（Phase B：parseMarkdownEntries 包装器、主线程 I/O 下放、ViewModel）
+# 执行顺序依据: 风险优先级 TD-012 > TD-015 > TD-014 > TD-013 > TD-010 > TD-011（用户已确认）
+# 卡点: T-d15b 产出方案后必须暂停等待用户确认，才可启动 T-d15c
+# 参考: docs/plans/debt-tracker.md（TD-010~015）、docs/architecture.md §8.1/§11/§12
+# ==============================================================================
+# Field Definitions:
+#   id:                 Unique, STABLE identifier (label only — does NOT encode order). e.g. T-d12a
+#   seq:                Execution order, a number (integer or decimal). Orchestrator picks smallest pending seq.
+#   description:       What to do — specific, actionable, starts with a verb
+#   constraints:       Scope limits — which files, modules, or technical boundaries
+#   deliverable:       Concrete output artifacts (can be multiple)
+#   evaluation_criteria: List of yes/no verifiable conditions — NOT subjective like "works correctly"
+#   evaluation_method: "{method} [read-only | requires-execution]" — manual | automated-test | code-review
+#   evaluation_result:  [filled by orchestrator after each evaluation round]
+#   current_round:      [incremented by orchestrator on each retry]
+#   max_retries:        Max retries for the orchestrator. 3 simple, 5 complex
+#   status:             [filled by orchestrator] pending → in-progress → evaluating → passed | failed | blocked
+#   dependencies:       LIST of Task-IDs that must pass before this task starts; [] for none
+# ==============================================================================
+
+tasks:
+  # ---------- TD-012（高）读失败=空串破坏链 ----------
+
+  - id: T-d12a
+    seq: 1
+    description: "为读失败引入显式失败语义并在存储层加守卫：ReadResult 增加 failed 标志（或等价机制）；FileBasedMarkdownFile 与 SafMarkdownFile 的 initHeader 在读失败时不得覆写文件（返回 false），append/appendEntry 在读失败时中止并返回 false（不得进入 header+新条目的全量重写分支）；附纯 JVM 回归测试模拟读失败"
+    constraints: "仅改 Appendo/src/main/java/com/yiyue31/android/appendo/util/ 下 ReadResult.kt、MarkdownFileOperations.kt、FileBasedMarkdownFile.kt、SafMarkdownFile.kt，及 Appendo/src/test/java/com/yiyue31/android/appendo/util/ 下对应测试；不改 ui/、reminder/、data/；不动 FileOperationLock 锁协议；模拟读失败可用「file 路径指向目录」等纯 JVM 手段（FileInputStream 对目录抛异常）"
+    deliverable: "util/ReadResult.kt（含失败标志）+ 两实现类守卫代码 + FileBasedMarkdownFileTest 新增读失败回归用例（append 中止、initHeader 不覆写、failed 标志正确）"
+    evaluation_criteria:
+      - "读失败场景（file 路径为目录）下 append 返回 false，且目标未被写入 header+新条目内容"
+      - "同场景 initHeader 返回 false 且未写入 FILE_HEADER"
+      - "readAllWithStatus 对读失败返回 failed=true；对真空文件返回 failed=false"
+      - "./gradlew testDebugUnitTest 全部通过（含既有用例无回归）"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-08-31: 109 tests green（5 个新读失败守卫用例全过）；附带 build.gradle.kts 开启 unitTests.isReturnDefaultValues（纯 JVM 下 Log 不抛异常），否则失败路径测试无法触达"
+    current_round:
+    max_retries: 5
+    status: passed
+    dependencies: []
+
+  - id: T-d12b
+    seq: 2
+    description: "给 MainScreen.refreshEntryCount 的孤儿对账加守卫：读失败（failed）或「解析结果为空但上一次刷新非空」时跳过孤儿清理，防止瞬时读失败误删全部提醒；加注释引用 TD-012 与 architecture.md §4.4"
+    constraints: "仅改 Appendo/src/main/java/com/yiyue31/android/appendo/ui/MainScreen.kt 的 refreshEntryCount；不改对账的正常路径行为；不改 ReminderStore/AlarmScheduler 接口"
+    deliverable: "MainScreen.kt 中带守卫与注释的对账逻辑"
+    evaluation_criteria:
+      - "读失败路径上不会调用 AlarmScheduler.cancel 或 ReminderStore.remove（代码检查：守卫条件覆盖 failed 与「空但上轮非空」两种情况）"
+      - "正常空文件（真无条目）时孤儿清理仍执行——原有行为不回归"
+    evaluation_method: "code-review [read-only]"
+    evaluation_result: "passed-2026-08-31: 守卫覆盖 failed 与「空但上轮非空」两条件（refreshEntryCount return@launch）；正常清空路径经 clear() 先置空 entries 不受影响；testDebugUnitTest 全绿"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: [T-d12a]
+
+  # ---------- TD-015（高）解析层静默丢内容 ----------
+
+  - id: T-d15a
+    seq: 3
+    description: "在 README「已知约束与数据安全说明」追加短期披露：条目内容中恰为 --- 或以 # Appendo 开头的行，在编辑保存后可能被移除（修复前告知）"
+    constraints: "仅改 README.md 已知约束一节，一句话级别；不改代码"
+    deliverable: "README.md 新增一条已知约束"
+    evaluation_criteria:
+      - "README 已知约束中存在描述该编辑丢行风险的条目"
+      - "表述与 architecture.md §3.1/§8.1 K6 的事实一致（仅限 --- 与 # Appendo 开头两类形态）"
+    evaluation_method: "code-review [read-only]"
+    evaluation_result: "passed-2026-08-31: README 已知约束已新增 TD-015 条目，表述与 architecture.md K6 一致"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-d15b
+    seq: 4
+    description: "编写 TD-015 修复方案简稿并取得用户确认：扩展 EntryParser.isolateLine 的隔离形态至「恰为 ---」与「以 # Appendo 开头」两类内容行（写侧加 ZWSP、读侧 restoreLine 对应还原）；明确旧文件（无标记）的兼容行为；给出出口剥离范围是否需同步扩展的结论"
+    constraints: "仅新增 docs/design/td-015-content-loss-fix-design.md（状态头：待用户确认）；不改代码。【卡点】本任务通过后必须暂停，向用户呈现方案并等待确认，才可启动 T-d15c"
+    deliverable: "docs/design/td-015-content-loss-fix-design.md，含：隔离形态扩展清单、restoreLine 对应规则、旧文件兼容结论、出口剥离影响分析、测试边界清单"
+    evaluation_criteria:
+      - "方案文档存在且覆盖上述 5 个要点"
+      - "状态头为「待用户确认」，且已在会话中向用户呈现并获确认（用户明确同意后本任务方可记为通过）"
+    evaluation_method: "manual [read-only]"
+    evaluation_result: "passed-2026-08-31: 方案文档已产出（5 要点齐全），用户在会话中明确回复「确认」"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-d15c
+    seq: 5
+    description: "按 T-d15b 确认稿实现：EntryParser.isolateLine/restoreLine 扩展隔离形态；保证 format→parse 往返不丢行；updateEntry 编辑含此类行的条目后内容不再丢失；同步单测"
+    constraints: "仅改 Appendo/src/main/java/com/yiyue31/android/appendo/util/EntryParser.kt（如方案要求则含 stripIsolationMarkers）与 Appendo/src/test/java/.../util/EntryParserTest.kt；严格按 T-d15b 确认稿执行，越出方案范围的改动不做"
+    deliverable: "扩展后的 EntryParser + EntryParserTest 新增用例（--- 行、# Appendo 开头行、幂等、旧格式兼容、出口剥离）"
+    evaluation_criteria:
+      - "内容行恰为 --- 或以 # Appendo 开头时：format 写入带 ZWSP 前缀，parse 还原为原文"
+      - "updateEntry 编辑含此类行的条目后，重新 parse 的内容与用户原文一致（不丢行）"
+      - "旧格式文件（无 ZWSP 标记）解析行为与现状一致：条目数不变、不抛异常"
+      - "readAllForExternal/stripIsolationMarkers 对新增隔离形态的剥离行为与方案结论一致且有测试"
+      - "./gradlew testDebugUnitTest 全部通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-08-31: 8 个新用例全过（形态判定/往返/幂等/updateEntry 不丢行/旧格式兼容/出口剥离/混合计数）；全量 suite 绿"
+    current_round:
+    max_retries: 5
+    status: passed
+    dependencies: [T-d15b]
+
+  # ---------- TD-014（中-高）应用更新丢闹钟 ----------
+
+  - id: T-d14
+    seq: 6
+    description: "补齐应用更新后的闹钟恢复：AndroidManifest 中 ReminderBootReceiver 的 intent-filter 增加 MY_PACKAGE_REPLACED；MainScreen 启动时对 sidecar 中未 fired 的提醒按 effectiveTrigger 重排闹钟（覆盖 force-stop 后自愈）；修正 ReminderBootReceiver 与事实不符的 KDoc"
+    constraints: "仅改 AndroidManifest.xml、reminder/ReminderBootReceiver.kt（KDoc）、ui/MainScreen.kt（启动重排）；重排逻辑尽量复用 ReminderLogic 既有纯函数；新增纯逻辑必须有单测"
+    deliverable: "manifest 变更 + 启动重排逻辑 + ReminderLogicTest（或新增纯函数测试）+ KDoc 修正"
+    evaluation_criteria:
+      - "ReminderBootReceiver 的 intent-filter 同时含 BOOT_COMPLETED 与 MY_PACKAGE_REPLACED"
+      - "应用启动路径会对 store 中未 fired 的提醒调用 AlarmScheduler.schedule，且该决策逻辑有纯函数单测覆盖"
+      - "ReminderBootReceiver 的 KDoc 与实际触发条件一致（不残留不实声明）"
+      - "./gradlew testDebugUnitTest 全部通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-08-31: manifest 含双 action；rescheduleAll 三入口共用（决策逻辑=ReminderLogic.bootDecide，已有纯函数单测）；KDoc 修正；suite 绿"
+    current_round:
+    max_retries: 5
+    status: passed
+    dependencies: []
+
+  # ---------- TD-013（中）SAF 写路径绕过软恢复 ----------
+
+  - id: T-d13
+    seq: 7
+    description: "让 SAF 写路径先恢复再读写：SafMarkdownFile 的 append/appendEntry/deleteEntry/updateEntry/writeAll 在读取当前内容前先做恢复判定（ensureConsistent 或等价机制），确保 .bak 始终基于上次确认良好的状态，消除「脏内容污染唯一好备份」路径；附时序说明注释引用 TD-013"
+    constraints: "仅改 Appendo/src/main/java/com/yiyue31/android/appendo/util/SafMarkdownFile.kt；不改 FileOperationLock 协议与公开接口签名；SAF 真机验证不在本任务自动化范围内（记入收尾任务真机清单）"
+    deliverable: "SafMarkdownFile 写路径恢复时序修正 + 注释"
+    evaluation_criteria:
+      - "代码检查：所有写路径在读取 current 前均经过恢复判定，不存在绕过的 readMainOnly 直读写入"
+      - "EntryParserTest 等既有单测无回归，./gradlew testDebugUnitTest 通过"
+      - "./gradlew assembleDebug 构建通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-08-31: 6 条写路径（append/appendEntry/deleteEntry/updateEntry/initHeader/writeAll）统一走 readMainForWrite（先 ensureConsistent）；suite 绿；真机验证列入收尾清单"
+    current_round:
+    max_retries: 5
+    status: passed
+    dependencies: [T-d12a]
+
+  # ---------- TD-010（低）归档计数严格正则 ----------
+
+  - id: T-d10
+    seq: 8
+    description: "修正归档条目计数：ArchiveRepository.countEntries 与 MainActivity.countEntries 改用 EntryParser.getTimestampRegex()（宽松正则），删除 MainActivity 内联严格正则；附秒/毫秒混合计数单测"
+    constraints: "仅改 data/ArchiveRepository.kt、MainActivity.kt 两处调用点与测试目录对应文件；不改 MarkdownFormatter 本体（其清理在 T-d11）"
+    deliverable: "两处调用点修正 + 混合格式计数单测"
+    evaluation_criteria:
+      - "两处计数均使用 EntryParser.getTimestampRegex()，生产代码无内联时间戳正则残留（MainActivity 内联正则已删除）"
+      - "新增单测：秒级+毫秒级混合内容的条目计数正确"
+      - "./gradlew testDebugUnitTest 全部通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-08-31: 两处计数改 EntryParser.getTimestampRegex()；MainActivity 内联严格正则已删；混合格式计数单测通过；grep 确认生产代码无内联时间戳正则"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  # ---------- TD-011（低）MarkdownFormatter 死代码 ----------
+
+  - id: T-d11
+    seq: 9
+    description: "清理 MarkdownFormatter 死代码：删除 formatEntry、TIMESTAMP_FORMAT 与 getTimestampRegex（T-d10 完成后应无生产调用方）；EntryDeletionIntegrationTest 改用 EntryParser.format 构造测试内容；同步 util/CLAUDE.md 对应表格行"
+    constraints: "仅改 util/MarkdownFormatter.kt、Appendo/src/test/java/.../integration/EntryDeletionIntegrationTest.kt、util/CLAUDE.md；删除前用 grep 确认无其他引用"
+    deliverable: "精简后的 MarkdownFormatter（仅剩 FILE_HEADER、ARCHIVE_TIMESTAMP_FORMAT）+ 迁移后的测试 + 更新的 CLAUDE.md"
+    evaluation_criteria:
+      - "MarkdownFormatter 仅含 FILE_HEADER 与 ARCHIVE_TIMESTAMP_FORMAT 两个常量"
+      - "全仓库（含测试）无 formatEntry、MarkdownFormatter.getTimestampRegex、TIMESTAMP_FORMAT 引用"
+      - "./gradlew testDebugUnitTest 全部通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-08-31: MarkdownFormatter 仅剩 FILE_HEADER/ARCHIVE_TIMESTAMP_FORMAT/SEPARATOR_LINE/FILE_HEADER_PREFIX；全仓库无 formatEntry/严格正则引用（grep 核实）；集成测试已迁移；suite 绿"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: [T-d10]
+
+  # ---------- 收尾 ----------
+
+  - id: T-close
+    seq: 10
+    description: "批次收尾：同步全部文档并升版 v1.2.1——architecture.md 更新（§4.2 缺口、§4.4 契约、§5.3 更新盲区、§8.1 K1/K6-K9 标注已修复、§3 按 T-d15c 结果修订协议）；debt-tracker TD-010~015 标记已解决及版本；README 处理 TD-015 短期披露（修复后移除或改写为历史）；CHANGELOG 增 1.2.1；build.gradle.kts versionName=1.2.1、versionCode=7；整理真机验收清单（SAF 崩溃恢复、应用更新后提醒、出口干净度，引用 architecture.md §12）"
+    constraints: "仅改文档（architecture.md、debt-tracker.md、README.md、CHANGELOG.md）与 Appendo/build.gradle.kts 版本号；不再改任何功能代码；真机验收清单是交给用户执行的核对表，不是本任务的自动化标准"
+    deliverable: "文档同步 + 版本号 + CHANGELOG + 真机验收清单（写入 work 交接说明或 debt-tracker 备注）"
+    evaluation_criteria:
+      - "debt-tracker 中 TD-010~TD-015 均标注已解决与对应版本"
+      - "architecture.md §8.1 的 K1、K6-K9 与正文 §4.2/§4.4/§5.3 不再描述已修复的行为为现状"
+      - "CHANGELOG 含 1.2.1 条目且列出本批次修复项；build.gradle.kts versionName 为 1.2.1、versionCode 为 7"
+      - "./gradlew testDebugUnitTest 与 ./gradlew assembleDebug 均通过"
+    evaluation_method: "code-review [requires-execution]"
+    evaluation_result: "passed-2026-08-31: debt-tracker TD-010~015 已标结项；architecture.md §3.1/§3.3/§4.2/§4.4/§5.3/§8.1/§2 已同步修复后现状；README 约束改写；CHANGELOG 1.2.1 + versionCode 7/versionName 1.2.1；testDebugUnitTest + assembleDebug 通过；真机验收清单已写入 debt-tracker"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: [T-d12a, T-d12b, T-d15a, T-d15c, T-d14, T-d13, T-d10, T-d11]

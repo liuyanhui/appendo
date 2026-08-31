@@ -2,7 +2,7 @@ package com.yiyue31.android.appendo.integration
 
 import com.yiyue31.android.appendo.ui.LinkEntry
 import com.yiyue31.android.appendo.ui.parseMarkdownEntries
-import com.yiyue31.android.appendo.util.MarkdownFormatter
+import com.yiyue31.android.appendo.util.EntryParser
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
@@ -19,9 +19,10 @@ class EntryDeletionIntegrationTest {
         val tempDir = System.getProperty("java.io.tmpdir")
         val testFile = File(tempDir, "test_integration_${System.currentTimeMillis()}.md")
 
-        val initialContent = MarkdownFormatter.formatEntry("Entry 1") +
-                MarkdownFormatter.formatEntry("Entry 2") +
-                MarkdownFormatter.formatEntry("Entry 3")
+        // TD-011 迁移：MarkdownFormatter.formatEntry 已删，改用 EntryParser.format（毫秒时间戳）
+        val initialContent = EntryParser.format("2026-04-17 10:00:00.000", "Entry 1") +
+                EntryParser.format("2026-04-17 11:00:00.000", "Entry 2") +
+                EntryParser.format("2026-04-17 12:00:00.000", "Entry 3")
 
         testFile.writeText(initialContent)
 
@@ -87,7 +88,7 @@ class EntryDeletionIntegrationTest {
         val tempDir = System.getProperty("java.io.tmpdir")
         val testFile = File(tempDir, "test_timestamp_${System.currentTimeMillis()}.md")
 
-        val content = MarkdownFormatter.formatEntry("Test content")
+        val content = EntryParser.format("2026-04-17 10:00:00.000", "Test content")
         testFile.writeText(content)
 
         try {
