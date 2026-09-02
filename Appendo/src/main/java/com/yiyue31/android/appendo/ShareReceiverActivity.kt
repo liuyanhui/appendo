@@ -25,6 +25,13 @@ class ShareReceiverActivity : ComponentActivity() {
         private const val MAX_CONTENT_LENGTH = 10000 // Prevent DOS attacks
     }
 
+    /** 分享内容解析结果：有效正文 / 无有效内容 / 超长（TD-020⑤：超长须明确告知，不再笼统"写入失败"）。 */
+    private sealed interface ShareContent {
+        data class Valid(val text: String) : ShareContent
+        object Invalid : ShareContent
+        object TooLong : ShareContent
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -35,9 +42,12 @@ class ShareReceiverActivity : ComponentActivity() {
             val fileUri = fileRepo.getFileUri()
             val defaultFile = fileRepo.getDefaultFile()
 
-            val content = resolveIntentContent(intent)
+            val resolved = resolveIntentContent(intent)
 
             var priorDuplicates = 0
+            // TD-021：SAF 授权失效的两个信号——写失败 / 自动回退默认（后者须明示，防"数据分家"困惑）
+            var safWriteFailed = false
+            var fellBackToDefault = false
             // Try to write content
             val success = try {
                 // Check if SAF mode is still valid
@@ -49,19 +59,21 @@ class ShareReceiverActivity : ComponentActivity() {
                     if (useSAF && fileUri != null) {
                         Log.w(TAG, "SAF URI invalid, falling back to default file")
                         fileRepo.clearFileUri()
+                        fellBackToDefault = true
                     }
                     FileBasedMarkdownFile(this@ShareReceiverActivity, defaultFile)
                 }
                 if (!markdownFile.exists()) {
                     markdownFile.initHeader()
                 }
-                if (content != null) {
-                    val appended = markdownFile.append(content)
+                if (resolved is ShareContent.Valid) {
+                    val appended = markdownFile.append(resolved.text)
                     if (appended) {
                         // 重复内容计数（追加后读，减去刚写入的 1 条）
                         priorDuplicates = EntryParser.parse(markdownFile.readAll())
-                            .count { it.content == content } - 1
+                            .count { it.content == resolved.text } - 1
                     }
+                    if (!appended && safValid) safWriteFailed = true
                     appended
                 } else {
                     false
@@ -74,16 +86,28 @@ class ShareReceiverActivity : ComponentActivity() {
             val dupCount = priorDuplicates
             // Update UI on main thread
             withContext(Dispatchers.Main) {
-                if (success) {
-                    fileRepo.setFileLastModified(System.currentTimeMillis())
-                    val msg = if (dupCount > 0) {
-                        "Appendo已收到（已有相同内容 $dupCount 条）"
-                    } else {
-                        "Appendo已收到"
+                when {
+                    resolved is ShareContent.TooLong ->
+                        showToast(this@ShareReceiverActivity, "内容过长（上限 $MAX_CONTENT_LENGTH 字符），未保存")
+                    success && fellBackToDefault -> { // TD-021：明示回退，不让数据"无声分家"
+                        fileRepo.setFileLastModified(System.currentTimeMillis())
+                        showToast(this@ShareReceiverActivity, "已保存到默认文件（自定义目录已失效，可打开 appendo 重选）")
                     }
-                    showToast(this@ShareReceiverActivity, msg)
-                } else {
-                    showToast(this@ShareReceiverActivity, "写入失败")
+                    success -> {
+                        fileRepo.setFileLastModified(System.currentTimeMillis())
+                        val msg = if (dupCount > 0) {
+                            "Appendo已收到（已有相同内容 $dupCount 条）"
+                        } else {
+                            "Appendo已收到"
+                        }
+                        showToast(this@ShareReceiverActivity, msg)
+                    }
+                    resolved is ShareContent.Invalid ->
+                        showToast(this@ShareReceiverActivity, "未找到可保存的内容")
+                    safWriteFailed ->
+                        showToast(this@ShareReceiverActivity, "写入失败：自定义目录授权可能已失效，请打开 appendo 重选文件")
+                    else ->
+                        showToast(this@ShareReceiverActivity, "写入失败")
                 }
                 // Delay finish to allow toast to be shown
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -97,11 +121,11 @@ class ShareReceiverActivity : ComponentActivity() {
      * Resolve and validate content from intent.
      * Includes security validation to prevent malicious content injection.
      */
-    private fun resolveIntentContent(intent: Intent): String? {
+    private fun resolveIntentContent(intent: Intent): ShareContent {
         // Validate the intent action first
         if (Intent.ACTION_SEND != intent.action) {
             Log.w(TAG, "Invalid intent action: ${intent.action}")
-            return null
+            return ShareContent.Invalid
         }
 
         // Try to get text content
@@ -109,10 +133,11 @@ class ShareReceiverActivity : ComponentActivity() {
         if (!text.isNullOrBlank()) {
             // Validate content length to prevent DOS attacks
             return if (text.length <= MAX_CONTENT_LENGTH) {
-                text.trim()
+                // 2026-09-01 决策①：输入侧不做 trim——用户首尾空白原样写入文件（保真优先）
+                ShareContent.Valid(text)
             } else {
                 Log.w(TAG, "Content too long: ${text.length} chars")
-                null
+                ShareContent.TooLong
             }
         }
 
@@ -127,15 +152,19 @@ class ShareReceiverActivity : ComponentActivity() {
         // Validate and convert URI to string
         if (uri != null) {
             val uriString = uri.toString()
-            return if (uriString.isNotBlank() && uriString.length <= MAX_CONTENT_LENGTH) {
-                uriString.trim()
-            } else {
+            if (uriString.isBlank()) {
                 Log.w(TAG, "Invalid URI content")
-                null
+                return ShareContent.Invalid
+            }
+            return if (uriString.length <= MAX_CONTENT_LENGTH) {
+                ShareContent.Valid(uriString) // 决策①：不 trim，保真
+            } else {
+                Log.w(TAG, "URI content too long: ${uriString.length} chars")
+                ShareContent.TooLong
             }
         }
 
         Log.w(TAG, "No valid content found in intent")
-        return null
+        return ShareContent.Invalid
     }
 }

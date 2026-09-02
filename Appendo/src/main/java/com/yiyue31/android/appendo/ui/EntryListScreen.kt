@@ -117,7 +117,8 @@ fun EntryListScreen(
                 EntryCard(
                     entry = entry,
                     index = index,
-                    reminderLabel = reminderMap[entry.timestamp]?.let { m ->
+                    // 归档详情（readOnly）不显示提醒徽标：归档是历史快照，提醒属于活动文件的同时间戳条目（缺陷① 2026-09-02）
+                    reminderLabel = if (readOnly) null else reminderMap[entry.timestamp]?.let { m ->
                         if (!m.fired) ReminderText.fullLabel(m) else null
                     },
                     readOnly = readOnly,

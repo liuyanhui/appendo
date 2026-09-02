@@ -1,0 +1,253 @@
+# ==============================================================================
+# 项目: appendo 四角色评审问题修复批次（v1.2.2）— 必修代码项 + 文档完善
+# 目标: Phase 1 修复全部必修软件缺陷并通过各类测试（单测/构建/真机定向验收）；
+#       Phase 2 文档完善（决策卡点 → 执行 → README 用户文档批次）
+# 来源: 2026-08-31 四角色评审（架构师/工程师/测试/产品经理），问题清单见
+#       docs/plans/debt-tracker.md TD-016~020 与评审汇总
+# 范围外: Phase B（TD-007/008 ViewModel/线程下放）；文档缺陷（A 类）已当场修复
+# 决策项: trim 立场 / allowBackup / 旧数据迁移 / 贪睡漂移定位 → 集中在 T-decide 拍板
+# 参考: docs/architecture.md §4.4（K10 修法）、§11、§12
+# ==============================================================================
+# Field Definitions:
+#   id:                 Unique, STABLE identifier (label only — does NOT encode order)
+#   seq:                Execution order, unquoted number. Orchestrator picks smallest pending seq.
+#   description:       What to do — specific, verb-led
+#   constraints:       Scope limits — files/modules/boundaries
+#   deliverable:       Concrete output artifacts
+#   evaluation_criteria: yes/no verifiable conditions
+#   evaluation_method: "{method} [read-only | requires-execution]"
+#   evaluation_result: [filled by orchestrator]
+#   current_round:     [incremented by orchestrator]
+#   max_retries:       3 simple, 5 complex
+#   status:            pending → in-progress → evaluating → passed | failed | blocked
+#   dependencies:      LIST of Task-IDs; [] for none
+# ==============================================================================
+
+tasks:
+  # ---------- Phase 1：必修代码项（全部测试通过） ----------
+
+  - id: T-fix16
+    seq: 1
+    description: "修复 TD-016 删至 0 条 UI 滞留回归（复现测试先行）：把 refreshEntryCount 的守卫决策抽为 util 纯函数（如 RefreshGuard.shouldSkipRefresh(readFailed, content, newEntries, prevEntries)），判据改为「读失败 或（内容空白 且 解析为空 且 上轮非空）」——header-only 是合法空文件须放行刷新；先写复现测试（删除后 header-only + 上轮非空 → 不跳过），再改 MainScreen 接入纯函数"
+    constraints: "仅改 Appendo/src/main/java/.../util/（新纯函数文件）与 ui/MainScreen.kt 的 refreshEntryCount、Appendo/src/test/.../util/ 对应测试；不改存储层；保持原两保护（failed / 空但上轮非空·内容空白）不回归"
+    deliverable: "util 纯函数 + 复现/行为单测（放行 header-only、拦截 failed、拦截空白+上轮非空）+ MainScreen 接入"
+    evaluation_criteria:
+      - "新纯函数单测：content 为 header-only（非空白）且解析为空且上轮非空 → 不跳过刷新（TD-016 复现用例转绿）"
+      - "readFailed → 跳过；内容空白+解析空+上轮非空 → 跳过（原保护不回归）"
+      - "MainScreen 无内联守卫判定，统一调纯函数"
+      - "./gradlew testDebugUnitTest 全部通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-09-01: RefreshGuard 纯函数 + 5 用例（header-only 放行/failed/空白/首启/常规）+ MainScreen 接入；suite 全绿"
+    current_round:
+    max_retries: 5
+    status: passed
+    dependencies: []
+
+  - id: T-fix18
+    seq: 2
+    description: "对齐 TD-018 decideRecovery 三方矛盾：删除无消费方的 shouldShowToast 字段（RecoveryAction 仅保留 useBackup 与 reason），同步修改 EntryParserTest 三个断言与 KDoc；行为保持现状（无 .bak 时仅删 .pending、不提示）"
+    constraints: "仅改 util/EntryParser.kt 的 RecoveryAction/decideRecovery 与 Appendo/src/test/.../util/EntryParserTest.kt 对应用例；不改 SafMarkdownFile 行为"
+    deliverable: "精简后的 RecoveryAction + 更新的测试与 KDoc"
+    evaluation_criteria:
+      - "全仓库无 shouldShowToast 引用（grep 核实）"
+      - "decideRecovery 两分支语义有测试覆盖（有 bak 恢复 / 无 bak 不恢复且不提示）"
+      - "./gradlew testDebugUnitTest 全部通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-09-01: RecoveryAction 仅 useBackup+reason；grep 全仓库零 shouldShowToast 引用；3 个断言对齐；suite 绿"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-fix17
+    seq: 3
+    description: "修复 TD-017 清空前归档兜底不设防（按预推荐阻塞式，验收时可调）：MainScreen.archiveFile 传播 writeAll 的失败结果，清空确认 onClick 仅当归档成功才执行 clear()，归档失败 Toast「归档失败，已取消清空」"
+    constraints: "仅改 ui/MainScreen.kt 的 archiveFile 与清空 onClick；不改存储层接口；成功路径行为不变"
+    deliverable: "带失败传播的 archiveFile + 条件清空逻辑"
+    evaluation_criteria:
+      - "archiveFile 返回值反映 writeAll 成败，失败时清空 onClick 不调用 clear()"
+      - "归档失败路径有明确 Toast（不再误报「已归档」）"
+      - "归档成功路径行为与现状一致；./gradlew testDebugUnitTest + assembleDebug 通过"
+    evaluation_method: "code-review [requires-execution]"
+    evaluation_result: "passed-2026-09-01: archiveFile 返回 Boolean（空内容=无需备份的成功）；清空 onClick 归档失败即「已取消清空」return@TextButton；菜单归档路径不变；testDebugUnitTest 绿"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-testconc
+    seq: 4
+    description: "补全局锁并发回归测试（TD-020①）：FileBasedMarkdownFileTest 新增双线程并发 append（如 2 线程各 25 条），断言最终条目数 = 50、时间戳严格递增且唯一、全文可 parse 无交错"
+    constraints: "仅改 Appendo/src/test/.../util/FileBasedMarkdownFileTest.kt；纯 JVM（既有 mock Context + 临时文件模式）"
+    deliverable: "并发回归测试用例"
+    evaluation_criteria:
+      - "并发 append 后条目数 = 两线程写入总和，无丢失/交错"
+      - "全部时间戳唯一且按文件序单调"
+      - "./gradlew testDebugUnitTest 全部通过（含既有用例）"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-09-01: 2×25 并发 append 用例通过（50 条全落盘、内容唯一、时间戳严格递增）"
+    current_round:
+    max_retries: 5
+    status: passed
+    dependencies: []
+
+  - id: T-testdup
+    seq: 5
+    description: "补重复时间戳语义测试（TD-020②）：构造同时间戳两条目（经 appendEntry），断言 findEntryBounds 命中第一条、deleteEntry 删除的是第一条、该时间戳因仍存在条目不被 findOrphans 判为孤儿"
+    constraints: "仅改 Appendo/src/test/ 下对应测试文件（EntryParserTest / ReminderLogicTest 或新增用例）"
+    deliverable: "重复时间戳三后果中可纯测的两个（首条命中、孤儿判定）的固定用例"
+    evaluation_criteria:
+      - "同 ts 两条目：findEntryBounds 返回第一条的区间"
+      - "deleteEntry 后剩余的是第二条；该 ts 不在 findOrphans 结果中（当第二条仍在）"
+      - "./gradlew testDebugUnitTest 全部通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-09-01: 三个用例（findEntryBounds 首条命中区间 / deleteEntry 删第一条 / findOrphans 保留仍存在的 ts）"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-hyg
+    seq: 6
+    description: "软件卫生批次（TD-020③⑤）：删除死函数 ReminderLogic.findMissed / advanceToBooted 及其 3 个测试（生产路径走 bootDecide）；ShareReceiverActivity 超长内容的 Toast 由笼统「写入失败」改为「内容过长（上限 10000 字符）」"
+    constraints: "仅改 util/ReminderLogic.kt、Appendo/src/test/.../util/ReminderLogicTest.kt、ShareReceiverActivity.kt 的 Toast 文案；删函数前 grep 确认无生产引用"
+    deliverable: "精简后的 ReminderLogic + 测试 + 明确的超长提示文案"
+    evaluation_criteria:
+      - "全仓库无 findMissed / advanceToBooted 引用（含测试）"
+      - "超长分享的 Toast 文案含「内容过长」与上限说明"
+      - "./gradlew testDebugUnitTest 全部通过"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-09-01: findMissed/advanceToBooted 及其 3 测试已删（grep 零引用）；ShareContent sealed（Valid/Invalid/TooLong）三类文案区分；suite 绿"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-verify
+    seq: 7
+    description: "定向真机验收（集中一次 session，用户执行 / Claude 配合 adb）：①删除最后一条 → 列表立即清空、计数归 0（TD-016）；②设过期提醒 → 重启 → 解锁后补发「已过期」（BOOT 回归）；③SAF 模式写入瞬间 adb shell am crash → 重进出现恢复提示且内容为上次良好状态；④设临近提醒 → adb install -r 重装（不重启）→ 到点仍响（TD-014 完整验收）；⑤清空 → 自动归档成功 → 提示与文件状态正确（TD-017 回归）。结果记入 debt-tracker"
+    constraints: "不改代码；真机操作按 architecture.md §12 更新后的手段执行；任一项失败则回开对应修复任务"
+    deliverable: "五项验收结果记录（debt-tracker 追加）"
+    evaluation_criteria:
+      - "五项各有明确的通过/失败记录，与 architecture.md §12 状态列同步"
+      - "失败项已回开对应任务（重开本计划任务或新增）"
+    evaluation_method: "manual [requires-execution]"
+    evaluation_result: "passed-2026-09-02: ①删至0条✅(用户) ④覆盖安装到点响✅(dumpsys 闹钟重注册+锁屏通知) ②BOOT补发✅(用户重启验证) ⑤清空归档回归✅ ③授权丢失受控复现✅(TD-021根因:takePersistable未持久化+install-r清授权,临时授权扛进程死亡) 渲染疑点排除(与预期一致)"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: [T-fix16, T-fix17]
+
+  - id: T-fixsaf
+    seq: 7.5
+    description: "修复 TD-021（真机复现确认，用户已确认方案）：SAF 授权丢失后不再静默空列表——MainScreen 检测到「SAF 模式 + 读失败」时弹一次性对话框「数据文件访问已失效」，提供 [重选文件]（复用 changeFileLauncher）与 [回退默认]（clearFileUri + 状态重置 + 刷新）；ShareReceiverActivity 在 SAF 写失败时 Toast 明示授权可能失效并引导打开应用重选（替代笼统「写入失败」，且不再静默回退默认造成数据分家）"
+    constraints: "仅改 ui/MainScreen.kt 与 ShareReceiverActivity.kt；对话框文案说明数据不丢失；不改存储层"
+    deliverable: "SAF 失效对话框 + 分享路径提示文案"
+    evaluation_criteria:
+      - "SAF 模式读失败时（install -r 后）应用弹出失效对话框而非静默空列表（真机验收）"
+      - "重选文件后列表恢复；回退默认后切换到默认文件并刷新"
+      - "SAF 写失败的分享 Toast 含「授权可能已失效」引导"
+      - "testDebugUnitTest + assembleDebug 通过"
+    evaluation_method: "manual [requires-execution]"
+    evaluation_result: "passed-2026-09-02: 活体验收——SAF 模式 + install -r 杀授权后启动弹「数据文件访问已失效」对话框（修复前为静默空列表）；用户点「重选文件」恢复 personal/Appendo.md 数据完整；分享路径失效提示文案已加；suite 绿"
+    current_round:
+    max_retries: 5
+    status: passed
+    dependencies: [T-verify]
+
+  - id: T-fixbadge
+    seq: 7.6
+    description: "修复真机验收发现：归档详情（readOnly 复用 EntryListScreen）残留活动文件的提醒徽标——归档是历史快照，提醒语义不属于它。readOnly 视图不渲染徽标"
+    constraints: "仅改 ui/EntryListScreen.kt 一处；活动列表徽标行为不变"
+    deliverable: "readOnly 屏蔽徽标的 EntryListScreen"
+    evaluation_criteria:
+      - "归档详情中卡片不再显示「⏰ … 提醒」字样（真机）"
+      - "主列表（非只读）徽标行为不变（真机回归）"
+      - "testDebugUnitTest + assembleDebug 通过"
+    evaluation_method: "manual [requires-execution]"
+    evaluation_result: "passed-2026-09-02: 用户真机确认归档详情徽标已消失、主列表徽标正常；suite+构建绿"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-close
+    seq: 8
+    description: "v1.2.2 收尾：build.gradle.kts versionCode=8 / versionName=1.2.2；CHANGELOG 增 1.2.2；architecture.md 同步（§4.4 K10 → 已修复、§8.1 K10/K11 状态、§5.2 贪睡注引用保持、§12 状态列按 T-verify 结果更新、修订记录）；debt-tracker TD-016/017/018/020 结项；README 版本表补 1.2.2"
+    constraints: "仅改文档与版本号；不再改功能代码"
+    deliverable: "文档同步 + 版本号 + CHANGELOG"
+    evaluation_criteria:
+      - "debt-tracker 中 TD-016/017/018/020 标注已解决与版本"
+      - "architecture.md §8.1 K10/K11 状态与代码一致，§12 状态列反映 T-verify 结果"
+      - "versionName=1.2.2、versionCode=8；CHANGELOG 含 1.2.2 条目"
+      - "./gradlew testDebugUnitTest 与 assembleDebug 均通过"
+    evaluation_method: "code-review [requires-execution]"
+    evaluation_result: "passed-2026-09-02: v1.2.2/versionCode 8 发布装机；CHANGELOG、architecture（K10-K13 结项/§4.1 自愈/§12 状态列）、README、debt-tracker（批次结项+TD-022）全部同步；testDebugUnitTest + assembleDebug 绿；T-fixbadge 真机确认后终验"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: [T-fix16, T-fix18, T-fix17, T-testconc, T-testdup, T-hyg, T-verify, T-fixsaf, T-fixbadge]
+
+  # ---------- Phase 2：文档完善（决策卡点 → 执行 → README 批次） ----------
+
+  - id: T-decide
+    seq: 9
+    description: "决策包（人工卡点）：集中呈现 4 个产品决策及推荐，等待用户拍板——①trim()/空条目丢弃：修代码去 trim（保真）or 修订 specs 承诺 or 仅披露；②allowBackup：拥抱云备份（README 明示+口径改「应用自身不联网」）or 严格本地（false+迁移方案）；③旧数据一次性迁移：做（首启补 ZWSP，幂等）or 维持+补 ADR；④贪睡漂移：有意取舍（声明）or 改锚定原时刻"
+    constraints: "仅产出决策记录（写入 debt-tracker 或决策纪要），不改代码。【卡点】用户拍板前不得启动 T-exec"
+    deliverable: "4 项决策的用户拍板结果记录（含不选项的理由）"
+    evaluation_criteria:
+      - "4 项决策各有明确结论并已向用户呈现选项与推荐"
+      - "用户已明确回复拍板（本任务方可记通过）"
+    evaluation_method: "manual [read-only]"
+    evaluation_result: "passed-2026-09-01: 用户拍板 ①A 修代码去输入侧 trim（解析侧 trim 因模板空行耦合保留并修订承诺，落地时明示）②A 拥抱云备份 ③A 做旧数据一次性迁移 ④A 贪睡漂移定位有意取舍"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-dgchk
+    seq: 10
+    description: "核实降级安装的真实后果（为 README 措辞升级提供依据）：读 git 历史（v1.0.1 的 FileBasedMarkdownFile.append 实现），确认旧版本读毫秒文件得 0 条后追加是否触发「全量重写/清空」"
+    constraints: "只读调查：git show 历史版本 + 源码阅读，≤3 个历史版本；不改任何文件"
+    deliverable: "结论记录（追加到 debt-tracker TD 备注）：降级后最坏后果是「看不到」还是「可能丢数据」"
+    evaluation_criteria:
+      - "结论有历史代码证据（commit + 代码行为描述）"
+      - "结论二值明确：丢数据 / 仅不可见"
+    evaluation_method: "code-review [read-only]"
+    evaluation_result: "passed-2026-09-01: 证据 6e9430a（v1.0.1 时代）FileBasedMarkdownFile.append = FileOutputStream(file, true) 纯追加模式，不读不重写全文件。结论：降级后追加不丢数据，仅条目不可见（重装新版恢复显示）。README 措辞无需升级为'丢数据'级"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: []
+
+  - id: T-exec
+    seq: 11
+    description: "按 T-decide 拍板结果执行：涉及代码的（如去 trim、旧数据迁移、贪睡锚定）按 CODINGRULES 先写测试再修；涉及立场的（allowBackup、贪睡取舍）按结论改 manifest/文档并补 ADR（architecture.md §9）"
+    constraints: "范围严格限于 4 项拍板结论；每项代码改动附回归测试；specs 若变承诺须走追加修订"
+    deliverable: "按决策落地的代码/文档改动 + 测试"
+    evaluation_criteria:
+      - "每项拍板决策均有对应落地物（代码/ADR/文档）"
+      - "涉及代码的项有回归测试且 testDebugUnitTest 全绿"
+      - "architecture.md §9 ADR 与 §8.3 状态同步"
+    evaluation_method: "automated-test [requires-execution]"
+    evaluation_result: "passed-2026-09-01: ①输入侧 trim 已移除（两处）；③migrateLegacyIsolation + MainScreen 启动钩子 + 6 用例（夹住行/头部形态行/结构线不动/幂等/尾换行/新格式 null）；②④文档口径更新（§3.1/§3.3/§5/§5.2/§8.3/§9 四条 ADR）；specs 追加修订记录；suite 全绿"
+    current_round:
+    max_retries: 5
+    status: passed
+    dependencies: [T-decide]
+
+  - id: T-readme
+    seq: 12
+    description: "README 用户文档完善批次：新增「换机与备份」小节（口径按 T-decide 的 allowBackup 结论）；已知约束补：重复时间戳的删除/提醒覆盖后果、换文件/清空会清除提醒设置、分享限长 10000 字符、多设备/云盘同步不支持、降级安装措辞按 T-dgchk 结论升级（若核实为丢数据须写明）；提醒段落补「打开应用会自动补发已错过的提醒」"
+    constraints: "仅改 README.md（用户文档）；所有表述与 architecture.md 现状一致；不改代码"
+    deliverable: "README 完善版"
+    evaluation_criteria:
+      - "「换机与备份」小节存在且与 allowBackup 决策一致"
+      - "上述 6 项披露逐条存在且与 architecture.md 对应小节事实一致"
+      - "降级措辞与 T-dgchk 结论匹配"
+    evaluation_method: "code-review [read-only]"
+    evaluation_result: "passed-2026-09-01: README 新增「换机与备份」小节（决策②口径）；已知约束补齐重复时间戳/清空换文件抹提醒/10k/多设备/贪睡后移/自动补发/迁移说明；降级措辞按 T-dgchk 微调（不升级为丢数据级，补'重装可恢复'）；architecture.md §8.2 同步"
+    current_round:
+    max_retries: 3
+    status: passed
+    dependencies: [T-exec, T-dgchk]

@@ -103,6 +103,7 @@ import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import com.yiyue31.android.appendo.util.MarkdownFormatter
 import com.yiyue31.android.appendo.util.MarkdownFileOperations
+import com.yiyue31.android.appendo.util.RefreshGuard
 import com.yiyue31.android.appendo.util.SafMarkdownFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -145,6 +146,8 @@ fun MainScreen(
     var lastModified by remember { mutableStateOf(fileRepository.getFileLastModified()) }
     var showMenu by remember { mutableStateOf(false) }
     var showSetupGuideDialog by remember { mutableStateOf(false) }
+    // SAF 授权失效（TD-021）：读失败且 SAF 模式时弹此对话框，不再静默空列表
+    var showSafInvalidDialog by remember { mutableStateOf(false) }
     var showDetailDialog by remember { mutableStateOf(false) }
     var selectedEntry by remember { mutableStateOf<LinkEntry?>(null) }
     var editContent by remember { mutableStateOf("") }
@@ -201,21 +204,25 @@ fun MainScreen(
         coroutineScope.launch {
             try {
                 // 文件 I/O + 解析下放 Dispatchers.IO（中-7：避免主线程 ANR，尤其 2s 轮询路径）
-                val (newEntries, recovered, readFailed) = withContext(Dispatchers.IO) {
+                // Triple(条目列表或 null[跳过], recovered, SAF 读失败[TD-021])
+                val (newEntries, recovered, safReadFailed) = withContext(Dispatchers.IO) {
                     val mdFile = getCurrentMarkdownFile()
                     if (!mdFile.exists()) {
                         mdFile.initHeader()
                     }
                     val result = mdFile.readAllWithStatus()
-                    Triple(parseMarkdownEntries(result.content), result.recovered, result.failed)
+                    val parsed = parseMarkdownEntries(result.content)
+                    // 刷新守卫（TD-012/016，决策收敛于 RefreshGuard 纯函数）：
+                    // 读失败/空白内容 → 跳过刷新与对账（防误杀提醒）；header-only 合法空 → 放行（防删至 0 条 UI 滞留）
+                    if (RefreshGuard.shouldSkipRefresh(result.failed, result.content, parsed.size, entries.size)) {
+                        Triple<List<LinkEntry>?, Boolean, Boolean>(null, false, result.failed && useSAF)
+                    } else {
+                        Triple(parsed, result.recovered, false)
+                    }
                 }
-                if (readFailed) {
-                    // 读失败 ≠ 空文件：保留现有列表与提醒，跳过本次刷新与对账（TD-012，architecture.md §4.4）
-                    return@launch
-                }
-                if (newEntries.isEmpty() && entries.isNotEmpty()) {
-                    // 结果为空但上一轮非空：疑似异常读取，跳过刷新与对账，防止误杀全部提醒（TD-012）。
-                    // 合法的清空路径（clear()）会先把 entries 置空再落盘，不会命中此守卫。
+                if (newEntries == null) {
+                    // TD-021：SAF 授权丢失（覆盖安装等）→ 弹窗引导，不再静默空列表
+                    if (safReadFailed) showSafInvalidDialog = true
                     return@launch
                 }
                 if (recovered) {
@@ -315,6 +322,25 @@ fun MainScreen(
 
         // 应用启动即重排提醒（TD-014：覆盖安装/force-stop 会丢闹钟，不能只等开机广播）
         coroutineScope.launch(Dispatchers.IO) { rescheduleAll(context) }
+
+        // 旧数据一次性隔离迁移（2026-09-01 决策③）：为未隔离的边界形态内容行补 ZWSP，旧条目不再丢行。
+        // 幂等（无需迁移返回 null）；走 writeAll 原子写；完成后靠 mtime 轮询自然刷新 UI。
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val mdFile = getCurrentMarkdownFile()
+                if (mdFile.exists()) {
+                    EntryParser.migrateLegacyIsolation(mdFile.readAll())?.let { migrated ->
+                        if (mdFile.writeAll(migrated)) {
+                            fileRepository.setFileLastModified(System.currentTimeMillis())
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.e("MainScreen", "Legacy isolation migration failed", e)
+                }
+            }
+        }
 
         // Show setup guide on fresh install
         if (fileRepository.isFirstLaunch()) {
@@ -803,11 +829,15 @@ fun MainScreen(
                         try {
                             val mdFile = getCurrentMarkdownFile()
 
-                            // First, create a backup archive
-                            archiveFile(context, fileRepository, mdFile, fileRepository.getArchiveFile()) {
+                            // First, create a backup archive（TD-017：归档失败不得清空）
+                            val archived = archiveFile(context, fileRepository, mdFile, fileRepository.getArchiveFile()) {
                                 useSAF = fileRepository.isUsingSAF()
                                 fileUri = fileRepository.getFileUri()
                                 defaultFile = fileRepository.getDefaultFile()
+                            }
+                            if (!archived) {
+                                showToast(context, "已取消清空（归档失败）")
+                                return@TextButton
                             }
 
                             // Then clear current file
@@ -1037,6 +1067,40 @@ fun MainScreen(
                         }
                     }) { Text("自启动设置") }
                     TextButton(onClick = { showSelfCheck = false }) { Text("关闭") }
+                }
+            }
+        )
+    }
+
+    // SAF 授权失效引导（TD-021）：数据仍在原文件中，绝不静默空列表
+    if (showSafInvalidDialog) {
+        AlertDialog(
+            onDismissRequest = { showSafInvalidDialog = false },
+            title = {
+                Text("数据文件访问已失效", fontWeight = FontWeight.SemiBold, color = AppColors.Danger)
+            },
+            text = {
+                Text("自定义目录的文件授权在应用更新后可能失效（本机系统行为），因此暂时读不到数据。\n\n你的数据仍在原文件中，不会丢失。可重选同一文件恢复访问，或回退到应用默认文件。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSafInvalidDialog = false
+                    changeFileLauncher.launch("Appendo.md") // 重选原文件恢复授权
+                }) {
+                    Text("重选文件", color = AppColors.Primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showSafInvalidDialog = false
+                    fileRepository.clearFileUri()
+                    useSAF = false
+                    fileUri = null
+                    defaultFile = fileRepository.getDefaultFile()
+                    fileRepository.clearFileLastModified()
+                    refreshEntryCount()
+                }) {
+                    Text("回退默认", color = AppColors.Danger)
                 }
             }
         )
@@ -1335,7 +1399,8 @@ private fun openFile(context: android.content.Context, useSAF: Boolean, fileUri:
 
 /**
  * Archive current content to a new file.
- * CRITICAL FIX: Now actually copies content to archive before clearing.
+ * 返回归档是否成功（TD-017：清空路径以此为前置条件，失败不得清空）。
+ * 空内容（仅文件头）视为"无需备份"的成功。
  */
 private fun archiveFile(
     context: android.content.Context,
@@ -1343,15 +1408,15 @@ private fun archiveFile(
     currentMdFile: MarkdownFileOperations,
     archiveFile: File,
     onComplete: () -> Unit
-) {
-    try {
+): Boolean {
+    return try {
         // Read current content BEFORE creating new archive file
         val currentContent = currentMdFile.readAll()
 
         // Check if content is empty (only has header, no actual entries)
         if (currentContent.isBlank() || !currentContent.contains("## ")) {
             showToast(context, "暂无内容可归档")
-            return
+            return true // 无需备份
         }
 
         // 通过 MarkdownFileOperations.writeAll 写归档（v1.1 CB6：享 atomicWrite + 锁 + 同源同格式 ZWSP）
@@ -1361,14 +1426,19 @@ private fun archiveFile(
             currentContent
         }
         val archiveMdFile = FileBasedMarkdownFile(context, archiveFile)
-        archiveMdFile.writeAll(MarkdownFormatter.FILE_HEADER + contentWithoutHeader)
+        if (!archiveMdFile.writeAll(MarkdownFormatter.FILE_HEADER + contentWithoutHeader)) {
+            showToast(context, "归档失败")
+            return false // TD-017：失败上抛，调用方不得继续清空
+        }
 
         showToast(context, "已归档到: ${archiveFile.name}")
         onComplete()
+        true
     } catch (e: Exception) {
         if (BuildConfig.DEBUG) {
             android.util.Log.e("MainScreen", "Archive failed", e)
         }
         showToast(context, "归档失败: ${e.message}")
+        false
     }
 }

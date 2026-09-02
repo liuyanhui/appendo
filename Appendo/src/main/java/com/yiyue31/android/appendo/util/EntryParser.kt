@@ -168,6 +168,64 @@ object EntryParser {
     fun stripIsolationMarkers(content: String): String =
         content.lines().joinToString("\n") { restoreLine(it) }
 
+    // ==================== 旧数据一次性迁移（2026-09-01 决策③）====================
+
+    /**
+     * 为 v1.2.1 之前写入、未经隔离的"边界形态内容行"补 ZWSP 前缀，使旧条目在视图/编辑中不再丢行。
+     *
+     * 保守规则——**误判方向必须是"漏迁"而非"误迁"**（结构分隔线被误加 ZWSP 会把分隔线变成内容、破坏格式）：
+     * - 恰为 `---` 的行：仅当前一个非空行不是结构位（分隔线 / 时间戳行 / `# Appendo` 头）
+     *   且后一个非空行不是结构位（时间戳行 / 分隔线 / EOF）——即被内容"夹住"——才判为内容行；
+     * - 以 `# Appendo` 开头的行：文件首个非空行（文件头）之外即内容行；
+     * - 已带 ZWSP 前缀的行（新格式）不动；CRLF 行（带 \r）不迁移（保守）。
+     *
+     * 残余不可恢复（已知边界）：已被旧格式当作边界拆分的**时间戳形态**内容行（迁移时它们就是条目边界，
+     * 无法事后区分）；条目末尾紧贴收尾分隔线的 `---`（与分隔线不可区分）。
+     *
+     * @return 迁移后的全文；无需迁移返回 null。幂等：迁移产物再跑返回 null。
+     */
+    fun migrateLegacyIsolation(content: String): String? {
+        val lines = content.lines().toMutableList()
+        if (lines.isEmpty()) return null
+
+        fun prevNonBlank(i: Int): String? =
+            ((i - 1) downTo 0).firstOrNull { j -> lines[j].isNotBlank() }?.let { lines[it] }
+        fun nextNonBlank(i: Int): String? =
+            ((i + 1) until lines.size).firstOrNull { j -> lines[j].isNotBlank() }?.let { lines[it] }
+
+        val headerLineIdx = lines.indexOfFirst { it.isNotBlank() }
+        var changed = false
+        for (i in lines.indices) {
+            val line = lines[i]
+            if (line.startsWith(ISOLATION_MARKER)) continue // 新格式已隔离
+            val victim = when {
+                isTimestampLine(line) -> false // 旧时间戳形态内容行已不可恢复（见 KDoc）
+                isSkippableLine(line) && line.startsWith(MarkdownFormatter.FILE_HEADER_PREFIX) ->
+                    i != headerLineIdx // 文件头之外的本形态行 = 内容
+                line == MarkdownFormatter.SEPARATOR_LINE -> {
+                    val prev = prevNonBlank(i)
+                    val next = nextNonBlank(i)
+                    val prevStructural = prev == null ||
+                        prev == MarkdownFormatter.SEPARATOR_LINE ||
+                        isTimestampLine(prev) ||
+                        prev.startsWith(MarkdownFormatter.FILE_HEADER_PREFIX)
+                    val nextStructural = next == null ||
+                        next == MarkdownFormatter.SEPARATOR_LINE ||
+                        isTimestampLine(next)
+                    !prevStructural && !nextStructural
+                }
+                else -> false
+            }
+            if (victim) {
+                lines[i] = ISOLATION_MARKER + line
+                changed = true
+            }
+        }
+        if (!changed) return null
+        val endsWithNewline = content.endsWith("\n")
+        return lines.joinToString("\n") + if (endsWithNewline) "\n" else ""
+    }
+
     // ==================== 边界算法 + 恢复判定（T-004）====================
 
     /**
@@ -223,19 +281,18 @@ object EntryParser {
     /** SAF 恢复判定结果。 */
     data class RecoveryAction(
         val useBackup: Boolean,
-        val shouldShowToast: Boolean,
         val reason: String
     )
 
     /**
      * SAF 软恢复判定（纯函数）：.pending 存在表示上次写入未确认、主文件可能脏 → 用 .bak 恢复。
-     * - 无 .pending：正常，不恢复、不提示。
-     * - 有 .pending + 有 .bak：从 .bak 恢复 + 提示。
-     * - 有 .pending + 无 .bak：无可恢复内容，仅提示。
+     * - 无 .pending：正常，不恢复。
+     * - 有 .pending + 有 .bak：从 .bak 恢复（上层 readAllWithStatus 返回 recovered=true 提示）。
+     * - 有 .pending + 无 .bak：无可恢复内容，仅清 .pending、不提示（与 SafMarkdownFile 实现一致；TD-018 移除了无消费方的提示标志）。
      */
     fun decideRecovery(pendingExists: Boolean, bakExists: Boolean): RecoveryAction = when {
-        !pendingExists -> RecoveryAction(useBackup = false, shouldShowToast = false, reason = "正常")
-        bakExists -> RecoveryAction(useBackup = true, shouldShowToast = true, reason = "上次写入未完成，从备份恢复")
-        else -> RecoveryAction(useBackup = false, shouldShowToast = true, reason = "上次写入未完成，但无备份可用")
+        !pendingExists -> RecoveryAction(useBackup = false, reason = "正常")
+        bakExists -> RecoveryAction(useBackup = true, reason = "上次写入未完成，从备份恢复")
+        else -> RecoveryAction(useBackup = false, reason = "上次写入未完成，但无备份可用")
     }
 }

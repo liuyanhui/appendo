@@ -177,4 +177,36 @@ class FileBasedMarkdownFileTest {
         assertEquals(1, entries.size)
         assertEquals("---\n# Appendo 备忘\n正文", entries[0].content)
     }
+
+    @Test
+    fun concurrentAppend_allEntriesPreserved_noInterleaving() { // TD-020①：全局锁并发回归
+        md.initHeader()
+        val threads = (1..2).map { t ->
+            Thread {
+                repeat(25) { md.append("线程$t-条目$it") }
+            }
+        }
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
+
+        val entries = EntryParser.parse(md.readAll())
+        assertEquals("50 条全部落盘（无丢失）", 50, entries.size)
+        assertEquals("内容无重复/交错", 50, entries.map { it.content }.toSet().size)
+        val instants = entries.map { EntryParser.parseTimestampToInstant(it.rawTimestamp) }
+        assertTrue("时间戳全部可解析", instants.none { it == null })
+        val ts = instants.filterNotNull()
+        assertEquals("时间戳唯一（单调防碰撞跨线程也成立）", ts.size, ts.toSet().size)
+        assertTrue("按文件序严格递增", ts.zipWithNext().all { (a, b) -> b.isAfter(a) })
+    }
+
+    @Test
+    fun deleteEntry_duplicateTimestamp_removesFirst() { // TD-020②：首条命中语义
+        md.initHeader()
+        md.appendEntry("2026-08-31 09:00:00.000", "第一条")
+        md.appendEntry("2026-08-31 09:00:00.000", "第二条")
+        assertTrue(md.deleteEntry("2026-08-31 09:00:00.000"))
+        val entries = EntryParser.parse(md.readAll())
+        assertEquals(1, entries.size)
+        assertEquals("删除的是第一条（findEntryBounds 首条命中）", "第二条", entries[0].content)
+    }
 }

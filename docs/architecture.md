@@ -15,6 +15,10 @@
 | 2026-08-31 | Yiyue + Claude | 三角色评审修订（架构师/资深工程师/新程序员并行评审）：修正 2 处事实错误与多处以偏概全；如实记录评审揭示的 4 项代码级风险（K6–K9，见 §8.1 与 debt-tracker TD-012~015） |
 | 2026-08-31 | Yiyue + Claude | 按确认的文档目标重定位：面向人类的学习/review/验收三用途（规则固化到文首）；新增 §11 变更评审清单与 §12 验收手段 |
 | 2026-08-31 | Yiyue + Claude | v1.2.1 技术债批次（TD-010~015）落地后同步：K1/K2/K6~K9 标注已修复，§3.1/§3.3/§4.2/§4.4/§5.3 更新为修复后现状 |
+| 2026-08-31 | Yiyue + Claude | 四角色评审（架构师/工程师/测试/产品经理）：修正 v1.2.1 收尾漏改段落（§4.3 formatEntry 遗留描述、§8.3 双 action）、毫秒起始版本（1.0.2）、§3.3 不变量 2 与出口豁免行、§6.1 补 Receiver 主线程 I/O、贪睡漂移如实记录；§11 增 manifest/Intent-SP/文档同步清单组；§12 重写为可执行手段 + 执行状态；登记评审新发现（K10/TD-016 删至 0 条 UI 滞留回归等，TD-016~020） |
+| 2026-09-01 | Yiyue + Claude | 四项产品决策落地（用户拍板 AAAA）：①输入侧去 trim（解析侧 trim 保留并在 §3.1/§9 声明边界）②allowBackup 拥抱云备份（§5/§8.3 口径更新）③旧数据首启一次性迁移（`migrateLegacyIsolation` + MainScreen 启动钩子 + 6 用例）④贪睡漂移定位有意取舍（§5.2）；§9 增四条 ADR |
+| 2026-09-02 | Yiyue + Claude | v1.2.2 收尾：K10/K11 修复落地；真机定向验收五项通过并更新 §12 状态列；真机发现并修复 K12（SAF 授权失效静默，TD-021 受控复现+活体验收对话框自愈）与 K13（归档详情徽标）；重启提醒延迟登记 TD-022 待决策 |
+| 2026-09-02 | Yiyue + Claude | TD-022 决策（用户拍板）：**维持现状**（解锁后重注册/补发），成本/风险评估与理由入 §5.3 注记、§9 ADR 与 debt-tracker |
 
 ---
 
@@ -55,7 +59,7 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 依赖规则（实际代码遵循）：
 
 - **util 不依赖 ui / data / reminder**（`EntryParser`、`ReminderLogic`、`ReminderMetaCodec`、`ReminderText`、`CalendarEntryMapper`、`DuplicateHintThrottle` 全是纯函数/纯数据；`FileBasedMarkdownFile`、`SafMarkdownFile` 仅依赖 `android.content` 与 `androidx.documentfile` 做 I/O）。
-- ui / data / reminder → util 单向依赖。两条横向依赖要注意：`reminder` 会读 `data`（`ReminderAlarmReceiver#findEntryContent` 直接构造 `FileRepository` 取当前文件）；util 内部被共享的除 `EntryParser` 外，还有 `MarkdownFormatter` 常量与 `ReminderMeta` 数据类型。
+- ui / data / reminder → util 单向依赖。一条包间横向依赖要注意：`reminder` 会读 `data`（`findEntryContent`，ReminderAlarmReceiver.kt 顶层函数，直接构造 `FileRepository` 取当前文件）；另注意 util 内部被共享的除 `EntryParser` 外，还有 `MarkdownFormatter` 常量与 `ReminderMeta` 数据类型。
 - `ui.MainScreen` 直接创建 `MarkdownFileOperations` 实例做读写——**没有 ViewModel、没有 Repository 中间层**。这是刻意保留的简单性（也是已知债务，见 §8 与 debt-tracker TD-008）。
 
 ### 1.2 双 Activity
@@ -111,14 +115,14 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 
 - 编码 UTF-8 无 BOM；内容**原样写入**（换行、缩进、符号不处理），唯一的**写侧**例外是 §3.3 的隔离标记。
 - 条目边界 = **时间戳标题行**（不是 `---`，因为用户内容可能包含 `---`）。`---` 只是视觉分隔；删除条目时若前面紧跟 `---` 会连带删掉。
-- **读侧的隔离与丢弃边界**：内容中恰为 `---` 或以 `# Appendo` 开头的行，写入侧（v1.2.1 起，TD-015）与时间戳行同样加 ZWSP 隔离、读侧还原——**编辑不再丢行**。限制：v1.2.1 之前写入的旧条目无隔离标记，这类行在其视图中仍不可见、编辑保存仍会移除（已发生的丢失无法回溯，README 已声明）；另外 `parse` 会丢弃无内容的条目、对整段内容 `trim()`（分享入口亦 `trim()`），此为现状。
+- **读侧的隔离与丢弃边界**：内容中恰为 `---` 或以 `# Appendo` 开头的行，写入侧（v1.2.1 起，TD-015）与时间戳行同样加 ZWSP 隔离、读侧还原——**编辑不再丢行**。旧条目由**首启一次性迁移**（`EntryParser.migrateLegacyIsolation`，2026-09-01 决策③）补隔离：覆盖"被内容夹住的 `---` 行"与"文件头之外的 `# Appendo` 行"；残余不可恢复的边界：已被旧格式当作边界拆分的**时间戳形态**内容行、条目末尾紧贴收尾分隔线的 `---`（保守规则宁漏勿误）。另外：`parse` 会丢弃无内容的条目、对整段内容 `trim()`——**trim 保留**（模板空行与用户首尾空白不可区分，显示层去除首尾空白行）；输入侧自 2026-09-01 起不 trim（决策①，分享内容首尾空白原样写入文件）。
 - 历史文件（v1.0.x）的时间戳是秒级，新文件是毫秒级，两者混存合法（§3.2）。
 
 ### 3.2 时间戳
 
 | 属性 | 值 | 说明 |
 |---|---|---|
-| 写入格式 | `yyyy-MM-dd HH:mm:ss.SSS`（Locale.US，系统默认时区，java.time） | 自 v1.2 条目起毫秒级 |
+| 写入格式 | `yyyy-MM-dd HH:mm:ss.SSS`（Locale.US，系统默认时区，java.time） | 自 **1.0.2** 起新条目毫秒级（1.0.x 为秒级；specs 修订记录称该批次为"v1.1"系设计阶段代号，实际发布版本 1.0.2） |
 | 解析正则（宽松） | `^## \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,3})?$` | 同时匹配秒级旧条目与 0–3 位毫秒，**所有**解析/计数必须用它 |
 | 角色 | 条目主键 | 删除/更新/去重都用完整时间戳串；**LazyColumn key 是 `"${timestamp}_$index"` 复合键**（原因见下"重复时间戳"） |
 | 单调防碰撞 | `EntryParser.nextTimestamp`：反向扫描最后一条时间戳，新值 = `max(now, last+1ms)` | 同毫秒连续追加不重号；仅约束 `append()`（now 路径），`appendEntry` 允许插入旧时间戳（归档恢复） |
@@ -140,7 +144,7 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 
 > **不变量 1（写入隔离）**：任何写入路径（`format`/`buildUpdatedLines`）都会对"去掉前导 ZWSP 后恰好匹配时间戳行格式"的内容行加一个 ZWSP 前缀；已带前缀则不加（幂等，防 read-modify-write 重复叠加）。
 >
-> **不变量 2（出口剥离）**：任何"内容离开本应用"的出口（复制、分享、日历预填、提醒通知标题）必须剥离标记——统一走 `EntryParser.stripIsolationMarkers`（仅剥"行首 ZWSP + 紧跟时间戳模式"的行，用户自有的其他 ZWSP 不动）。读侧 `parse` 同样在收集内容时还原。
+> **不变量 2（出口剥离）**：任何"内容离开本应用"的出口（复制、分享、日历预填、提醒通知标题）必须剥离标记——统一走 `EntryParser.stripIsolationMarkers`（仅剥"行首 ZWSP + 紧跟三类隔离形态之一"的行；**非边界形态行**的用户 ZWSP 不动，但边界形态行前的多个前导 ZWSP 会被整体剥除）。读侧 `parse` 同样在收集内容时还原。
 
 当前出口清单（新增出口时必须加进这张表）：
 
@@ -151,10 +155,11 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 | 提醒通知标题/正文（`ReminderText.title`） | 显式 `stripIsolationMarkers` |
 | 归档列表长按复制归档（`ArchiveListScreen`） | 显式 `stripIsolationMarkers` |
 | **长按复制单条**（主列表 / 归档详情页） | **经 `parse` 产物天然干净**——`parse` 收集内容时已用 `restoreLine` 还原（与 `stripIsolationMarkers` 内部同一函数），无需再剥 |
+| 打开文件（`MainScreen#openFile` → 外部查看器） | **有意不剥离**（原文含 ZWSP 直出）——外部编辑器/查看器场景按已知约束不受支持（§8.2）；新增出口勿仿效，除非同样声明为不支持场景 |
 
 **内部读取用 `readAll()`（保留标记）**，不要拿 `readAllForExternal` 的结果去做解析。
 
-**隔离形态清单（v1.2.1 起，TD-015）**：时间戳行、恰为 `---`、以 `# Appendo` 开头，共三类；**隔离谓词与解析跳过谓词共用 `EntryParser.isSkippableLine`，不可分叉**（这是 TD-015 的根因修复原则）。v1.2.1 前写入的旧条目无标记，不受保护（已知限制）。
+**隔离形态清单（v1.2.1 起，TD-015）**：时间戳行、恰为 `---`、以 `# Appendo` 开头，共三类；**隔离谓词与解析跳过谓词共用 `EntryParser.isSkippableLine`，不可分叉**（这是 TD-015 的根因修复原则）。旧条目经首启一次性迁移补隔离（§3.1，残余边界见该节）。
 
 已知边界：历史归档（v1.1 之前创建）无 ZWSP 保护；外部编辑器直编 `Appendo.md` 不受支持（复制/分享是内容离开应用的主路径，为其保真；README 已声明）。
 
@@ -197,9 +202,11 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 | 进入方式 | 首次启动默认 / URI 失效自动回退 | 首启引导对话框或菜单"自定义目录" |
 | 原子性 | **真原子**（temp+fsync+rename） | **软恢复**（.pending/.bak） |
 
-构造：`MainScreen` 与 `ReminderAlarmReceiver#findEntryContent` 经 `MarkdownFileFactory.create(context, useSAF, fileUri, defaultFile)`；**`ShareReceiverActivity` 因需先做 URI 有效性判定而直接实例化两个实现类——改工厂签名/新增存储模式时必须同步检查这里**。接口 `MarkdownFileOperations` 定义 `append/appendEntry/readAll/readAllWithStatus/readAllForExternal/writeAll/clear/exists/count/initHeader/deleteEntry/updateEntry`。两实现算法同源（都调 `EntryParser`），差异只在 I/O 原语。
+构造：`MainScreen` 与 `findEntryContent`（ReminderAlarmReceiver.kt 顶层函数）经 `MarkdownFileFactory.create(context, useSAF, fileUri, defaultFile)`；**`ShareReceiverActivity` 因需先做 URI 有效性判定而直接实例化两个实现类——改工厂签名/新增存储模式时必须同步检查这里**。接口 `MarkdownFileOperations` 定义 `append/appendEntry/readAll/readAllWithStatus/readAllForExternal/writeAll/clear/exists/count/initHeader/deleteEntry/updateEntry`。两实现算法同源（都调 `EntryParser`），差异只在 I/O 原语。
 
 SAF 模式回退：由两个入口各自检查 `isFileUriValid()`，失效即 `clearFileUri()`（先清偏好再释放权限，防中途崩溃永久丢 URI）后回默认文件——`MainScreen` 在启动 `LaunchedEffect` 里检查一次，`ShareReceiverActivity` 每次写入前检查。（`SafMarkdownFile.exists()` 捕获 SecurityException 只记日志返回 false，不单独触发回退。）首启时 `isFirstLaunch()` 为真会弹引导对话框建议把文件放外部存储（重装不丢数据）。
+
+**SAF 授权失效自愈（v1.2.2，TD-021）**：实测（realme）`takePersistableUriPermission` 未能持久化 + 覆盖安装会清除授权，而 `isFileUriValid()` 此时常仍返回 true——`MainScreen.refreshEntryCount` 检测到"SAF 模式 + 读失败"时弹「数据文件访问已失效」对话框（[重选文件] 复用 `changeFileLauncher` / [回退默认] `clearFileUri`），不再静默空列表；`ShareReceiverActivity` 在 SAF 写失败时 Toast 明示"授权可能已失效，请打开 appendo 重选"，自动回退默认时提示"已保存到默认文件"（防数据无声分家）。
 
 ### 4.2 原子写语义
 
@@ -217,7 +224,7 @@ SAF 模式回退：由两个入口各自检查 `isFileUriValid()`，失效即 `c
 >
 > ⚠️ 曾有两个现实缺口（K8，**v1.2.1 已修复其一**）：写路径原先直读主文件、不先恢复，且把可能脏的内容写进 `.bak`（崩溃后若下一个操作是写入，脏状态被固化、好备份被污染）——现已改为写路径统一走 `readMainForWrite`（先 `ensureConsistent` 再读）。保留现状：恢复动作本身失败时删 `.pending` 防反复尝试，既未恢复也无提示（罕见退化分支）。
 
-`clear()` 两种模式都**不走** .bak——直接写文件头。数据安全由"清空前自动归档"兜底（specs：清空必先备份），避免崩溃回滚把清空前的内容又还回来。
+`clear()` 两种模式都**不走** .bak——直接写文件头。数据安全由"清空前自动归档"兜底（specs：清空必先备份），避免崩溃回滚把清空前的内容又还回来。两个如实记录的边界：**归档兜底目前不设防**——`archiveFile` 忽略 `writeAll` 的失败返回值，归档失败仍会清空并提示"已归档"（TD-017 待决策）；`clear()` 本身不消费残留 `.pending`——若 clear 与上次崩溃残留之间无任何读操作，下次读会用 `.bak` 回滚掉清空（当前 UI 流程启动必先读、实际不可达，记为已知时序边界）。
 
 ### 4.3 并发：FileOperationLock
 
@@ -225,7 +232,6 @@ SAF 模式回退：由两个入口各自检查 `isFileUriValid()`，失效即 `c
 
 - 为什么是全局对象而不是实例锁：`MainScreen` 与 `ShareReceiverActivity` 各自 new 实例，实例锁挡不住跨实例并发。
 - 为什么读也要持锁：SAF 读前要做恢复判定（读本身有写副作用）；且 read-modify-write 语义要求读到的不是半写状态。
-- `MarkdownFormatter.formatEntry` 内的共享 `SimpleDateFormat` 非线程安全，历史上靠锁保护——该方法现已无生产调用方（§8 已知问题）。
 
 ### 4.4 错误处理契约（读失败 = 空串，K7）
 
@@ -233,13 +239,13 @@ SAF 模式回退：由两个入口各自检查 `isFileUriValid()`，失效即 `c
 
 1. ~~`initHeader` 把空串当空文件 → 覆写已有文件~~ → **已守卫**：读失败返回 false，不写；
 2. ~~`append` 见空 → 全量重写为 header+新条目~~ → **已守卫**：读失败中止返回 false（`appendEntry`/SAF 的 `writeAll`/`deleteEntry`/`updateEntry` 同）；
-3. ~~对账把"解析得 0 条"当真空 → 误删全部提醒~~ → **已守卫**：`MainScreen.refreshEntryCount` 在 `failed` 或"结果为空但上轮非空"时跳过刷新与对账。
+3. ~~对账把"解析得 0 条"当真空 → 误删全部提醒~~ → **已守卫**：`MainScreen.refreshEntryCount` 经 `RefreshGuard` 纯函数判定——读失败或"内容空白且解析为空且上轮非空"跳过；header-only 是合法空文件放行（曾因"空且上轮非空"一刀切产生删至 0 条 UI 滞留回归，K10/TD-016，v1.2.2 修复并有 `RefreshGuardTest` 固定）。
 
 **纪律**：任何"读结果为空"的分支都应先怀疑读失败，而非真空文件；新增读侧消费方优先用 `readAllWithStatus` 的 `failed` 判断。
 
 ## 5. 提醒子系统（v1.1.0 一次性 + v1.2.0 重复）
 
-设计目标：**完全本地私有**的"真提醒"——不走日历、不上云、appendo 自己发通知，点按深链回记录。与"添加到日历"（fire-and-forget 预填）并存，后者退为次要按钮。
+设计目标：**本地运行**的"真提醒"——不走日历、应用自身不联网、appendo 自己发通知，点按深链回记录（数据可随 Android 系统云备份迁移，见 §8.3；2026-09-01 决策②）。与"添加到日历"（fire-and-forget 预填）并存，后者退为次要按钮。
 
 ### 5.1 组件
 
@@ -266,6 +272,7 @@ SAF 模式回退：由两个入口各自检查 `isFileUriValid()`，失效即 `c
   ├─ 重复：发通知，排下一次（effectiveTrigger + 1 天/7 天），fired 保持 false（徽标保留）
   └─ 条目已不存在：cancel + remove（自愈）
 贪睡（通知 action，10 分 / 1 小时两档）：排 now+分钟，fired=false（徽标重现），snoozedUntil=next，撤通知
+  ⚠️ 重复提醒以 effectiveTrigger 为基准排下一次——**贪睡会使整个系列永久漂移**（每天 9:00 贪睡 1 小时 → 此后每天 10:00）。语义定位：**有意取舍**（2026-09-01 决策④）——贪睡即用户对系列的重新锚点；README 向用户声明
 完成（**仅通知 action**；详情页只有「取消提醒」，没有「完成」）：
   ├─ 重复：排下一次（保留系列），fired=false
   └─ 一次性：cancel + remove
@@ -275,7 +282,7 @@ SAF 模式回退：由两个入口各自检查 `isFileUriValid()`，失效即 `c
 
 ### 5.3 开机恢复（`ReminderBootReceiver`）
 
-sidecar 在 CE 加密存储，`BOOT_COMPLETED` 于首次解锁后送达——所以**不用** `directBootAware`，代价是"开机后需解锁一次才补发"。
+sidecar 在 CE 加密存储，`BOOT_COMPLETED` 于首次解锁后送达——所以**不用** `directBootAware`，代价是"开机后需解锁一次才补发"。（此取舍经成本/风险评估后**有意维持**：DE 镜像方案成本中高且 OEM 送达时机不可控，见 TD-022 决策记录，2026-09-02。）
 
 **应用更新与 force-stop 的恢复（v1.2.1 起，原 K9 已修复）**：manifest 同时注册 `BOOT_COMPLETED` 与 `MY_PACKAGE_REPLACED`；应用启动时（`MainScreen` 初始化）另行兜底调用 `reminder.rescheduleAll`——与开机共用同一套幂等逻辑（重注册未触发 + 补发错过），覆盖"闹钟被清又等不到广播"的场景。
 
@@ -301,7 +308,7 @@ orphans → AlarmScheduler.cancel + store.remove
 
 ### 5.5 自检（诚实边界）
 
-菜单"提醒自检"：通知权限检查、电池白名单检查（可一键跳转）、自启动（无公开 API，仅文字引导）+ **测试提醒按钮**（排 1 分钟后的 `setAlarmClock`，响 = 短时正证明）。
+菜单"提醒自检"：通知权限检查、电池白名单检查（可一键跳转）、自启动（无公开检测 API；提供「自启动设置」按钮跳转应用详情）+ **测试提醒按钮**（排 1 分钟后的 `setAlarmClock`，响 = 短时正证明）。
 
 > 可靠性契约是"完成一次性设置后、可当场验证、对大多数用户可靠"，**不是 100%**：被杀的提醒接收器不运行、无痕迹，无法自动预测。应用更新/force-stop 后的闹钟恢复已由 `MY_PACKAGE_REPLACED` + 启动兜底覆盖（原 K9，v1.2.1 修复）。README 已向用户声明。
 
@@ -317,6 +324,7 @@ orphans → AlarmScheduler.cancel + store.remove
 - `MainScreen.refreshEntryCount`：读文件+解析在 `Dispatchers.IO`；随后的孤儿对账（AlarmManager cancel + SP 写，轻量）在协程主线程调度上执行。
 - 仍在主线程同步 I/O 的用户操作：追加/删除/更新/清空/归档/复制/分享，以及**最重的归档恢复**（归档全文读取+解析+逐条 `appendEntry`，每条都是全文件原子写）——个人笔记体量下可容忍，属已知债务（TD-008，随 ViewModel 重构一并下放）。
 - 归档列表加载、归档详情加载在 `withContext(Dispatchers.IO)`。
+- **Broadcast Receiver 侧的主线程文件 I/O**：`rescheduleAll`（开机/更新/启动兜底）对每条已错过提醒调 `findEntryContent`（全文件读+解析，持锁），`ReminderAlarmReceiver.handleFire` 同样在主线程读——提醒多 + 文件大时与 UI 抢锁、逼近广播 10 秒限制（可后置 `goAsync` 或下放 IO）。
 - 锁是 JVM 内置 `synchronized`，跨这些线程互斥有效。
 
 ### 6.2 徽标刷新为什么不受文件轮询管
@@ -357,6 +365,10 @@ orphans → AlarmScheduler.cancel + store.remove
 | K7 | 读失败=空串三条破坏链（覆写/清库/误杀提醒） | ✅ 已关闭（v1.2.1，TD-012）：`ReadResult.failed` + 存储层守卫 + 对账守卫（§4.4） |
 | K8 | SAF 写路径不先恢复、脏内容污染 `.bak` | ✅ 已修复（v1.2.1，TD-013）：写路径统一 `readMainForWrite` 先恢复（§4.2） |
 | K9 | 应用更新后闹钟全丢直至重启 | ✅ 已修复（v1.2.1，TD-014）：`MY_PACKAGE_REPLACED` + 启动兜底 `rescheduleAll`（§5.3） |
+| K10 | ~~K7 对账守卫假阳性回归：删至 0 条后 UI 滞留已删条目~~ | ✅ 已修复（v1.2.2，TD-016）：守卫收敛 `RefreshGuard` 纯函数（header-only 合法空放行）；真机验收通过 |
+| K11 | ~~清空前归档兜底不设防~~ | ✅ 已修复（v1.2.2，TD-017）：归档失败阻止清空并提示 |
+| K12 | SAF 授权丢失（覆盖安装清授权；realme 实测 `takePersistableUriPermission` 未持久化）→ 静默空列表、分享数据"无声分家" | ✅ 已修复（v1.2.2，TD-021）：读失败+SAF 弹「数据文件访问已失效」对话框（重选/回退）；分享失效明示；真机活体验收 |
+| K13 | 归档详情残留活动文件的提醒徽标（快照视图语义错位） | ✅ 已修复（v1.2.2，真机验收发现）：readOnly 视图不渲染徽标 |
 
 其余技术债（CRLF 规范化、.bak 驻留、SAF PoC 结论待填等）见 [plans/debt-tracker.md](./plans/debt-tracker.md)。
 
@@ -364,15 +376,22 @@ orphans → AlarmScheduler.cancel + store.remove
 
 - 外部编辑器直编 `Appendo.md` 不支持（ZWSP 机制会被破坏；复制/分享出口已剥离标记）。
 - SAF 模式为软恢复：崩溃丢最近一次写入、不损坏文件。
-- 不建议降级安装（旧版严格正则读不了毫秒时间戳）。
-- 国产 ROM 需开自启动 + 电池白名单，提醒"可靠非 100%"。
+- 不建议降级安装（旧版读不了毫秒条目——数据仍在文件中，重装新版恢复显示；T-dgchk 已核实 v1.0.x 追加为纯 append 模式、不会重写文件）。
+- 国产 ROM 需开自启动 + 电池白名单，提醒"可靠非 100%"；打开应用会自动补发已过期提醒（需解锁）；贪睡使重复系列整体后移（决策④）。
+- 旧数据 `---`/`# Appendo` 行：v1.2.2 首启自动迁移修复（§3.1），残余边界极少数仍不可见。
+- 重复时间戳（归档恢复+编辑组合场景）下删除/编辑作用于靠前的条目（§3.2）。
+- 清空与切换数据文件会移除全部提醒（不可恢复，有确认弹窗）；恢复归档不恢复提醒。
+- 单次分享上限 10,000 字符（拒绝并提示，不截断）。
+- 多设备/云盘同步不支持（外部编辑不触发刷新 + 锁仅进程内，§6.3）。
+- 换机与备份：数据随 Android 系统云备份迁移（决策②，README「换机与备份」小节）。
 
 ### 8.3 安全与隐私事实
 
-- **攻击面**：仅两个 Activity exported（`MainActivity` MAIN/LAUNCHER；`ShareReceiverActivity` ACTION_SEND text/plain）。`ReminderAlarmReceiver` `exported=false` 且无 intent-filter——只能被应用自己的显式 PendingIntent 触发，外部 App 无法伪造提醒；`ReminderBootReceiver` `exported=true` 仅 `BOOT_COMPLETED`。
+- **攻击面**：仅两个 Activity exported（`MainActivity` MAIN/LAUNCHER；`ShareReceiverActivity` ACTION_SEND text/plain）。`ReminderAlarmReceiver` `exported=false` 且无 intent-filter——只能被应用自己的显式 PendingIntent 触发，外部 App 无法伪造提醒；`ReminderBootReceiver` `exported=true`，仅接收 `BOOT_COMPLETED` 与 `MY_PACKAGE_REPLACED` 两个系统保护广播。
 - PendingIntent 一律 `FLAG_IMMUTABLE` + 显式组件（贪睡分钟数由接收器从 extra 自行计算，无需 MUTABLE）。
-- 分享入口限长 10,000 字符（防 DoS）。
-- **`allowBackup="true"`（manifest 未显式关闭）**：`Appendo.md` 与 `appendo_reminders` 会被纳入 Android 云备份——与提醒"完全本地私有"的定位存在张力，属**未决策项**（若要严格本地需设 false，并评估用户换机迁移的影响）。
+- 分享入口限长 10,000 字符（防 DoS）；超长被**拒绝写入**（不截断），Toast 为笼统的"写入失败"（表述待改进，见 debt-tracker TD-020 备注）。
+- **hashCode 派生标识的碰撞面**（个人级概率极低，已知约束）：SAF 恢复文件名按 URI 哈希派生、闹钟/通知 id 按时间戳哈希派生——理论碰撞会导致恢复文件互串 / 通知互覆。
+- **`allowBackup="true"`——已决策（2026-09-01，决策②）**：保持开启、拥抱云备份。`Appendo.md` 与 `appendo_reminders` 随 Android 云备份迁移/恢复；理由：默认模式数据在应用私有目录、卸载即失，云备份对用户是净收益。对用户的口径："应用自身不联网、无第三方 SDK"（README「换机与备份」小节落地）。
 
 ## 9. 设计决策索引（ADR）
 
@@ -388,6 +407,11 @@ orphans → AlarmScheduler.cancel + store.remove
 | 重复提醒语义 | 开机错过只补发最新一次；"完成"保留系列 | 不刷屏；用户要的是"别丢下一次" | §5.3（v1.2.0 事后补记，无独立设计文档） |
 | 日历集成 | `ACTION_INSERT` 预填拉起（方案 A） | 零权限不上云；定位为次要入口 | design/local-reminder-design.md §3 |
 | 架构形态 | 无 ViewModel/Repository 中间层 | 单屏小应用，YAGNI；债务记录在案 | §8、TD-008 |
+| 内容保真边界（2026-09-01①） | 输入侧不 trim（首尾空白原样入文件）；解析侧 trim 保留（模板空行与用户首尾空白不可区分，显示层去除）；空内容条目不保留 | 可避免的丢失全消除，不可区分处以显示层语义披露 | §3.1 |
+| 隐私与备份（2026-09-01②） | `allowBackup=true` 拥抱云备份 | 私有目录卸载即失，备份是净收益；口径"应用自身不联网" | §8.3 |
+| 旧数据迁移（2026-09-01③） | 首启一次性补隔离（`migrateLegacyIsolation`，保守规则宁漏勿误） | 拆"旧条目编辑即丢行"的雷 | §3.1 |
+| 贪睡语义（2026-09-01④） | 系列随贪睡漂移（重锚点） | 符合"我贪睡了，以后就这个点"的直觉 | §5.2 |
+| 重启锁屏期提醒（TD-022，2026-09-02） | 维持现状：解锁后重注册/补发（不丢只延迟） | DE 镜像方案成本中高 + OEM 送达不可控 + 双写新债，vs 低频场景已有兜底 | debt-tracker TD-022 |
 
 ## 10. 阅读地图
 
@@ -430,19 +454,35 @@ orphans → AlarmScheduler.cancel + store.remove
 **动了 UI / 内容出口**
 - 新的内容出口走 `stripIsolationMarkers` 或经 `parse` 产物（§3.3 出口表）
 - 新写入路径补调 `setFileLastModified`（§6.3），否则列表不刷新
-- 新增耗时操作核对线程（§6.1），别再往主线程 I/O 清单里加项
+- 新增耗时操作不落在主线程同步 I/O（对照 §6.1 清单，只减不增）
+
+**动了 manifest / 权限**
+- exported 组件清单未意外扩大；receiver 的 intent-filter 变更同步核对 §8.3 攻击面描述
+- 新增权限有明确用途；`allowBackup` 若变动，须先解决 §8.3 的未决策项
+
+**动了 Intent 常量 / SP 键（事实上的持久化协议）**
+- `ReminderIntents` 的 action / extra / requestCode：改 action 串会孤儿化已注册的 PendingIntent 与存量通知按钮
+- SP 文件名与键（`appendo`、`appendo_reminders`、`reminder_` 前缀，§3.6）：改名即丢用户提醒/偏好
+
+**任何改动（通用）**
+- 按根 CLAUDE.md「任务完成检查」逐项过文档清单，**"改动面 → 本文回改小节"的映射显式过一遍**——§4.3/§8.3 曾因漏做此步而与代码脱节（四角色评审教训）
 
 ## 12. 验收手段（验收用）
 
-| 验收对象 | 手段 |
-|---|---|
-| 单元回归 | `./gradlew testDebugUnitTest` 全绿（改协议/提醒必跑） |
-| 构建 | `./gradlew assembleDebug` 成功 |
-| 默认模式数据完整性（真机） | 追加/删除/编辑各操作后，用文件管理器查看 `Appendo.md`：内容完整、无半写状态、无 BOM |
-| SAF 模式（真机） | 切换外部文件 → 写入 → 读回一致；开发选项里限制后台后杀进程模拟崩溃 → 重进应用出现"已从备份恢复"提示且内容为上次良好状态 |
-| 提醒（真机） | 「提醒自检」发测试提醒（约 1 分钟响 = 短时正证明）；设 2 分钟提醒 → 重启 → 解锁后补发"已过期"通知；贪睡 10 分后再响；每天重复次日再响 |
-| 出口干净度 | 复制全部/复制单条/分享/日历预填/通知标题，粘贴到任意编辑器检查无零宽字符（条件允许时 hex 查看） |
-| 升级兼容 | 用旧版本数据（秒级时间戳的 `Appendo.md`）安装新版本，条目可读、计数正确 |
+> "状态"列如实记录最近一次执行情况；"未定向执行"≠ 通过。SAF 崩溃恢复与 BOOT 补发两项当前**未覆盖**（与 debt-tracker 记录一致），对刚重构过的路径应安排定向验收而非日常观察。
+
+| 验收对象 | 手段 | 状态 |
+|---|---|---|
+| 单元回归 | `./gradlew testDebugUnitTest` 全绿（改协议/提醒必跑） | ✅ 2026-08-31（113 用例） |
+| 构建 | `./gradlew assembleDebug` 成功 | ✅ 2026-08-31 |
+| 默认模式数据完整性（真机） | 追加/删除/编辑后核对文件：debug 构建用 `adb shell run-as com.yiyue31.android.appendo cat /storage/emulated/0/Android/data/com.yiyue31.android.appendo/files/Appendo.md`（Android 11+ 文件管理器**无法**访问该目录，勿用"文件管理器查看"）；核对内容完整、无半写、无 BOM | ✅ 2026-08-31（写入+run-as 抽查） |
+| SAF 模式（真机） | 切换外部文件 → 写入 → 读回一致。崩溃恢复需**在写入窗口内中断**才触发（"限制后台后杀进程"发生在后台化时、造不出窗口，勿用）；可在写入瞬间 `adb shell am crash com.yiyue31.android.appendo` 模拟 | 部分 ✅ 2026-09-02：授权丢失场景已活体复现并验证 TD-021 修复对话框；`am crash` 写入窗口崩溃恢复仍未做（TD-006 关联） |
+| 提醒（真机） | ①「提醒自检」发测试提醒（约 1 分钟响 = 短时正证明）；②设 2 分钟提醒 → 重启 → **解锁时已过期**才补发"已过期"通知（早于到点解锁则表现为正常响）；③贪睡 10 分后再响；④每天重复次日再响 | ①②④ ✅ 2026-09-02（BOOT 重启补发用户验证；重启后延迟/解锁后补发为系统边界，TD-022 记录改进选项）；③ 未定向 |
+| 覆盖安装（真机） | 设临近提醒 → `adb install -r` 重装（不重启）→ 提醒仍到点响（TD-014 的直接验收目标） | ✅ 2026-09-02（dumpsys 闹钟重注册 + 锁屏通知双证据） |
+| 删除最后一条（TD-016 修复后） | 删除唯一条目 → 列表立即清空、计数归 0、与"已删除"Toast 一致 | ✅ 2026-09-02（用户验证：删空立即归零） |
+| 出口干净度 | 复制全部/复制单条/分享/日历预填/通知标题 → 粘贴进**可检测 U+200B 的工具**（支持"显示不可见字符"的编辑器或在线 zero-width 检查器）比对无零宽字符 | ⛔ 未做字符级检查（视觉检查不充分） |
+| 升级兼容 | 旧秒级数据装新版本条目可读、计数正确（默认模式需 adb 推送旧格式文件；SAF 模式可外部构造后选择） | ✅ 2026-08-31（1.2.0→1.2.1 数据保留） |
+| 归档恢复去重 | 恢复含重复条目的归档 → 仅新增缺失条目、原时间戳落回历史位置、Toast 报"恢复 X 条 / 跳过 Y 条" | ✅ 2026-09-02（删空→恢复往返，用户验证） |
 
 ---
 

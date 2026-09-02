@@ -308,6 +308,57 @@ class EntryParserTest {
         assertEquals(3, EntryParser.getTimestampRegex().findAll(content).count())
     }
 
+    // ---------- 旧数据一次性迁移（2026-09-01 决策③）----------
+
+    @Test
+    fun migrateLegacyIsolation_isolatesSandwichedSeparatorContentLine() {
+        val content = "# Appendo\n\n---\n\n## 2026-08-30 09:00:00.000\n\n前言\n---\n后记\n\n---\n"
+        val migrated = EntryParser.migrateLegacyIsolation(content)
+        assertNotNull(migrated)
+        assertTrue(migrated!!.contains("${EntryParser.ISOLATION_MARKER}---"))
+        val entries = EntryParser.parse(migrated)
+        assertEquals("迁移后该条目不再丢行", 1, entries.size)
+        assertEquals("前言\n---\n后记", entries[0].content)
+    }
+
+    @Test
+    fun migrateLegacyIsolation_isolatesMidFileHeaderShapeLine() {
+        val content = "# Appendo\n\n---\n\n## 2026-08-30 09:00:00.000\n\n正文\n# Appendo 备忘\n结尾\n\n---\n"
+        val migrated = EntryParser.migrateLegacyIsolation(content)
+        assertNotNull(migrated)
+        assertTrue(migrated!!.contains("${EntryParser.ISOLATION_MARKER}# Appendo 备忘"))
+        assertEquals("正文\n# Appendo 备忘\n结尾", EntryParser.parse(migrated)[0].content)
+    }
+
+    @Test
+    fun migrateLegacyIsolation_keepsStructuralSeparatorsUntouched() {
+        // 真实模板结构（format 拼接产生的条目间分隔线）不是迁移对象
+        val content = "# Appendo\n\n---\n\n## 2026-08-30 09:00:00.000\n\n正文\n\n---\n\n---\n\n## 2026-08-30 10:00:00.000\n\n第二条\n\n---\n"
+        assertNull(EntryParser.migrateLegacyIsolation(content))
+    }
+
+    @Test
+    fun migrateLegacyIsolation_idempotent() {
+        val once = EntryParser.migrateLegacyIsolation(
+            "# Appendo\n\n---\n\n## 2026-08-30 09:00:00.000\n\n前言\n---\n后记\n\n---\n"
+        )!!
+        assertNull("迁移产物再跑应返回 null", EntryParser.migrateLegacyIsolation(once))
+    }
+
+    @Test
+    fun migrateLegacyIsolation_preservesTrailingNewline() {
+        val migrated = EntryParser.migrateLegacyIsolation(
+            "# Appendo\n\n---\n\n## 2026-08-30 09:00:00.000\n\n前言\n---\n后记\n\n---\n"
+        )!!
+        assertTrue("尾部换行不得丢失", migrated.endsWith("\n"))
+    }
+
+    @Test
+    fun migrateLegacyIsolation_newFormatFile_returnsNull() {
+        val content = "# Appendo\n\n---\n\n## 2026-08-30 09:00:00.000\n\n${EntryParser.ISOLATION_MARKER}---\n后记\n\n---\n"
+        assertNull(EntryParser.migrateLegacyIsolation(content))
+    }
+
     // ---------- 边界算法（T-004）----------
 
     private val twoEntryLines = listOf(
@@ -347,6 +398,21 @@ class EntryParserTest {
     }
 
     @Test
+    fun findEntryBounds_duplicateTimestamp_hitsFirst() { // TD-020②：重复时间戳命中第一条
+        val lines = listOf(
+            "# Appendo", "", "---", "",
+            "## 2026-08-31 09:00:00.000", "", "第一条", "", "---", "",
+            "## 2026-08-31 09:00:00.000", "", "第二条", "", "---"
+        )
+        val idxs = lines.indices.filter { lines[it] == "## 2026-08-31 09:00:00.000" }
+        assertEquals(2, idxs.size)
+        val bounds = EntryParser.findEntryBounds(lines, "2026-08-31 09:00:00.000")
+        assertNotNull(bounds)
+        assertEquals("命中第一条的时间戳行", idxs[0], bounds!!.first)
+        assertEquals("区间止于第二条的时间戳行", idxs[1], bounds.last + 1)
+    }
+
+    @Test
     fun buildDeletedLines_removesTargetKeepsOthers() {
         val bounds = EntryParser.findEntryBounds(twoEntryLines, "2026-07-20 09:30:00.000")!!
         val joined = EntryParser.buildDeletedLines(twoEntryLines, bounds).joinToString("\n")
@@ -382,20 +448,17 @@ class EntryParserTest {
     fun decideRecovery_noPending_noRecovery() {
         val r = EntryParser.decideRecovery(pendingExists = false, bakExists = true)
         assertFalse(r.useBackup)
-        assertFalse(r.shouldShowToast)
     }
 
     @Test
-    fun decideRecovery_pendingWithBak_recoversAndToasts() {
+    fun decideRecovery_pendingWithBak_recovers() {
         val r = EntryParser.decideRecovery(pendingExists = true, bakExists = true)
         assertTrue(r.useBackup)
-        assertTrue(r.shouldShowToast)
     }
 
     @Test
-    fun decideRecovery_pendingWithoutBak_toastsNoRecovery() {
+    fun decideRecovery_pendingWithoutBak_noRecovery() { // TD-018：仅清标记、不提示，与实现一致
         val r = EntryParser.decideRecovery(pendingExists = true, bakExists = false)
         assertFalse(r.useBackup)
-        assertTrue(r.shouldShowToast)
     }
 }
