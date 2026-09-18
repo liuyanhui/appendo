@@ -18,11 +18,14 @@ import androidx.navigation.navArgument
 import com.yiyue31.android.appendo.data.ArchiveFile
 import com.yiyue31.android.appendo.data.ArchiveRepository
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.data.ThemePreferences
 import com.yiyue31.android.appendo.reminder.ReminderIntents
 import com.yiyue31.android.appendo.ui.ArchiveDetailScreen
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.ui.ArchiveListScreen
 import com.yiyue31.android.appendo.ui.MainScreen
+import com.yiyue31.android.appendo.ui.theme.AppendoTheme
+import com.yiyue31.android.appendo.ui.theme.ThemeMode
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -31,6 +34,9 @@ class MainActivity : ComponentActivity() {
     private val scrollTs = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 手动模式的冷启动窗口背景（需求 56）：须在 super（含窗口创建）之前选好主题变体；
+        // SYSTEM 不动，values-night 资源系统自动解析
+        ThemePreferences.applyWindowTheme(this)
         super.onCreate(savedInstanceState)
         if (BuildConfig.DEBUG) {
             android.util.Log.d("MainActivity", "onCreate called")
@@ -40,8 +46,20 @@ class MainActivity : ComponentActivity() {
         if (BuildConfig.DEBUG) {
             android.util.Log.d("MainActivity", "FileRepository created, URI: ${fileRepository.getFileUri()}")
         }
+        // 手动切换主题 = 改这个 State（纯重组生效，无 Activity 重建，导航栈/滚动不动——需求 50/53）
+        val themeMode = mutableStateOf(ThemePreferences.read(this))
         setContent {
-            AppendoNavHost(fileRepository, scrollTs)
+            AppendoTheme(themeMode.value) {
+                AppendoNavHost(
+                    fileRepository,
+                    scrollTs,
+                    currentThemeMode = themeMode.value,
+                    onThemeChange = { mode ->
+                        themeMode.value = mode
+                        ThemePreferences.write(this, mode)
+                    }
+                )
+            }
         }
     }
 
@@ -59,7 +77,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppendoNavHost(fileRepository: FileRepository, scrollTs: State<String?>) {
+fun AppendoNavHost(
+    fileRepository: FileRepository,
+    scrollTs: State<String?>,
+    currentThemeMode: ThemeMode,
+    onThemeChange: (ThemeMode) -> Unit
+) {
     val navController = rememberNavController()
 
     NavHost(
@@ -72,7 +95,9 @@ fun AppendoNavHost(fileRepository: FileRepository, scrollTs: State<String?>) {
                 scrollToTs = scrollTs.value,
                 onNavigateToArchiveList = {
                     navController.navigate("archive_list")
-                }
+                },
+                currentThemeMode = currentThemeMode,
+                onThemeChange = onThemeChange
             )
         }
 

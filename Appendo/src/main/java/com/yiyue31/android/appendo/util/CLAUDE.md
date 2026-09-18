@@ -8,7 +8,7 @@
 
 | 文件 | 职责 | 设计角色 |
 |------|------|---------|
-| `EntryParser.kt` | **条目知识唯一收敛点（v1.1）**：parse/format/时间戳/边界算法/恢复判定，纯函数 | 核心（v1.1 新） |
+| `EntryParser.kt` | **条目知识唯一收敛点（v1.1）**：parse/format/时间戳/边界算法/恢复判定/出口格式化（v1.3 `formatForExport`），纯函数 | 核心（v1.1 新） |
 | `ParsedEntry.kt` / `ReadResult.kt` | util 纯数据（解析条目 / 读结果+恢复标志） | 数据类 |
 | `DuplicateHintThrottle.kt` | 重复内容提示 5s 节流（进程内单例） | 工具 |
 | `CalendarEntryMapper.kt` / `CalendarLauncher.kt` | 添加到日历（v1.0.3）：标题映射纯函数 + ACTION_INSERT 拉起日历 | 工具 |

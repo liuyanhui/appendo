@@ -130,6 +130,17 @@ object EntryParser {
     }
 
     /**
+     * 出口格式化（v1.3，需求 68~70）：复制全部/分享全部的导出内容。
+     * 每条 = 秒级时间戳行 + 空行 + 内容（[ParsedEntry.content] 已 trim）；
+     * 条目间空行分隔；无 `##`/`---`/文件头等结构标记（部分接收端会对 Markdown
+     * 结构做智能解析导致丢内容，见 specs.md 第 14 章背景）。
+     */
+    fun formatForExport(entries: List<ParsedEntry>): String =
+        entries.joinToString("\n\n") { e ->
+            displayTimestamp(e.rawTimestamp) + "\n\n" + e.content
+        }
+
+    /**
      * 构造一条 Markdown 条目块（写侧）。对内容做 ZWSP 隔离（仅冲突行），保留原格式。
      * [timestamp] 由调用方提供（append 传 [nextTimestamp]，appendEntry 传归档原时间戳）。
      */

@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#1565C0</color>
+    <!-- v1.3 主题：窗口/状态栏（与 ui/theme/Theme.kt 的 Palette 同值同步） -->
+    <color name="window_bg_dark">#1C1B1F</color>
+    <color name="status_bar_light">#FFFFFF</color>
+    <color name="status_bar_dark">#1C1B1F</color>
 </resources>

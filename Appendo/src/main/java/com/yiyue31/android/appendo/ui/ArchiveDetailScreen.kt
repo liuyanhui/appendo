@@ -81,7 +81,7 @@ fun ArchiveDetailScreen(
                         Text(
                             "归档详情",
                             fontWeight = FontWeight.SemiBold,
-                            color = AppColors.Primary
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(

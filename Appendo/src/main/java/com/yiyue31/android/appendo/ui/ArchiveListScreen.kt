@@ -69,6 +69,8 @@ import com.yiyue31.android.appendo.data.ArchiveFile
 import com.yiyue31.android.appendo.data.ArchiveRepository
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.ui.showToast
+import com.yiyue31.android.appendo.ui.theme.onSuccessColor
+import com.yiyue31.android.appendo.ui.theme.successColor
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import kotlinx.coroutines.Dispatchers
@@ -119,7 +121,7 @@ fun ArchiveListScreen(
                     Text(
                         "归档管理",
                         fontWeight = FontWeight.SemiBold,
-                        color = AppColors.Primary
+                        color = MaterialTheme.colorScheme.primary
                     )
                 },
                 navigationIcon = {
@@ -195,7 +197,10 @@ fun ArchiveListScreen(
                                 performVibration(context, VIBRATION_DURATION_SHORT_MS)
                                 // Copy all content from archive
                                 try {
-                                    val content = EntryParser.stripIsolationMarkers(archive.file.readText())
+                                    // 出口格式化（v1.3，specs 68）：与复制/分享全部同一格式（全文复制出口）
+                                    val content = EntryParser.formatForExport(
+                                        EntryParser.parse(archive.file.readText())
+                                    )
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("archive", content))
                                     showToast(context, "已复制全部内容")
@@ -237,7 +242,7 @@ fun ArchiveListScreen(
                 Text(
                     "删除归档",
                     fontWeight = FontWeight.SemiBold,
-                    color = AppColors.Danger
+                    color = MaterialTheme.colorScheme.error
                 )
             },
             text = {
@@ -258,7 +263,7 @@ fun ArchiveListScreen(
                         archiveToDeleteIndex = -1
                     }
                 ) {
-                    Text("删除", color = AppColors.Danger)
+                    Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -287,7 +292,7 @@ fun ArchiveListScreen(
                 Text(
                     "追加到当前文档",
                     fontWeight = FontWeight.SemiBold,
-                    color = AppColors.Success
+                    color = MaterialTheme.successColor
                 )
             },
             text = {
@@ -348,7 +353,7 @@ fun ArchiveListScreen(
                         restoreEntryCount = 0
                     }
                 ) {
-                    Text("追加", color = AppColors.Success)
+                    Text("追加", color = MaterialTheme.successColor)
                 }
             },
             dismissButton = {
@@ -395,9 +400,16 @@ private fun ArchiveCard(
     }
 
     val swipeBackgroundColor = when {
-        offsetX > SWIPE_THRESHOLD_DP / 2 -> AppColors.Danger // Red for delete
-        offsetX < -SWIPE_THRESHOLD_DP / 2 -> AppColors.Success // Green for restore
+        offsetX > SWIPE_THRESHOLD_DP / 2 -> MaterialTheme.colorScheme.error // Red for delete
+        offsetX < -SWIPE_THRESHOLD_DP / 2 -> MaterialTheme.successColor // Green for restore
         else -> Color.Transparent
+    }
+
+    // 深色主题下容器为亮色变体，文字用深色 onXxx（需求 51/设计 §4）
+    val swipeContentColor = when {
+        offsetX > SWIPE_THRESHOLD_DP / 2 -> MaterialTheme.colorScheme.onError
+        offsetX < -SWIPE_THRESHOLD_DP / 2 -> MaterialTheme.onSuccessColor
+        else -> Color.White
     }
 
     AnimatedVisibility(
@@ -432,7 +444,7 @@ private fun ArchiveCard(
                         text = swipeActionText,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = swipeContentColor
                     )
                 }
             }
@@ -484,7 +496,7 @@ private fun ArchiveCard(
                         Icons.Default.Info,
                         contentDescription = null,
                         modifier = Modifier.size(40.dp),
-                        tint = AppColors.Primary
+                        tint = MaterialTheme.colorScheme.primary
                     )
 
                     Spacer(modifier = Modifier.size(16.dp))

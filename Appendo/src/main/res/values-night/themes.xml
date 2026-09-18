@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 跟随系统模式：深色系统下 Theme.Appendo 自动切到深色变体（需求 50/56）。 -->
+<resources>
+    <style name="Theme.Appendo" parent="Theme.Appendo.Dark" />
+</resources>

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -95,6 +96,9 @@ import com.yiyue31.android.appendo.util.ReminderMeta
 import com.yiyue31.android.appendo.util.ReminderLogic
 import com.yiyue31.android.appendo.ui.EntryListScreen
 import com.yiyue31.android.appendo.ui.showToast
+import com.yiyue31.android.appendo.ui.theme.AppendoDarkScheme
+import com.yiyue31.android.appendo.ui.theme.AppendoLightScheme
+import com.yiyue31.android.appendo.ui.theme.ThemeMode
 import com.yiyue31.android.appendo.util.CalendarEntryMapper
 import com.yiyue31.android.appendo.util.CalendarLauncher
 import com.yiyue31.android.appendo.util.DuplicateHintThrottle
@@ -127,7 +131,9 @@ fun parseMarkdownEntries(content: String): List<LinkEntry> =
 fun MainScreen(
     fileRepository: FileRepository,
     scrollToTs: String? = null,
-    onNavigateToArchiveList: () -> Unit = {}
+    onNavigateToArchiveList: () -> Unit = {},
+    currentThemeMode: ThemeMode = ThemeMode.SYSTEM,
+    onThemeChange: (ThemeMode) -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -145,6 +151,7 @@ fun MainScreen(
     var inputContent by remember { mutableStateOf("") }
     var lastModified by remember { mutableStateOf(fileRepository.getFileLastModified()) }
     var showMenu by remember { mutableStateOf(false) }
+    var showThemePicker by remember { mutableStateOf(false) }
     var showSetupGuideDialog by remember { mutableStateOf(false) }
     // SAF 授权失效（TD-021）：读失败且 SAF 模式时弹此对话框，不再静默空列表
     var showSafInvalidDialog by remember { mutableStateOf(false) }
@@ -368,7 +375,7 @@ fun MainScreen(
                         Text(
                             "Appendo",
                             fontWeight = FontWeight.SemiBold,
-                            color = AppColors.Primary
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Text(
                             "已收集 $entryCount 条",
@@ -433,6 +440,13 @@ fun MainScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("主题") },
+                            onClick = {
+                                showMenu = false
+                                showThemePicker = true
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("关于") },
                             onClick = {
                                 showMenu = false
@@ -467,7 +481,7 @@ fun MainScreen(
                         .weight(1f)
                         .height(56.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = AppColors.Primary
+                        containerColor = MaterialTheme.colorScheme.primary
                     ),
                     shape = RoundedCornerShape(16.dp)
                 ) {
@@ -492,9 +506,9 @@ fun MainScreen(
                         .weight(1f)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = AppColors.Primary
+                        contentColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
                     Text("复制全部", fontWeight = FontWeight.Medium)
@@ -516,9 +530,9 @@ fun MainScreen(
                         .weight(1f)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
                     colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = AppColors.Primary
+                        contentColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
                     Text("分享全部", fontWeight = FontWeight.Medium)
@@ -549,7 +563,7 @@ fun MainScreen(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.5.dp, AppColors.Danger.copy(alpha = 0.7f)),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
                         color = Color.Transparent
                     ) {
                         Box(
@@ -561,7 +575,7 @@ fun MainScreen(
                             Text(
                                 "清空",
                                 fontWeight = FontWeight.Medium,
-                                color = AppColors.Danger
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -635,7 +649,7 @@ fun MainScreen(
                             Text(
                                 "删除条目",
                                 fontWeight = FontWeight.SemiBold,
-                                color = AppColors.Danger
+                                color = MaterialTheme.colorScheme.error
                             )
                         },
                         text = {
@@ -679,7 +693,7 @@ fun MainScreen(
                                     entryToDeleteTimestamp = ""
                                 }
                             ) {
-                                Text("删除", color = AppColors.Danger)
+                                Text("删除", color = MaterialTheme.colorScheme.error)
                             }
                         },
                         dismissButton = {
@@ -706,7 +720,7 @@ fun MainScreen(
                 Text(
                     "选择存储位置",
                     fontWeight = FontWeight.SemiBold,
-                    color = AppColors.Primary
+                    color = MaterialTheme.colorScheme.primary
                 )
             },
             text = {
@@ -735,7 +749,7 @@ fun MainScreen(
                         openFileLauncher.launch(arrayOf("text/markdown", "text/*"))
                     }
                 ) {
-                    Text("打开已有文件", color = AppColors.Primary)
+                    Text("打开已有文件", color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -750,6 +764,18 @@ fun MainScreen(
                     }
                 }
             }
+        )
+    }
+
+    // 主题选择（需求 48）：选中即生效并持久化，无需二次确认
+    if (showThemePicker) {
+        ThemePickerDialog(
+            current = currentThemeMode,
+            onPick = { mode ->
+                onThemeChange(mode)
+                showThemePicker = false
+            },
+            onDismiss = { showThemePicker = false }
         )
     }
 
@@ -771,7 +797,7 @@ fun MainScreen(
                         text = "Appendo",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = AppColors.Primary
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -814,7 +840,7 @@ fun MainScreen(
                 Text(
                     "清空内容",
                     fontWeight = FontWeight.SemiBold,
-                    color = AppColors.Danger
+                    color = MaterialTheme.colorScheme.error
                 )
             },
             text = {
@@ -861,7 +887,7 @@ fun MainScreen(
                         }
                     }
                 ) {
-                    Text("确定", color = AppColors.Danger)
+                    Text("确定", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -921,8 +947,8 @@ fun MainScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Text("⏰ 设提醒", fontWeight = FontWeight.Medium)
                     }
@@ -948,7 +974,7 @@ fun MainScreen(
                                 ReminderStore.get(context).remove(selectedEntry!!.timestamp)
                                 showToast(context, "已取消提醒")
                             }
-                        ) { Text("取消提醒", color = AppColors.Danger) }
+                        ) { Text("取消提醒", color = MaterialTheme.colorScheme.error) }
                     }
                 }
             },
@@ -985,7 +1011,7 @@ fun MainScreen(
                         editContent = ""
                     }
                 ) {
-                    Text("保存", color = AppColors.Primary)
+                    Text("保存", color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -1077,7 +1103,7 @@ fun MainScreen(
         AlertDialog(
             onDismissRequest = { showSafInvalidDialog = false },
             title = {
-                Text("数据文件访问已失效", fontWeight = FontWeight.SemiBold, color = AppColors.Danger)
+                Text("数据文件访问已失效", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
             },
             text = {
                 Text("自定义目录的文件授权在应用更新后可能失效（本机系统行为），因此暂时读不到数据。\n\n你的数据仍在原文件中，不会丢失。可重选同一文件恢复访问，或回退到应用默认文件。")
@@ -1087,7 +1113,7 @@ fun MainScreen(
                     showSafInvalidDialog = false
                     changeFileLauncher.launch("Appendo.md") // 重选原文件恢复授权
                 }) {
-                    Text("重选文件", color = AppColors.Primary)
+                    Text("重选文件", color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -1100,7 +1126,7 @@ fun MainScreen(
                     fileRepository.clearFileLastModified()
                     refreshEntryCount()
                 }) {
-                    Text("回退默认", color = AppColors.Danger)
+                    Text("回退默认", color = MaterialTheme.colorScheme.error)
                 }
             }
         )
@@ -1214,8 +1240,8 @@ fun MainScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.5.dp, AppColors.Primary.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Text("⏰ 设提醒", fontWeight = FontWeight.Medium)
                     }
@@ -1282,7 +1308,7 @@ fun MainScreen(
                         keyboardController?.hide()
                     }
                 ) {
-                    Text("追加", color = AppColors.Primary)
+                    Text("追加", color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -1337,14 +1363,94 @@ private fun scheduleReminder(context: android.content.Context, ts: String, trigg
     showToast(context, "已设置提醒")
 }
 
+/** 主题三选对话框（需求 48）：跟随系统整行 + 浅色/深色并列（真机验收两轮修正：纯横排四字换行、纯纵排面板偏高）。 */
+@Composable
+private fun ThemePickerDialog(
+    current: ThemeMode,
+    onPick: (ThemeMode) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("主题", fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column {
+                // 首行整宽：四字标签独占一行不换行；次行两个二字标签并列（真机两轮验收定稿）
+                // 预览样式：浅色/深色按钮用对应主题真实配色（引用全局 scheme，不写死），
+                // 跟随系统用当前生效主题（=系统现在的样子）；选中态=加粗主色描边（不覆盖预览底色）
+                ThemeOptionButton(
+                    label = "跟随系统",
+                    selected = current == ThemeMode.SYSTEM,
+                    previewScheme = MaterialTheme.colorScheme,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onPick(ThemeMode.SYSTEM) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    ThemeOptionButton(
+                        label = "浅色",
+                        selected = current == ThemeMode.LIGHT,
+                        previewScheme = AppendoLightScheme,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onPick(ThemeMode.LIGHT) }
+                    )
+                    ThemeOptionButton(
+                        label = "深色",
+                        selected = current == ThemeMode.DARK,
+                        previewScheme = AppendoDarkScheme,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onPick(ThemeMode.DARK) }
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}
+
+/**
+ * 主题选项按钮：以 [previewScheme] 的 surface/onSurface 预览该主题观感
+ * （颜色引用全局主题定义，不在按钮内写死）；选中态=加粗主色描边，不覆盖预览底色。
+ */
+@Composable
+private fun ThemeOptionButton(
+    label: String,
+    selected: Boolean,
+    previewScheme: ColorScheme,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(
+            if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary
+            else previewScheme.outline.copy(alpha = 0.4f)
+        ),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = previewScheme.surface,
+            contentColor = previewScheme.onSurface
+        )
+    ) {
+        Text(label, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+    }
+}
+
 private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
     try {
-        val content = mdFile.readAllForExternal() // 出口剥离 ZWSP，保证复制出去的内容干净（specs 38，B2）
-        // Check if content is empty (only has header, no actual entries)
-        if (content.isBlank() || !content.contains("## ")) {
+        // 出口格式化（v1.3，specs 68~70）：经 parse 产物构建，无结构标记、无 ZWSP、秒级时间戳
+        val entries = EntryParser.parse(mdFile.readAll())
+        if (entries.isEmpty()) {
             showToast(context, "暂无内容可复制")
             return
         }
+        val content = EntryParser.formatForExport(entries)
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("appendo", content))
         showToast(context, "已复制到剪贴板")
@@ -1358,12 +1464,13 @@ private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOp
 
 private fun shareContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
     try {
-        val content = mdFile.readAllForExternal() // 出口剥离 ZWSP，保证分享出去的内容干净（specs 38，B2）
-        // Check if content is empty (only has header, no actual entries)
-        if (content.isBlank() || !content.contains("## ")) {
+        // 出口格式化（v1.3，specs 68~70）：经 parse 产物构建，无结构标记、无 ZWSP、秒级时间戳
+        val entries = EntryParser.parse(mdFile.readAll())
+        if (entries.isEmpty()) {
             showToast(context, "暂无内容可分享")
             return
         }
+        val content = EntryParser.formatForExport(entries)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_TEXT, content)

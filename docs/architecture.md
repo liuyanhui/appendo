@@ -19,6 +19,7 @@
 | 2026-09-01 | Yiyue + Claude | 四项产品决策落地（用户拍板 AAAA）：①输入侧去 trim（解析侧 trim 保留并在 §3.1/§9 声明边界）②allowBackup 拥抱云备份（§5/§8.3 口径更新）③旧数据首启一次性迁移（`migrateLegacyIsolation` + MainScreen 启动钩子 + 6 用例）④贪睡漂移定位有意取舍（§5.2）；§9 增四条 ADR |
 | 2026-09-02 | Yiyue + Claude | v1.2.2 收尾：K10/K11 修复落地；真机定向验收五项通过并更新 §12 状态列；真机发现并修复 K12（SAF 授权失效静默，TD-021 受控复现+活体验收对话框自愈）与 K13（归档详情徽标）；重启提醒延迟登记 TD-022 待决策 |
 | 2026-09-02 | Yiyue + Claude | TD-022 决策（用户拍板）：**维持现状**（解锁后重注册/补发），成本/风险评估与理由入 §5.3 注记、§9 ADR 与 debt-tracker |
+| 2026-09-17 | Yiyue + Claude | v1.3 主题功能（需求 48~56）同步：§2 模块地图加 `ui/theme`、§3.6 SP 清单加 `theme_mode`；浅色强调色对比度取舍登记 TD-023（D1 方案 A：浅色不动） |
 
 ---
 
@@ -76,12 +77,13 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 | 位置 | 职责 | 关键文件 |
 |---|---|---|
 | 根包 | 入口 | `MainActivity`（导航）、`ShareReceiverActivity`、`AppendoApplication`（建遗留通知渠道） |
-| `util/` | **条目与文件的协议层** | `EntryParser`、`MarkdownFileOperations`（接口+锁）、`MarkdownFileFactory`、`FileBasedMarkdownFile`、`SafMarkdownFile`、`MarkdownFormatter`（仅常量：文件头/归档文件名/分隔形态）、`ParsedEntry`/`ReadResult`（含 `failed` 标志） |
+| `util/` | **条目与文件的协议层** | `EntryParser`（含 v1.3 出口格式化 `formatForExport`）、`MarkdownFileOperations`（接口+锁）、`MarkdownFileFactory`、`FileBasedMarkdownFile`、`SafMarkdownFile`、`MarkdownFormatter`（仅常量：文件头/归档文件名/分隔形态）、`ParsedEntry`/`ReadResult`（含 `failed` 标志） |
 | `util/`（提醒纯逻辑） | 提醒的纯函数 | `ReminderMeta`/`Recurrence`、`ReminderMetaCodec`、`ReminderLogic`、`ReminderText` |
 | `util/`（其他） | 独立小工具 | `CalendarEntryMapper`+`CalendarLauncher`（添加到日历）、`DuplicateHintThrottle`（重复内容提示：追加内容与已有条目相同时 Toast「已有相同内容 N 条」；仅手动输入路径经 5 秒节流，分享路径不节流、每次报数） |
 | `data/` | 存储偏好与归档管理 | `FileRepository`（SP 偏好 + URI 权限）、`ArchiveRepository`+`ArchiveFile` |
 | `reminder/` | 提醒的 Android 侧 | `ReminderStore`（sidecar 单例）、`AlarmScheduler`、`NotificationHelper`、`ReminderAlarmReceiver`、`ReminderBootReceiver`、`ReminderIntents` |
-| `ui/` | Compose 界面 | `MainScreen`（主界面+全部对话框）、`EntryListScreen`（可复用列表）、`ArchiveListScreen`、`ArchiveDetailScreen`、`ReminderTimePickerDialog`、`LinkEntry`、`AppColors`、`ToastUtils` |
+| `ui/` | Compose 界面 | `MainScreen`（主界面+全部对话框，含主题三选）、`EntryListScreen`（可复用列表）、`ArchiveListScreen`、`ArchiveDetailScreen`、`ReminderTimePickerDialog`、`LinkEntry`、`ToastUtils` |
+| `ui/theme/` | 主题（v1.3） | `Theme.kt`：`ThemeMode` 三态（跟随系统/浅色/深色，默认跟随系统）、`AppendoTheme` 双 ColorScheme（浅色=历史延续、深色=M3 亮容器+深 onXxx，AA ≥4.5:1）、success 扩展色（CompositionLocal）、状态栏图标同步。**全 UI 经 `MaterialTheme.colorScheme`/`successColor` 取色**（原 `AppColors` 已删除）；XML 侧（`values(-night)/themes.xml` 双变体 + Activity 冷启动 `setTheme`）只管窗口背景/状态栏，手动切换 = MainActivity 的 Compose State 纯重组（无重建），跟随系统 = uiMode 重建 + saveable 恢复 |
 
 **`EntryParser` 的地位**：所有"什么是一条条目"的知识（判定/解析/格式化/边界/时间戳单调/隔离标记/SAF 恢复判定）都收敛在这一个 object 里，纯函数。写侧（`format`）和读侧（`parse`）对称，两个存储实现共享同一套算法——v1.1 之前这套逻辑在两个实现里各复制一份，曾因此产生行为分叉。
 
@@ -150,10 +152,10 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 
 | 出口 | 剥离方式 |
 |---|---|
-| 复制全部 / 分享全部（`MainScreen`） | 显式走 `readAllForExternal()`（= readAll + `stripIsolationMarkers`） |
+| 复制全部 / 分享全部（`MainScreen`） | **v1.3 起经 `parse` 产物 + `EntryParser.formatForExport` 格式化纯文本**（秒级时间戳行+内容，无结构标记——接收端智能解析丢内容问题，specs 68；`readAllForExternal` 原文路径停用） |
 | 添加到日历（`CalendarEntryMapper.map`） | 显式 `stripIsolationMarkers` |
 | 提醒通知标题/正文（`ReminderText.title`） | 显式 `stripIsolationMarkers` |
-| 归档列表长按复制归档（`ArchiveListScreen`） | 显式 `stripIsolationMarkers` |
+| 归档列表长按复制归档（`ArchiveListScreen`） | **v1.3 起同上：`parse` + `formatForExport`**（全文复制出口统一格式） |
 | **长按复制单条**（主列表 / 归档详情页） | **经 `parse` 产物天然干净**——`parse` 收集内容时已用 `restoreLine` 还原（与 `stripIsolationMarkers` 内部同一函数），无需再剥 |
 | 打开文件（`MainScreen#openFile` → 外部查看器） | **有意不剥离**（原文含 ZWSP 直出）——外部编辑器/查看器场景按已知约束不受支持（§8.2）；新增出口勿仿效，除非同样声明为不支持场景 |
 
@@ -186,7 +188,7 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 
 | 文件 | 键 | 用途 |
 |---|---|---|
-| `appendo` | `use_saf` / `file_uri` / `file_last_modified` | 存储模式、SAF URI、**逻辑 mtime**（§6.3） |
+| `appendo` | `use_saf` / `file_uri` / `file_last_modified` / `theme_mode` | 存储模式、SAF URI、**逻辑 mtime**（§6.3）、主题三态（v1.3，缺省=system 不写入） |
 | `appendo_reminders` | `reminder_<ts>` | 提醒 sidecar（§3.4） |
 
 > `appendo` 这个名字是历史沿革（更早叫 `link_appending`）；老设计文档里写的 `link_appending` 已过时。
@@ -473,7 +475,7 @@ orphans → AlarmScheduler.cancel + store.remove
 
 | 验收对象 | 手段 | 状态 |
 |---|---|---|
-| 单元回归 | `./gradlew testDebugUnitTest` 全绿（改协议/提醒必跑） | ✅ 2026-08-31（113 用例） |
+| 单元回归 | `./gradlew testDebugUnitTest` 全绿（改协议/提醒必跑） | ✅ 2026-09-17（133 用例，含 v1.3 主题 8 个） |
 | 构建 | `./gradlew assembleDebug` 成功 | ✅ 2026-08-31 |
 | 默认模式数据完整性（真机） | 追加/删除/编辑后核对文件：debug 构建用 `adb shell run-as com.yiyue31.android.appendo cat /storage/emulated/0/Android/data/com.yiyue31.android.appendo/files/Appendo.md`（Android 11+ 文件管理器**无法**访问该目录，勿用"文件管理器查看"）；核对内容完整、无半写、无 BOM | ✅ 2026-08-31（写入+run-as 抽查） |
 | SAF 模式（真机） | 切换外部文件 → 写入 → 读回一致。崩溃恢复需**在写入窗口内中断**才触发（"限制后台后杀进程"发生在后台化时、造不出窗口，勿用）；可在写入瞬间 `adb shell am crash com.yiyue31.android.appendo` 模拟 | 部分 ✅ 2026-09-02：授权丢失场景已活体复现并验证 TD-021 修复对话框；`am crash` 写入窗口崩溃恢复仍未做（TD-006 关联） |
@@ -483,6 +485,8 @@ orphans → AlarmScheduler.cancel + store.remove
 | 出口干净度 | 复制全部/复制单条/分享/日历预填/通知标题 → 粘贴进**可检测 U+200B 的工具**（支持"显示不可见字符"的编辑器或在线 zero-width 检查器）比对无零宽字符 | ⛔ 未做字符级检查（视觉检查不充分） |
 | 升级兼容 | 旧秒级数据装新版本条目可读、计数正确（默认模式需 adb 推送旧格式文件；SAF 模式可外部构造后选择） | ✅ 2026-08-31（1.2.0→1.2.1 数据保留） |
 | 归档恢复去重 | 恢复含重复条目的归档 → 仅新增缺失条目、原时间戳落回历史位置、Toast 报"恢复 X 条 / 跳过 Y 条" | ✅ 2026-09-02（删空→恢复往返，用户验证） |
+| 主题（v1.3，真机） | ①三态切换即时生效 + 重启保持 + 滚动/导航不重置；②跟随系统：前台实时/后台切回（含提醒深链）/切回手动独立；③深色走查（三页+全部对话框+菜单+空状态+滑动中间态+状态栏图标）；④冷启动三模式无闪屏 + 深色系统分享无白闪；⑤浅色回归（除状态栏浅底深图标与徽标变品牌蓝两个预期变化） | ✅ 2026-09-18 全部通过（2026-09-17 adb 半自动走查：三态/跟随系统前后台/深色走查/滑动中间态/浅色回归 + 持久化修复 commit()（TD-024）；2026-09-18 人工：三态点选、杀进程重启保持、面板布局两轮修正） |
+| 出口格式化（v1.3，真机） | 分享全部 → 有道云笔记/系统便签全部条目完整可见（原只显示第一条）；复制全部粘贴干净；单条复制不变 | ✅ 2026-09-18 用户验证通过 |
 
 ---
 

@@ -8,14 +8,15 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 
 | 文件 | 职责 | 复杂度 |
 |------|------|--------|
-| `MainScreen.kt` | 主页面：笔记列表、操作按钮、输入/清空/编辑/关于对话框、提醒入口与自检、首启存储引导、文件轮询刷新 | 高 |
+| `MainScreen.kt` | 主页面：笔记列表、操作按钮、输入/清空/编辑/关于/主题选择对话框、提醒入口与自检、首启存储引导、文件轮询刷新 | 高 |
 | `EntryListScreen.kt` | 可复用笔记列表组件：条目卡片、滑动删除、长按复制、点击编辑、提醒徽标 | 中 |
 | `ArchiveListScreen.kt` | 归档列表页：归档卡片、滑动删除/追加恢复（去重） | 中 |
 | `ArchiveDetailScreen.kt` | 归档详情页：复用 EntryListScreen（只读模式） | 低 |
 | `LinkEntry.kt` | UI 层条目模型：timestamp（完整时间戳串作 key）+ content + 派生 timestampDisplay | 低 |
 | `ReminderTimePickerDialog.kt` | 提醒时间选择：预设 chips + 自定义日期时间 + 每天/每周重复 | 中 |
-| `AppColors.kt` | 全局颜色常量：Primary(蓝)、Danger(红)、Success(绿) | 低 |
-| `ToastUtils.kt` | 自定义 Toast：圆角半透明黑色背景，兼容旧版 Android | 低 |
+| `AppColors.kt` | ~~全局颜色常量~~ **已删除（v1.3）**：迁移为 `ui/theme/Theme.kt` 语义色（`MaterialTheme.colorScheme.primary`/`.error` + `successColor` 扩展），详见 `theme/CLAUDE.md` | — |
+| `ToastUtils.kt` | 自定义 Toast：圆角半透明黑色背景，兼容旧版 Android；两种主题下均可读，不随主题变色 | 低 |
+| `theme/`（子包） | 主题基础设施（v1.3）：`AppendoTheme` 双色板、success 扩展色、`ThemeMode` 三态、状态栏同步——见 `theme/CLAUDE.md` | 中 |
 
 ## 导航流程
 
@@ -98,4 +99,4 @@ ArchiveDetailScreen → ui/EntryListScreen (只读模式)
 - **修改列表样式**：修改 `EntryListScreen` 的 `EntryCard` 组件
 - **添加新交互**：在 `EntryListScreen` 添加新回调参数，注意 `readOnly` 模式下的行为
 - **添加新按钮**：在 `MainScreen` 的按钮区域（2x2 Row 布局）中添加
-- **修改颜色主题**：修改 `AppColors.kt` 中的颜色值
+- **修改颜色主题**：修改 `ui/theme/Theme.kt` 的 `Palette`（同步 `res/values/colors.xml` 状态栏色）；取色一律经 `MaterialTheme.colorScheme` / `successColor` 扩展（v1.3 起）

@@ -96,13 +96,13 @@ fun ReminderTimePickerDialog(
                                     shape = RoundedCornerShape(12.dp),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (selected) AppColors.Primary
+                                        if (selected) MaterialTheme.colorScheme.primary
                                         else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                                     ),
                                     colors = if (selected) {
                                         ButtonDefaults.outlinedButtonColors(
-                                            containerColor = AppColors.Primary,
-                                            contentColor = AppColors.lightOnPrimary()
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
                                         )
                                     } else {
                                         ButtonDefaults.outlinedButtonColors(

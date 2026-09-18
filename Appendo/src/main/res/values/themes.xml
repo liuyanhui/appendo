@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Appendo" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- 浅色（v1.2.2 现状延续）。状态栏显式声明：浅底 + 深色图标（需求 51）；
+         深色变体供手动模式 setTheme，跟随系统由 values-night 覆盖。 -->
+    <style name="Theme.Appendo" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/status_bar_light</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="Theme.Appendo.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_bg_dark</item>
+        <item name="android:statusBarColor">@color/status_bar_dark</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

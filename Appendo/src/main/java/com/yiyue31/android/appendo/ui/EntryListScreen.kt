@@ -224,7 +224,7 @@ private fun EntryCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(AppColors.Danger, RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.error, RoundedCornerShape(16.dp))
                         .padding(16.dp),
                     contentAlignment = Alignment.CenterEnd
                 ) {
@@ -232,7 +232,7 @@ private fun EntryCard(
                         text = swipeActionText,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onError
                     )
                 }
             }
@@ -269,7 +269,7 @@ private fun EntryCard(
                         Text(
                             text = "⏰ $reminderLabel 提醒",
                             style = MaterialTheme.typography.labelSmall,
-                            color = AppColors.Primary
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }

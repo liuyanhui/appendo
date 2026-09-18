@@ -26,7 +26,7 @@
 ## 字面量与常量规范
 
 - **禁止**在代码中使用硬编码字面量（字符串、颜色值、数字等）。必须提取为常量，集中在合适的对象中管理：
-  - 颜色值统一放到 `AppColors` 对象
+  - 颜色值统一放到 `ui/theme/Theme.kt` 的 `Palette`（界面取色经 `MaterialTheme.colorScheme` / `successColor` 扩展；v1.3 起原 `AppColors` 已删除）
   - 文件格式、日期格式等统一放到 `MarkdownFormatter` 对象
   - 文件名、路径模式等统一放到对应的 Repository 或工具类中
   - 多处使用的相同值，提取为共享常量，避免重复定义

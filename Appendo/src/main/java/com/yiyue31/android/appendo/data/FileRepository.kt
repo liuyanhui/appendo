@@ -12,9 +12,11 @@ import java.io.File
 class FileRepository(private val context: Context) {
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("appendo", Context.MODE_PRIVATE)
+        context.getSharedPreferences(APPENDO_PREFS, Context.MODE_PRIVATE)
 
     companion object {
+        /** `appendo` SP 文件名（历史沿革，见 architecture.md §3.6）；ThemePreferences 等共享。 */
+        const val APPENDO_PREFS = "appendo"
         private const val KEY_USE_SAF = "use_saf"
         private const val KEY_FILE_URI = "file_uri"
         private const val KEY_FILE_LAST_MODIFIED = "file_last_modified"

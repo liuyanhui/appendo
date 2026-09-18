@@ -8,7 +8,8 @@
 
 | 文件 | 职责 |
 |------|------|
-| `FileRepository.kt` | 文件存储偏好管理、SAF URI 持久化、首次启动检测、SAF 恢复文件（.bak/.pending）清理 |
+| `FileRepository.kt` | 文件存储偏好管理、SAF URI 持久化、首次启动检测、SAF 恢复文件（.bak/.pending）清理；companion 持有 SP 文件名共享常量 `APPENDO_PREFS` |
+| `ThemePreferences.kt` | 主题三态偏好（v1.3）：`theme_mode` 键读写（缺省/非法回退 SYSTEM）、`applyWindowTheme`（Activity 冷启动 setTheme） |
 | `ArchiveRepository.kt` | 归档文件的增删查、时间戳解析、内容读取（`ArchiveFile` 数据类定义在此文件内，无独立文件） |
 
 ## 存储架构：双模式设计
@@ -35,8 +36,8 @@ FileRepository
 
 ## SharedPreferences 说明
 
-- 文件名：`"appendo"`
-- 存储内容：`use_saf`（布尔）、`file_uri`（字符串）、`file_last_modified`（长整型）
+- 文件名：`"appendo"`（常量 `FileRepository.APPENDO_PREFS`）
+- 存储内容：`use_saf`（布尔）、`file_uri`（字符串）、`file_last_modified`（长整型）、`theme_mode`（字符串，v1.3：`system`/`light`/`dark`，缺省=system 不写入）
 
 ## 线程安全
 

@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.data.ThemePreferences
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
@@ -33,6 +34,8 @@ class ShareReceiverActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 深色系统下分享路径的窗口背景（需求 56）：无 UI 但 IO 期间窗口可见，防白闪
+        ThemePreferences.applyWindowTheme(this)
         super.onCreate(savedInstanceState)
 
         // Perform file operations on background thread to prevent ANR
