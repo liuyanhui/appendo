@@ -14,6 +14,7 @@
 | 2026-04-17 | Yiyue | 新增归档管理功能；统一条目交互模式；实现归档恢复功能；修复删除索引bug；改用时间戳作为删除标识符 |
 | 2026-04-18 | Yiyue | 提取 MarkdownFileOperations 接口和工厂模式；实现归档恢复去重；自适应图标矢量图；项目统一命名为 Appendo |
 | 2026-07-20 | Yiyue | v1.1 数据完整性增强（v3.1，经三轮多角色评审 + 自查修订）：java.time 毫秒时间戳、正则集中化、零宽空格隔离+单一出口剥离、写入原子性(默认 fsync+rename / SAF .pending+.bak 软恢复+持锁)、EntryParser 收敛条目知识、ReadResult、appendEntry、测试金字塔 |
+| 2026-10-06 | Yiyue | v1.3.x 微文案与交互一致性设计（对应 specs 第 15 章需求 74~81，需求已经"评审→修订→三角色复核"闭环）：统一术语表落地方案、Microcopy 常量源、需求 75"次级动作先落盘"时序与 appendReturningTimestamp 竞态消除、测试与文档同步方案 |
 
 ## 架构概述
 
@@ -509,3 +510,121 @@ fun atomicWrite(file: File, content: ByteArray): Boolean = synchronized(FileOper
 - 文件无界增长：Phase B 后考虑条目数阈值自动归档。
 - exists()/hasEntries() 拆分、ViewModel 重构、FileObserver：Phase B。
 - App 内搜索（ZWSP 不影响，parse 已剥离）：独立产品增强后续评估。
+
+## v1.3.x 微文案与交互一致性设计（2026-10-06；2026-10-07 三角色评审修订）
+
+> 对应需求：specs.md 第 15 章（74~81）。现状快照见 architecture.md（唯一权威源），本文按"设计变更史"定位记录本批技术方案。需求侧已闭环：多角色评审（产品/架构/用户）→ 修订 → 三角色复核（6 项必修确认落地）。设计侧经三角色评审（软件架构师/资深软件工程师/资深测试工程师，串行）修订：消除"定位失败"死分支、补 §4.5 实现约束与 pendingReminderTs 接线、§6 补替换标题色、§7 补 SAF 覆盖与代码级核对豁免、断言增强与 grep 防线。
+
+### 1. 改动总览
+
+纯 UI/文案层 + 2 处小逻辑 + 1 处接口增强，**无存储协议变更**。
+
+| 需求 | 改动点 | 类型 |
+|---|---|---|
+| 74 | 9 处文案替换点（§2 映射表，以表为执行准绳） | 字符串 |
+| 75 | 编辑对话框两次级按钮重写 + 手动输入路径补成功 toast + 时间戳竞态消除（§4） | 小逻辑 + 接口 |
+| 76 | 手动输入确认按钮空白分支（§5） | 小逻辑 |
+| 77 | 清空确认"确定"→"清空" | 字符串 |
+| 78 | 4 处颜色（§6） | 颜色 |
+| 79 | 复制全部 toast + 编辑 placeholder | 字符串 |
+| S1 | 新建 `ui/Microcopy.kt` 常量源（§3） | 新文件 |
+| S2 | architecture.md §8.3 一句过时表述修正（§8） | 文档 |
+
+### 2. 文案字面映射（Generator 执行清单）
+
+| 位置 | 现状 | 定稿 |
+|---|---|---|
+| MainScreen.kt:1014 | 保存 | 保存修改 |
+| MainScreen.kt:1296 | 内容已追加 | 已追加 |
+| MainScreen.kt:1233 | 已追加，未能定位新条目 | **删除该分支**（§4.5 新接口下"追加成功但拿不到 ts"不可达——null ⟺ 追加未发生，失败统一 toast"追加失败"；specs 74 第 8 条已加注记） |
+| ArchiveListScreen.kt:341-342 | 已恢复 N 条 / 已恢复 N 条，跳过 M 条已存在 | 已追加 N 条 / 已追加 N 条（跳过 M 条已存在） |
+| ShareReceiverActivity.kt:113 | 写入失败 | 追加失败 |
+| ShareReceiverActivity.kt:111 | 写入失败：自定义目录授权可能已失效，请打开 appendo 重选文件 | 追加失败：自定义目录授权可能已失效，请打开 appendo 重选文件 |
+| ShareReceiverActivity.kt:97 | 已保存到默认文件（自定义目录已失效，可打开 appendo 重选） | 已追加到默认文件（自定义目录已失效，可打开 appendo 重选） |
+| ShareReceiverActivity.kt:94 | 内容过长（上限 N 字符），未保存 | 内容过长（上限 N 字符），未追加 |
+| ShareReceiverActivity.kt:109 | 未找到可保存的内容 | 未找到可追加的内容 |
+| MainScreen.kt:890 | 确定（清空确认，红） | 清空（红） |
+| MainScreen.kt:1456 | 已复制到剪贴板 | 已复制全部内容 |
+| MainScreen.kt:935 | 无内容（placeholder） | 请输入内容 |
+
+### 3. 文案常量源（S1，应补项落地机制）
+
+- 新建 `ui/Microcopy.kt`：`internal object Microcopy { ... }`，集中第 15 章涉及的按钮与反馈文案（如 `BTN_APPEND = "追加"`、`BTN_SAVE_CHANGES = "保存修改"`、`TOAST_APPENDED = "已追加"`、`TOAST_APPEND_FAILED = "追加失败"`、`TOAST_CONTENT_EMPTY = "内容不能为空"` 等）；按钮与 Toast 引用同一常量，编译期保证"按钮/成功/失败动词一致"（specs 74），给 81(c)(g) 提供防线。含参文案（如"已追加（已有相同内容 N 条）""内容过长（上限 N 字符）"）用 `const val` 模板或函数返回，Generator 自决
+- **范围控制**：第 15 章涉及文案及其直接共用项 + 两处已达标同族文案一并入常量（评审补充）："已复制全部内容"（ArchiveListScreen.kt:206 与 MainScreen.kt:1456 改后同字面）、"已追加（已有相同内容 N 条）"（MainScreen.kt:1294）——否则"编译期保证一致"不闭合。"内容不能为空"在 §5 落地后共五处引用（现状四处：MainScreen.kt:959/985/1217/1251 + 新增确认按钮一处）共用一个常量；不做全量 ~50 条收敛（超出本批范围）
+- 选型理由：项目单语言中文、无 localized 需求，Kotlin 常量 object 成本低于 strings.xml 且编译期引用（三角色评审 AR 建议采纳）
+
+### 4. 需求 75"次级动作先落盘"实现方案
+
+**4.1 编辑对话框"⏰ 设提醒"重写**（现 MainScreen.kt:939-954）：
+
+```
+onClick:
+ 1. editContent.isBlank() → toast 内容不能为空；return（框保持）      // 76a 补齐
+ 2. val ts = selectedEntry.timestamp（updateEntry 不变时间戳，需求 24）
+ 3. editContent != selectedEntry.content → updateEntry：
+      失败 → toast 保存失败；return（框保持）                        // 75 保存失败不执行后续（return 必须在关框之前）
+      成功 → setFileLastModified(now) + refreshEntryCount() + toast 已保存  // 技术前提1（4.6）
+ 4. pendingReminderTs = ts（先赋值！该状态与 selectedEntry 解耦——选择器/替换确认只读它，MainScreen.kt:1137/1154-1175；漏写会因 :1138 守卫静默不弹选择器）
+ 5. 关闭编辑对话框（showDetailDialog=false; selectedEntry=null; editContent=""）+ keyboardController?.hide()
+ 6. hasUnfired(ts) ? showOverwriteReminder=true : showReminderPicker=true  // 替换确认在保存后
+```
+
+**4.2 编辑对话框"添加到日历"同构**（现 :957-966，已有空校验保留）：空校验 → 有修改先保存（同 4.1 步 3，失败 return）→ 关框 + `keyboardController?.hide()` → `CalendarLauncher.launch`（失败 toast"未找到日历应用"，不回滚已保存内容——specs 75 独立反馈）。
+
+**4.3 手动输入两次级动作**（现 :1214-1275，空校验现状已有、保留）：改用 `appendReturningTimestamp`（§4.5）——成功：toast"已追加"（**不带**需求 42 的重复旁注，旁注口径仅确认按钮路径）→ 清空输入/关框/hide → 开提醒选择器或跳日历；失败（null）：toast"追加失败"、框保持。原"定位新条目失败"分支（:1233）**删除**（不可达，见 §2 注）。
+
+**4.4 无修改路径**：同样先关框再执行后续（与有修改路径的"离开编辑状态去设提醒"语义一致）。
+
+**4.5 竞态消除（技术前提 2）**：`MarkdownFileOperations` 接口新增：
+
+```kotlin
+/** 追加内容并返回新条目时间戳（时间戳生成与写入在同一持锁事务内）。失败返回 null。 */
+fun appendReturningTimestamp(content: String): String?
+```
+
+- **抽象方法、不给默认实现**（无法给出正确默认；全库仅 FileBased/Saf 两实现且无测试 fake，编译器强制两实现同步落地）
+- **实现约束（评审补充，防 TOCTOU 残留与双读）**：方法体整体 `synchronized(FileOperationLock)`，时间戳基于**同一次持锁读取**的内容生成；改法为镜像现有 `append()` 五行结构（FileBasedMarkdownFile.kt:19-29 / SafMarkdownFile.kt:126-136 的 读→`EntryParser.nextTimestamp(content)`→appendEntryInternal），并把 `append()` 重构为 `appendReturningTimestamp(content) != null` 消除双份重复（JVM 锁可重入，正确性等价；避免经公共 appendEntry 造成二次全量读）
+- SAF 失败语义已核实干净：`safAtomicWrite` 失败 → .pending 残留 → 返回 null，下次读经 ensureConsistent 从 .bak 回滚，"null = 未追加"自洽
+- 手动输入+设提醒路径（4.3）改用该接口定位新条目 ts，**替代**现状 `parseMarkdownEntries(mdFile.readAll()).lastOrNull()?.timestamp`（MainScreen.kt:1225，append 与 readAll 两次独立持锁存在并发插入竞态）
+- 旧 `append()` 保留调用方语义不变（分享接收、手动输入确认/日历路径），其 KDoc 加一句"需得知新条目时间戳的调用方请改用 appendReturningTimestamp"（防误用）
+- 方案取舍：备选"调用侧预计算 max 时间戳"仍有 TOCTOU 窗口；本方案把生成收敛到锁内，彻底消除且为未来"写入即知标识"铺路
+
+**4.6 刷新联动（技术前提 1）**：4.1/4.2 新增的 updateEntry 写盘点后调用 `fileRepository.setFileLastModified(System.currentTimeMillis())` + `refreshEntryCount()`（对照编辑确认按钮现状 :997-998 已有同样调用）。
+
+### 5. 需求 76 实现
+
+手动输入确认按钮（现 :1281-1308）重构首行：`inputContent.isBlank() → toast 内容不能为空 + return@TextButton（不关框）`；其余追加逻辑不变。
+
+### 6. 需求 78 颜色
+
+- MainScreen.kt:1166 替换按钮 **及 :1160"替换已有提醒？"对话框标题**：加 `color = MaterialTheme.colorScheme.error`（破坏性=红；现状四个破坏性对话框标题全红，仅此漏——评审补充，78(a) 字面要求）
+- ArchiveListScreen.kt:295（恢复对话框标题）与 :356（追加按钮）：`successColor` → `MaterialTheme.colorScheme.primary`
+- 滑动指示背景色不动（需求 22/28 已固化）
+
+### 7. 测试方案
+
+- **单测**（`./gradlew test --max-workers=1` 串行，仅默认实现可 JVM 测，SAF 无 instrumented 基建 TD-003）：`appendReturningTimestamp` 三用例，断言强度对照 FileBasedMarkdownFileTest 既有风格——①成功 round-trip：返回 ts == 末条 rawTimestamp **且**该条 content == 追加内容；②连续多次调用 ts 唯一（需求 36 语义，对照 :57 既有单调性用例）；③失败（`file.mkdirs()` 模拟读失败，先例 :145-170）返回 null **且无写入痕迹**（`file.listFiles()` 为空，对照 :152-156）。不设第四用例（空内容校验在上游，隔离已有覆盖）。FileBased 实现的 catch 日志与方法名对应
+- **81 a~i**：真机人工走查（无 Compose UI 测试基建；TD-024：交互验收以人工为准）。**代码级核对豁免清单**（真机无廉价触发手段，与 h 同待遇）：(f) 失败分支（ShareReceiverActivity:111，真机手段均命中回退分支）、(f) 超长与无内容可用 adb am start 注入（走查清单第 10 步）、75 的两个失败子分支（4.1"保存失败"return 在关框之前；日历 launch false 分支现状已符合"不回滚"）
+- **SAF 覆盖**（评审补充，堵唯一写路径缺口）：SAF 模式下重复走查 (b3)/(h) 各一次（走查清单第 15~16 步的 SAF 块顺带执行）；另由 Evaluator 代码级核对 SafMarkdownFile.appendReturningTimestamp 与默认实现同锁路径同构
+- **grep 防线（Evaluator 检查单固化，零成本客观）**：①旧字面清零——`grep -rn "内容已追加\|已恢复\|写入失败\|已保存到默认文件\|未找到可保存\|已复制到剪贴板\|未能定位新条目" Appendo/src/main/java --include="*.kt"` 预期仅剩 KDoc/注释历史引述；②S1 落地核实——"已追加/保存修改/追加失败/内容不能为空"等新字面在 MainScreen/ShareReceiverActivity/ArchiveListScreen 中仅应经 `Microcopy` 常量出现，不应有裸字面量
+- **回归**：既有 15 个测试文件全量跑通（真实交集仅 FileBasedMarkdownFileTest 与边缘的 CalendarEntryMapper/DuplicateHintThrottle）
+
+### 8. 文档同步（并入 Generator 任务）
+
+- README 交互说明：注明主列表/归档列表滑动差异（80a）、"归档/归档管理"区别（80b）
+- architecture.md §8.3（:394）：过时句修正为"超长被拒绝写入（不截断），Toast 明确提示『内容过长（上限 N 字符），未追加』"，移除 TD-020 待改进备注
+- CHANGELOG.md：v1.3.x 条目
+- docs/plans/debt-tracker.md：TD-025/026 已登记（本批仅引用不处理）
+
+### 9. 实施顺序（执行计划基础）
+
+specs 的"批次"是**优先级/验收顺序**语义；编码按改动类型组织任务、一次完成（避免同文件字符串改两轮）：
+
+- T1：`Microcopy.kt` + §2 全部文案替换（覆盖需求 74/77/79 字面，含 §3 两处达标文案入常量与 :1233 死分支删除）
+- T2：需求 76 空校验（§5）
+- T3：需求 75 对话框逻辑（§4.1~4.4、4.6，注意 4.1 步 4 的 pendingReminderTs 先赋值）
+- T4：`appendReturningTimestamp`（§4.5 全部约束）+ 4.3 接线 + 单测（§7）
+- T5：需求 78 颜色（§6，含 :1160 标题）
+- T6：文档同步（§8）
+- T7：全量单测（串行）+ Evaluator grep 防线
+- 验收顺序按 specs：第一批条文（74~76）先行核对，再第二批（77~80），81 a~i 全量走查（走查清单见执行计划）

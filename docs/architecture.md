@@ -391,7 +391,7 @@ orphans → AlarmScheduler.cancel + store.remove
 
 - **攻击面**：仅两个 Activity exported（`MainActivity` MAIN/LAUNCHER；`ShareReceiverActivity` ACTION_SEND text/plain）。`ReminderAlarmReceiver` `exported=false` 且无 intent-filter——只能被应用自己的显式 PendingIntent 触发，外部 App 无法伪造提醒；`ReminderBootReceiver` `exported=true`，仅接收 `BOOT_COMPLETED` 与 `MY_PACKAGE_REPLACED` 两个系统保护广播。
 - PendingIntent 一律 `FLAG_IMMUTABLE` + 显式组件（贪睡分钟数由接收器从 extra 自行计算，无需 MUTABLE）。
-- 分享入口限长 10,000 字符（防 DoS）；超长被**拒绝写入**（不截断），Toast 为笼统的"写入失败"（表述待改进，见 debt-tracker TD-020 备注）。
+- 分享入口限长 10,000 字符（防 DoS）；超长被拒绝写入（不截断），Toast 明确提示『内容过长（上限 N 字符），未追加』（N=10000，v1.3.x 微文案统一）
 - **hashCode 派生标识的碰撞面**（个人级概率极低，已知约束）：SAF 恢复文件名按 URI 哈希派生、闹钟/通知 id 按时间戳哈希派生——理论碰撞会导致恢复文件互串 / 通知互覆。
 - **`allowBackup="true"`——已决策（2026-09-01，决策②）**：保持开启、拥抱云备份。`Appendo.md` 与 `appendo_reminders` 随 Android 云备份迁移/恢复；理由：默认模式数据在应用私有目录、卸载即失，云备份对用户是净收益。对用户的口径："应用自身不联网、无第三方 SDK"（README「换机与备份」小节落地）。
 

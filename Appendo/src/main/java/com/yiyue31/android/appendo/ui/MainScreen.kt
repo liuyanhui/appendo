@@ -573,7 +573,7 @@ fun MainScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                "清空",
+                                Microcopy.BTN_CLEAR,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.error
                             )
@@ -887,7 +887,7 @@ fun MainScreen(
                         }
                     }
                 ) {
-                    Text("确定", color = MaterialTheme.colorScheme.error)
+                    Text(Microcopy.BTN_CLEAR, color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -932,14 +932,43 @@ fun MainScreen(
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 5,
                         maxLines = 10,
-                        placeholder = { Text("无内容") }
+                        placeholder = { Text(Microcopy.PLACEHOLDER_EDIT) }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    // C 设提醒（主操作）
+                    // C 设提醒（主操作）。需求 75"次级动作先落盘"：空校验 → 有修改先保存
+                    //（失败 return，框保持）→ pendingReminderTs 赋值（关框前！选择器/替换确认只读它，
+                    // 漏写会因守卫静默不弹）→ 关框+收键盘 → 再弹选择器/替换确认（替换确认在保存之后）
                     OutlinedButton(
                         onClick = {
+                            if (editContent.isBlank()) {
+                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+                                return@OutlinedButton
+                            }
                             val ts = selectedEntry!!.timestamp
+                            if (editContent != selectedEntry!!.content) {
+                                try {
+                                    val mdFile = getCurrentMarkdownFile()
+                                    if (mdFile.updateEntry(ts, editContent)) {
+                                        fileRepository.setFileLastModified(System.currentTimeMillis())
+                                        refreshEntryCount()
+                                        showToast(context, Microcopy.TOAST_SAVED)
+                                    } else {
+                                        showToast(context, Microcopy.TOAST_SAVE_FAILED)
+                                        return@OutlinedButton // 保存失败不执行后续（须在关框之前 return）
+                                    }
+                                } catch (e: Exception) {
+                                    if (BuildConfig.DEBUG) {
+                                        android.util.Log.e("MainScreen", "Failed to update entry", e)
+                                    }
+                                    showToast(context, Microcopy.TOAST_SAVE_FAILED)
+                                    return@OutlinedButton
+                                }
+                            }
                             pendingReminderTs = ts
+                            showDetailDialog = false
+                            selectedEntry = null
+                            editContent = ""
+                            keyboardController?.hide()
                             if (ReminderStore.get(context).hasUnfired(ts)) {
                                 showOverwriteReminder = true
                             } else {
@@ -952,16 +981,40 @@ fun MainScreen(
                     ) {
                         Text("⏰ 设提醒", fontWeight = FontWeight.Medium)
                     }
-                    // A 添加到日历（次要，缩小）
+                    // A 添加到日历（次要，缩小）。同"次级动作先落盘"（需求 75）：保存成功后关框再跳日历；
+                    // 日历失败独立反馈、不回滚已保存内容
                     TextButton(
                         onClick = {
                             if (editContent.isBlank()) {
-                                showToast(context, "内容不能为空")
+                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
                                 return@TextButton
                             }
+                            if (editContent != selectedEntry!!.content) {
+                                try {
+                                    val mdFile = getCurrentMarkdownFile()
+                                    if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
+                                        fileRepository.setFileLastModified(System.currentTimeMillis())
+                                        refreshEntryCount()
+                                        showToast(context, Microcopy.TOAST_SAVED)
+                                    } else {
+                                        showToast(context, Microcopy.TOAST_SAVE_FAILED)
+                                        return@TextButton // 保存失败不执行后续（须在关框之前 return）
+                                    }
+                                } catch (e: Exception) {
+                                    if (BuildConfig.DEBUG) {
+                                        android.util.Log.e("MainScreen", "Failed to update entry", e)
+                                    }
+                                    showToast(context, Microcopy.TOAST_SAVE_FAILED)
+                                    return@TextButton
+                                }
+                            }
                             val entry = CalendarEntryMapper.map(editContent)
+                            showDetailDialog = false
+                            selectedEntry = null
+                            editContent = ""
+                            keyboardController?.hide()
                             if (!CalendarLauncher.launch(context, entry)) {
-                                showToast(context, "未找到日历应用")
+                                showToast(context, Microcopy.TOAST_NO_CALENDAR)
                             }
                         }
                     ) {
@@ -982,7 +1035,7 @@ fun MainScreen(
                 TextButton(
                     onClick = {
                         if (editContent.isBlank()) {
-                            showToast(context, "内容不能为空")
+                            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
                             return@TextButton
                         }
                         if (editContent == selectedEntry!!.content) {
@@ -996,22 +1049,22 @@ fun MainScreen(
                             if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
                                 fileRepository.setFileLastModified(System.currentTimeMillis())
                                 refreshEntryCount()
-                                showToast(context, "已保存")
+                                showToast(context, Microcopy.TOAST_SAVED)
                             } else {
-                                showToast(context, "保存失败")
+                                showToast(context, Microcopy.TOAST_SAVE_FAILED)
                             }
                         } catch (e: Exception) {
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.e("MainScreen", "Failed to update entry", e)
                             }
-                            showToast(context, "保存失败")
+                            showToast(context, Microcopy.TOAST_SAVE_FAILED)
                         }
                         showDetailDialog = false
                         selectedEntry = null
                         editContent = ""
                     }
                 ) {
-                    Text("保存", color = MaterialTheme.colorScheme.primary)
+                    Text(Microcopy.BTN_SAVE_CHANGES, color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -1157,13 +1210,19 @@ fun MainScreen(
                 showOverwriteReminder = false
                 pendingReminderTs = null
             },
-            title = { Text("替换已有提醒？") },
+            title = {
+                Text(
+                    "替换已有提醒？",
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.error
+                )
+            },
             text = { Text("该记录已设提醒，确定替换为新时间？") },
             confirmButton = {
                 TextButton(onClick = {
                     showOverwriteReminder = false
                     showReminderPicker = true
-                }) { Text("替换") }
+                }) { Text("替换", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -1210,33 +1269,32 @@ fun MainScreen(
                         placeholder = { Text("请输入要追加的内容") }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    // 并列次要入口：先追加，再用新条目时间戳开提醒选择器（默认「追加」流不变）
+                    // 并列次要入口（需求 75"次级动作先落盘"）：先追加落盘（toast"已追加"，不带重复旁注）
+                    // → 清空/关框/收键盘 → 再开提醒选择器。新条目时间戳经 appendReturningTimestamp 在
+                    // 同一持锁事务内取得（消除"追加后重读末条"的并发插入竞态）；返回 null ⟺ 追加未发生
                     OutlinedButton(
                         onClick = {
                             if (inputContent.isBlank()) {
-                                showToast(context, "内容不能为空")
+                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
                                 return@OutlinedButton
                             }
                             try {
                                 val mdFile = getCurrentMarkdownFile()
-                                if (mdFile.append(inputContent)) {
+                                val newTs = mdFile.appendReturningTimestamp(inputContent)
+                                if (newTs != null) {
                                     fileRepository.setFileLastModified(System.currentTimeMillis())
                                     refreshEntryCount()
-                                    val newTs = parseMarkdownEntries(mdFile.readAll()).lastOrNull()?.timestamp
+                                    showToast(context, Microcopy.TOAST_APPENDED)
                                     inputContent = ""
                                     showInputDialog = false
                                     keyboardController?.hide()
-                                    if (newTs != null) {
-                                        pendingReminderTs = newTs
-                                        showReminderPicker = true
-                                    } else {
-                                        showToast(context, "已追加，未能定位新条目")
-                                    }
+                                    pendingReminderTs = newTs
+                                    showReminderPicker = true
                                 } else {
-                                    showToast(context, "追加失败")
+                                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
                                 }
                             } catch (_: Exception) {
-                                showToast(context, "追加失败")
+                                showToast(context, Microcopy.TOAST_APPEND_FAILED)
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -1248,26 +1306,27 @@ fun MainScreen(
                     TextButton(
                         onClick = {
                             if (inputContent.isBlank()) {
-                                showToast(context, "内容不能为空")
+                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
                                 return@TextButton
                             }
                             try {
                                 val mdFile = getCurrentMarkdownFile()
-                                if (mdFile.append(inputContent)) {
+                                if (mdFile.appendReturningTimestamp(inputContent) != null) {
                                     fileRepository.setFileLastModified(System.currentTimeMillis())
                                     refreshEntryCount()
                                     val entry = CalendarEntryMapper.map(inputContent)
-                                    if (!CalendarLauncher.launch(context, entry)) {
-                                        showToast(context, "未找到日历应用")
-                                    }
+                                    showToast(context, Microcopy.TOAST_APPENDED)
                                     inputContent = ""
                                     showInputDialog = false
                                     keyboardController?.hide()
+                                    if (!CalendarLauncher.launch(context, entry)) {
+                                        showToast(context, Microcopy.TOAST_NO_CALENDAR)
+                                    }
                                 } else {
-                                    showToast(context, "追加失败")
+                                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
                                 }
                             } catch (_: Exception) {
-                                showToast(context, "追加失败")
+                                showToast(context, Microcopy.TOAST_APPEND_FAILED)
                             }
                         }
                     ) {
@@ -1278,37 +1337,40 @@ fun MainScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (inputContent.isNotBlank()) {
-                            try {
-                                val mdFile = getCurrentMarkdownFile()
-                                // 追加前查重（按内容，忽略时间戳）
-                                val existingSameCount = parseMarkdownEntries(mdFile.readAll())
-                                    .count { it.content == inputContent }
-                                if (mdFile.append(inputContent)) {
-                                    fileRepository.setFileLastModified(System.currentTimeMillis())
-                                    refreshEntryCount()
-                                    // 非阻塞提示：先确认成功，再旁注重复（5s 节流防刷屏，specs 42）
-                                    val msg = if (existingSameCount > 0 &&
-                                        DuplicateHintThrottle.shouldShow(inputContent)
-                                    ) {
-                                        "已追加（已有相同内容 $existingSameCount 条）"
-                                    } else {
-                                        "内容已追加"
-                                    }
-                                    showToast(context, msg)
+                        // 空白校验（需求 76a）：toast 且不关框、不清输入；纯空白字符视同空（isBlank）
+                        if (inputContent.isBlank()) {
+                            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+                            return@TextButton
+                        }
+                        try {
+                            val mdFile = getCurrentMarkdownFile()
+                            // 追加前查重（按内容，忽略时间戳）
+                            val existingSameCount = parseMarkdownEntries(mdFile.readAll())
+                                .count { it.content == inputContent }
+                            if (mdFile.append(inputContent)) {
+                                fileRepository.setFileLastModified(System.currentTimeMillis())
+                                refreshEntryCount()
+                                // 非阻塞提示：先确认成功，再旁注重复（5s 节流防刷屏，specs 42）
+                                val msg = if (existingSameCount > 0 &&
+                                    DuplicateHintThrottle.shouldShow(inputContent)
+                                ) {
+                                    Microcopy.toastAppendedWithDuplicates(existingSameCount)
                                 } else {
-                                    showToast(context, "追加失败")
+                                    Microcopy.TOAST_APPENDED
                                 }
-                            } catch (_: Exception) {
-                                showToast(context, "追加失败")
+                                showToast(context, msg)
+                            } else {
+                                showToast(context, Microcopy.TOAST_APPEND_FAILED)
                             }
+                        } catch (_: Exception) {
+                            showToast(context, Microcopy.TOAST_APPEND_FAILED)
                         }
                         inputContent = ""
                         showInputDialog = false
                         keyboardController?.hide()
                     }
                 ) {
-                    Text("追加", color = MaterialTheme.colorScheme.primary)
+                    Text(Microcopy.BTN_APPEND, color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -1453,7 +1515,7 @@ private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOp
         val content = EntryParser.formatForExport(entries)
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("appendo", content))
-        showToast(context, "已复制到剪贴板")
+        showToast(context, Microcopy.TOAST_COPIED_ALL)
     } catch (e: Exception) {
         if (BuildConfig.DEBUG) {
             android.util.Log.e("MainScreen", "Copy failed", e)

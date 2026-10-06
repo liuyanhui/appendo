@@ -123,15 +123,19 @@ class SafMarkdownFile(
 
     // ==================== 写 ====================
 
-    override fun append(content: String): Boolean = synchronized(FileOperationLock) {
+    override fun append(content: String): Boolean = appendReturningTimestamp(content) != null
+
+    /** 时间戳生成与写入在同一持锁事务内（设计 §4.5），与默认实现同锁路径同构。
+     *  失败语义：safAtomicWrite 失败 → .pending 残留 → 返回 null，下次读经 ensureConsistent 从 .bak 回滚。 */
+    override fun appendReturningTimestamp(content: String): String? = synchronized(FileOperationLock) {
         try {
             val (current, readFailed) = readMainForWrite()
-            if (readFailed) return@synchronized false // 读失败中止：禁止全量重写（TD-012）
+            if (readFailed) return@synchronized null // 读失败中止：禁止全量重写（TD-012）
             val timestamp = EntryParser.nextTimestamp(current)
-            appendEntryInternal(timestamp, content, current)
+            if (appendEntryInternal(timestamp, content, current)) timestamp else null
         } catch (e: Exception) {
             Log.e(TAG, "append failed", e)
-            false
+            null
         }
     }
 

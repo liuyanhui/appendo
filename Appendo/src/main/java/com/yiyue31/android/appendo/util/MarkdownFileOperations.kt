@@ -15,8 +15,20 @@ interface MarkdownFileOperations {
     /**
      * Append content to the file with timestamp formatting.
      * @return true if successful, false otherwise
+     *
+     * 需得知新条目时间戳的调用方请改用 [appendReturningTimestamp]（消除"追加后另行
+     * readAll 取末条"的并发插入竞态，v1.3.x specs 75 技术前提 2）。
      */
     fun append(content: String): Boolean
+
+    /**
+     * 追加内容并返回新条目时间戳（时间戳生成与写入在同一持锁事务内）；失败返回 null。
+     *
+     * null ⟺ 追加未发生（读失败中止 / 写失败），调用方据此统一走失败反馈。
+     * 实现约束：方法体整体 synchronized(FileOperationLock)，时间戳基于同一次持锁读取的
+     * 内容生成（EntryParser.nextTimestamp）——把"定位新条目"收敛进锁内（设计 §4.5）。
+     */
+    fun appendReturningTimestamp(content: String): String?
 
     /**
      * Read all content from the file.

@@ -70,7 +70,7 @@ import com.yiyue31.android.appendo.data.ArchiveRepository
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.ui.theme.onSuccessColor
-import com.yiyue31.android.appendo.ui.theme.successColor
+import com.yiyue31.android.appendo.ui.theme.successColor // 滑动指示背景色（ArchiveCard）仍用
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import kotlinx.coroutines.Dispatchers
@@ -203,7 +203,7 @@ fun ArchiveListScreen(
                                     )
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("archive", content))
-                                    showToast(context, "已复制全部内容")
+                                    showToast(context, Microcopy.TOAST_COPIED_ALL)
                                 } catch (e: Exception) {
                                     if (BuildConfig.DEBUG) {
                                         android.util.Log.e("ArchiveListScreen", "Failed to copy archive", e)
@@ -292,7 +292,7 @@ fun ArchiveListScreen(
                 Text(
                     "追加到当前文档",
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.successColor
+                    color = MaterialTheme.colorScheme.primary
                 )
             },
             text = {
@@ -338,22 +338,22 @@ fun ArchiveListScreen(
                             // 透明提示（specs 43）：Y=0 不显示跳过后缀
                             val msg = when {
                                 addedCount == 0 && skippedCount == 0 -> "归档为空，无需追加"
-                                skippedCount == 0 -> "已恢复 $addedCount 条"
-                                else -> "已恢复 $addedCount 条，跳过 $skippedCount 条已存在"
+                                skippedCount == 0 -> Microcopy.toastAppendedCount(addedCount)
+                                else -> Microcopy.toastAppendedCountSkipped(addedCount, skippedCount)
                             }
                             showToast(context, msg)
                         } catch (e: Exception) {
                             if (BuildConfig.DEBUG) {
                                 android.util.Log.e("ArchiveListScreen", "Failed to restore archive", e)
                             }
-                            showToast(context, "追加失败")
+                            showToast(context, Microcopy.TOAST_APPEND_FAILED)
                         }
                         showRestoreDialog = false
                         archiveToRestore = null
                         restoreEntryCount = 0
                     }
                 ) {
-                    Text("追加", color = MaterialTheme.successColor)
+                    Text(Microcopy.BTN_APPEND, color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {

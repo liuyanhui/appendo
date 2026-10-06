@@ -4,6 +4,8 @@ import android.content.Context
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -208,5 +210,37 @@ class FileBasedMarkdownFileTest {
         val entries = EntryParser.parse(md.readAll())
         assertEquals(1, entries.size)
         assertEquals("删除的是第一条（findEntryBounds 首条命中）", "第二条", entries[0].content)
+    }
+
+    // ==================== appendReturningTimestamp（v1.3.x，specs 75 竞态消除） ====================
+
+    @Test
+    fun appendReturningTimestamp_roundTrips() {
+        md.initHeader()
+        val ts = md.appendReturningTimestamp("hello")
+        assertNotNull("成功应返回新条目时间戳", ts)
+        val entries = EntryParser.parse(md.readAll())
+        assertEquals(1, entries.size)
+        assertEquals("返回 ts == 末条 rawTimestamp", ts, entries[0].rawTimestamp)
+        assertEquals("末条 content == 追加内容", "hello", entries[0].content)
+    }
+
+    @Test
+    fun appendReturningTimestamp_consecutiveCalls_uniqueTimestamps() { // 需求 36 单调唯一语义
+        md.initHeader()
+        val timestamps = listOf(
+            md.appendReturningTimestamp("a"),
+            md.appendReturningTimestamp("b"),
+            md.appendReturningTimestamp("c")
+        )
+        assertTrue("全部成功", timestamps.none { it == null })
+        assertEquals("连续调用 ts 唯一", 3, timestamps.filterNotNull().toSet().size)
+    }
+
+    @Test
+    fun appendReturningTimestamp_readFailure_returnsNullWithoutWrite() {
+        file.mkdirs()
+        assertNull("读失败返回 null（⟺ 追加未发生）", md.appendReturningTimestamp("x"))
+        assertTrue("不应产生任何写入痕迹", file.listFiles()!!.isEmpty())
     }
 }

@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.data.ThemePreferences
+import com.yiyue31.android.appendo.ui.Microcopy
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
@@ -91,10 +92,10 @@ class ShareReceiverActivity : ComponentActivity() {
             withContext(Dispatchers.Main) {
                 when {
                     resolved is ShareContent.TooLong ->
-                        showToast(this@ShareReceiverActivity, "内容过长（上限 $MAX_CONTENT_LENGTH 字符），未保存")
+                        showToast(this@ShareReceiverActivity, Microcopy.toastTooLong(MAX_CONTENT_LENGTH))
                     success && fellBackToDefault -> { // TD-021：明示回退，不让数据"无声分家"
                         fileRepo.setFileLastModified(System.currentTimeMillis())
-                        showToast(this@ShareReceiverActivity, "已保存到默认文件（自定义目录已失效，可打开 appendo 重选）")
+                        showToast(this@ShareReceiverActivity, Microcopy.TOAST_APPENDED_TO_DEFAULT)
                     }
                     success -> {
                         fileRepo.setFileLastModified(System.currentTimeMillis())
@@ -106,11 +107,11 @@ class ShareReceiverActivity : ComponentActivity() {
                         showToast(this@ShareReceiverActivity, msg)
                     }
                     resolved is ShareContent.Invalid ->
-                        showToast(this@ShareReceiverActivity, "未找到可保存的内容")
+                        showToast(this@ShareReceiverActivity, Microcopy.TOAST_NOTHING_TO_APPEND)
                     safWriteFailed ->
-                        showToast(this@ShareReceiverActivity, "写入失败：自定义目录授权可能已失效，请打开 appendo 重选文件")
+                        showToast(this@ShareReceiverActivity, Microcopy.TOAST_APPEND_FAILED_SAF_REVOKED)
                     else ->
-                        showToast(this@ShareReceiverActivity, "写入失败")
+                        showToast(this@ShareReceiverActivity, Microcopy.TOAST_APPEND_FAILED)
                 }
                 // Delay finish to allow toast to be shown
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({

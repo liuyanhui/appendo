@@ -16,15 +16,18 @@ class FileBasedMarkdownFile(
         private const val TAG = "FileBasedMarkdownFile"
     }
 
-    override fun append(content: String): Boolean = synchronized(FileOperationLock) {
+    override fun append(content: String): Boolean = appendReturningTimestamp(content) != null
+
+    /** 时间戳生成与写入在同一持锁事务内（设计 §4.5）：基于同一次持锁读取生成，杜绝 TOCTOU。 */
+    override fun appendReturningTimestamp(content: String): String? = synchronized(FileOperationLock) {
         try {
             val (current, readFailed) = readForStatus()
-            if (readFailed) return@synchronized false // 读失败中止：禁止 header+新条目全量重写（TD-012）
+            if (readFailed) return@synchronized null // 读失败中止：禁止 header+新条目全量重写（TD-012）
             val timestamp = EntryParser.nextTimestamp(current)
-            appendEntryInternal(timestamp, content, current)
+            if (appendEntryInternal(timestamp, content, current)) timestamp else null
         } catch (e: Exception) {
             Log.e(TAG, "Failed to append content", e)
-            false
+            null
         }
     }
 
