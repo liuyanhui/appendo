@@ -534,7 +534,7 @@ fun atomicWrite(file: File, content: ByteArray): Boolean = synchronized(FileOper
 
 | 位置 | 现状 | 定稿 |
 |---|---|---|
-| MainScreen.kt:1014 | 保存 | 保存修改 |
+| MainScreen.kt:1014 | 保存 | 保存修改（2026-10-08 修订：两确认按钮字面统一"保存"，见 §2 末修订行） |
 | MainScreen.kt:1296 | 内容已追加 | 已追加 |
 | MainScreen.kt:1233 | 已追加，未能定位新条目 | **删除该分支**（§4.5 新接口下"追加成功但拿不到 ts"不可达——null ⟺ 追加未发生，失败统一 toast"追加失败"；specs 74 第 8 条已加注记） |
 | ArchiveListScreen.kt:341-342 | 已恢复 N 条 / 已恢复 N 条，跳过 M 条已存在 | 已追加 N 条 / 已追加 N 条（跳过 M 条已存在） |
@@ -546,6 +546,7 @@ fun atomicWrite(file: File, content: ByteArray): Boolean = synchronized(FileOper
 | MainScreen.kt:890 | 确定（清空确认，红） | 清空（红） |
 | MainScreen.kt:1456 | 已复制到剪贴板 | 已复制全部内容 |
 | MainScreen.kt:935 | 无内容（placeholder） | 请输入内容 |
+| （2026-10-08 修订）MainScreen.kt 两确认按钮（编辑框 / 手动输入框） | 保存修改 / 追加 | 保存（仅显示字面；反馈 toast 与归档恢复按钮维持原定稿；常量 `BTN_SAVE_CHANGES` 改名 `BTN_SAVE`、手动输入改引新常量） |
 
 ### 3. 文案常量源（S1，应补项落地机制）
 

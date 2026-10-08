@@ -1064,7 +1064,7 @@ fun MainScreen(
                         editContent = ""
                     }
                 ) {
-                    Text(Microcopy.BTN_SAVE_CHANGES, color = MaterialTheme.colorScheme.primary)
+                    Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
@@ -1370,7 +1370,7 @@ fun MainScreen(
                         keyboardController?.hide()
                     }
                 ) {
-                    Text(Microcopy.BTN_APPEND, color = MaterialTheme.colorScheme.primary)
+                    Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
