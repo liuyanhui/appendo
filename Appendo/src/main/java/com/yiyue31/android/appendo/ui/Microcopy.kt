@@ -90,8 +90,12 @@ internal object Microcopy {
     const val TOAST_COPIED = "已复制"
 
     // ---- 「移入主题」移入词族（topic-move 设计 §9.1；T-06 增量落盘，T-08 全套核对收口）----
-    // 数字口径：N＝所选条数（成功文案取实际 moved；所选 N = moved + skipped(+missing)），
-    // K＝提醒取消数（独立附注，非条目计数）。
+    // 数字口径（§9.1 句式对齐说明，88「全部有着落」）：
+    // N＝所选条数＝moved＋skippedExisting（＋missingFromSource，恒 0 不显示——keys 取自当前源
+    //    解析，所选必在源；成功文案 N 取实际 moved 实写数）；
+    // M＝目标已存在跳过条数（skippedExisting，去重 key＝timestamp|content 与归档恢复同源）；
+    // K＝提醒取消数（独立附注，非条目计数；实际取消按 ts 计——一条提醒覆盖同 ts 全部条目，
+    //    附注数字为同 ts 连坐防护（§8.2 ③）过滤后的实际取消数）。
 
     /** 执行中按钮（对话框 3；89(p) 可感知进行反馈，事务在 Dispatchers.IO 不 ANR）。 */
     const val BTN_MOVING = "移入中…"
@@ -99,16 +103,16 @@ internal object Microcopy {
     /** 失败重试按钮（对话框 3 失败态：对话框保持，重试幂等收敛，84(b)）。 */
     const val BTN_RETRY = "重试"
 
-    /** 成功（M=0）：「已移入 N 条」。 */
+    /** 成功（M=0）：「已移入 N 条」——N＝moved 实写数（所选全部写入目标，无跳过）。 */
     fun toastMovedCount(n: Int): String = "已移入 $n 条"
 
-    /** 成功（M>0）：对齐第 15 章归档恢复「（跳过 M 条已存在）」句式族（O2 裁定）。 */
+    /** 成功（M>0）：N＝moved 实写数、M＝目标已存在跳过（skippedExisting）；对齐第 15 章归档恢复「（跳过 M 条已存在）」句式族（O2 裁定）。 */
     fun toastMovedCountSkipped(n: Int, m: Int): String = "已移入 $n 条（跳过 $m 条已存在）"
 
-    /** 成功（N=0，87 修订）：直陈事实句式，禁「已移入 0 条」失败读感。 */
+    /** 成功（N=0，87 修订）：M＝全部所选（moved=0、全 skipped）——直陈事实句式，禁「已移入 0 条」失败读感。 */
     fun toastMovedAllExisting(m: Int): String = "$m 条已在该主题中，已从当前列表移除"
 
-    /** 成功附注（K>0，84(c)）：与主文案直接拼接；K＝防护过滤后实际取消数（§8.2 ⑤）。 */
+    /** 成功附注（K>0，84(c)）：与主文案直接拼接；K＝实际取消数、按 ts 计（§8.2 ⑤——同 ts 连坐防护 ③ 过滤后，一条提醒覆盖同 ts 全部条目）。 */
     fun removedRemindersSuffix(k: Int): String = "，已取消 $k 条提醒"
 
     /** 失败（统一兜底；非 SAF 源读失败等无专属句式场景）。 */
@@ -128,11 +132,11 @@ internal object Microcopy {
     /** 对话框 1/3 标题。 */
     const val DLG_MOVE_TITLE = "移入主题"
 
-    /** 确认正文（84(d) 后果去向两行）。 */
+    /** 确认正文（84(d) 后果去向两行）；N＝所选条数（selectedKeys.size，打开对话框时快照）。 */
     fun dlgMoveConfirmBody(n: Int, topic: String): String =
         "将把 $n 条移入主题「$topic」。\n移入后这些条目将从主列表消失，可在「归档与主题」的主题分区查看。"
 
-    /** 确认正文提醒行（K>0 追加一行；K 为预览值，成功回调内重算，§8.2 ②）。 */
+    /** 确认正文提醒行（K>0 追加一行）；K＝预览值、按条计（所选中 ts 设有未触发提醒的条数；同 ts 多条重复计），实际取消按 ts 计、成功回调内重算（§8.2 ②）——预览 K ≥ 实际 K 属 R8 同根边界。 */
     fun dlgMoveConfirmReminder(k: Int): String = "其中 $k 条设有未触发提醒，移入后将取消。"
 
     /** 对话框 1 列表末项。 */

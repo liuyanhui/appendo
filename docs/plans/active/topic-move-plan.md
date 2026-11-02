@@ -199,8 +199,8 @@
   - [ ] 主题详情文件名小字：`grep -n "sourceFileName" ui/ArchiveDetailScreen.kt` 命中传参（kind=topic 传 `displayName`，不含 .md）；归档详情不传、显示行为零变化（89(h)）
   - [ ] `grep -n "归档与主题" ui/MainScreen.kt` 命中菜单项；全量单测 `--max-workers=1` 全绿
 - **评估方法**: 编译＋单测＋grep＋代码走查（对照 §8.3/§8.4/§8.5）。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-02）**——Planner 独立核验 8 条全 PASS（评审对象＝提交 `160e87f` 干净树）：迁移等价双保险（`ArchiveRestoreDeduplicationTest` 零修改 9/9＋父提交逐行 diff——三处抽参均必要且归档路径逐字节等价）、分区五要素、非空右滑零响应（maxPositive=0f 钳位三重不可达）＋空主题红框删除、恢复注明行仅主题路径＋toast 零新直写、kind 路由向后兼容、「归档管理」.kt 零命中、sourceFileName 落点＝displayName、干净树 200/0/0/0。六偏离全采纳（①标题内联与 grep 验收自洽；⑤系 §8.3 明文）。**建议分流（5 条）**：ui/CLAUDE.md:25 陈旧「归档管理」→T-11 清理；空主题详情「此归档为空」→T-10 走查/T-11 小修；空源 toast「归档为空」名词偏（需动归档字面，违原样迁移）→**T-11 debt-tracker**；「已删除/复制失败」legacy 内联家族镜像两处→**T-11 debt-tracker**（非 §9 范围，不注入 T-08）；聚合计数丢失→用户裁定项（现维持）。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-08 微文案全套核对（Microcopy §9 收口）
 
@@ -368,3 +368,4 @@
 - 2026-11-02：**T-04 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS＋走查 a~f 相容，`--rerun` 187/0/0/0）：`TopicRepository`（命名校验/createdAt SP 全 commit/首见回写一次/双候选合并扫描/删除保守拒绝）＋10 用例。⑥⑦ 注入配方按测试 JVM 实证更换获认可。**新发现既有 flake**（nextTimestamp 亚毫秒重复 ts）→ T-11 登 debt-tracker＋T-09 复跑口径。T-05 进行中（并行流水线首例）。
 - 2026-11-02：**T-05 完成**（提交 `0fa9cab` 后 Planner 干净树核验 7 条全 PASS，194/0/0/0；流水线：T-05 Planner 与 T-06 Generator 并行）：多选 UI 落盘，三偏离全采纳（Row 前置勾选框/BackHandler/contentDescription 直写）。遗留 2 条建议级（§7.2 措辞记注→T-09/T-11；EntryCard 分支优先级→T-06/T-07 评审留意）。T-06 进行中。
 - 2026-11-02：**T-06 完成**（提交 `0513877`，Planner 核验 6 条全 PASS＋六偏离全采纳，200 条复跑双绿；流水线：T-06 Planner 与 T-07 Generator 并行）：移入流程 UI 落盘。4 条建议分流（对话框 1 取消可发现性→真机走查；K 预览口径→T-11 R8；ArchiveDetailScreen「已复制」直写→已补发 T-07 顺路消除；concurrentAppend flake 补列→T-11）。T-07 进行中。
+- 2026-11-02：**T-07 完成**（提交 `160e87f`，Planner 核验 8 条全 PASS＋六偏离采纳，干净树 200/0/0/0；流水线：T-07 Planner 与 T-08 Generator 并行）：分区列表＋主题详情＋恢复共用抽取落盘（等价性双保险）。5 条建议分流（CLAUDE.md 陈旧→T-11；空主题详情文案→T-10/T-11；空源 toast 名词＋legacy 内联家族→T-11 debt-tracker；聚合计数→用户裁定）。T-08 进行中。
