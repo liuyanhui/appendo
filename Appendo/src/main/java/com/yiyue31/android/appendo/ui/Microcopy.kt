@@ -77,4 +77,12 @@ internal object Microcopy {
     // ---- 次级动作后续反馈（specs 75：独立反馈，不回滚已落盘内容）----
 
     const val TOAST_NO_CALENDAR = "未找到日历应用"
+
+    // ---- 「移入主题」多选（topic-move 设计 §9.1/§9.2；T-05 增量落盘，T-08 全套核对收口）----
+
+    /** 多选顶栏「移入」按钮（§9.2 多选顶栏行）；与 §9.1 对话框 3 确认按钮同字面同常量（T-06 复用）。 */
+    const val BTN_MOVE_IN = "移入"
+
+    /** 多选态顶栏标题「已选 N 条」（§9.2，N = selectedKeys.size 实时）。 */
+    fun topBarSelectedCount(count: Int): String = "已选 $count 条"
 }

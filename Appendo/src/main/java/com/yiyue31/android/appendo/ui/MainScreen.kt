@@ -10,6 +10,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -46,6 +47,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -102,6 +104,7 @@ import com.yiyue31.android.appendo.ui.theme.ThemeMode
 import com.yiyue31.android.appendo.util.CalendarEntryMapper
 import com.yiyue31.android.appendo.util.CalendarLauncher
 import com.yiyue31.android.appendo.util.DuplicateHintThrottle
+import com.yiyue31.android.appendo.util.EntryKey
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
@@ -158,6 +161,16 @@ fun MainScreen(
     var showDetailDialog by remember { mutableStateOf(false) }
     var selectedEntry by remember { mutableStateOf<LinkEntry?>(null) }
     var editContent by remember { mutableStateOf("") }
+
+    // 「移入主题」多选态（topic-move 设计 §7.2）：选中集按 EntryKey 维护（§7.3，与复合 key 解耦）
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedKeys by remember { mutableStateOf(emptySet<EntryKey>()) }
+
+    /** 退出多选并清空选中集（§7.2：关闭 × / 系统返回 / SAF 失效回退共用） */
+    fun exitSelectionMode() {
+        selectionMode = false
+        selectedKeys = emptySet()
+    }
 
     // 深链：从提醒通知点按进来后，滚动到该记录（仅滚一次）
     val entryListState = rememberLazyListState()
@@ -229,7 +242,11 @@ fun MainScreen(
                 }
                 if (newEntries == null) {
                     // TD-021：SAF 授权丢失（覆盖安装等）→ 弹窗引导，不再静默空列表
-                    if (safReadFailed) showSafInvalidDialog = true
+                    if (safReadFailed) {
+                        // §7.2：SAF 失效模态引导优先——自动退出多选并清空选中集（源不可读时选择上下文已无意义）
+                        exitSelectionMode()
+                        showSafInvalidDialog = true
+                    }
                     return@launch
                 }
                 if (recovered) {
@@ -238,6 +255,8 @@ fun MainScreen(
                 }
                 entries = newEntries
                 entryCount = newEntries.size
+                // §7.3：刷新后保留仍存在的选中项——被删剔除、新插入默认未选（勾选按 key 查 Set，不错位）
+                selectedKeys = retainedSelection(selectedKeys, newEntries)
                 // 对账：清掉 sidecar 中已不存在的条目（外部编辑/换文件导致的孤儿提醒）
                 val timestamps = newEntries.map { it.timestamp }.toSet()
                 val store = ReminderStore.get(context)
@@ -367,95 +386,116 @@ fun MainScreen(
         }
     }
 
+    // §7.2：系统返回手势退出多选并清空选中集（仅多选态拦截）
+    BackHandler(enabled = selectionMode) { exitSelectionMode() }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            "Appendo",
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            "已收集 $entryCount 条",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            if (selectionMode) {
+                // 多选态：顶栏整体切换为 contextual bar（§7.2）——浏览态主标题/副标题由此隐藏
+                MultiSelectTopBar(
+                    selectedCount = selectedKeys.size,
+                    onExit = { exitSelectionMode() },
+                    onMoveIn = {
+                        // T-06 接线位：移入流程（目标选择对话框等）；本任务占位空实现
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                actions = {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = "菜单"
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("归档") },
-                            onClick = {
-                                showMenu = false
-                                archiveFile(context, fileRepository, getCurrentMarkdownFile(), fileRepository.getArchiveFile()) {
-                                    useSAF = fileRepository.isUsingSAF()
-                                    fileUri = fileRepository.getFileUri()
-                                    defaultFile = fileRepository.getDefaultFile()
-                                    fileRepository.clearFileLastModified()
-                                    refreshEntryCount()
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                "Appendo",
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "已收集 $entryCount 条",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    actions = {
+                        // 多选入口（§7.1 方案 A）：浏览态常驻，条目数为 0 时隐藏（空列表无从选择）。
+                        // contentDescription 直写沿本文件既有惯例（「菜单」同款），字面=§9.2 定稿
+                        if (entryCount > 0) {
+                            IconButton(onClick = { selectionMode = true }) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = "多选")
+                            }
+                        }
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "菜单"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("归档") },
+                                onClick = {
+                                    showMenu = false
+                                    archiveFile(context, fileRepository, getCurrentMarkdownFile(), fileRepository.getArchiveFile()) {
+                                        useSAF = fileRepository.isUsingSAF()
+                                        fileUri = fileRepository.getFileUri()
+                                        defaultFile = fileRepository.getDefaultFile()
+                                        fileRepository.clearFileLastModified()
+                                        refreshEntryCount()
+                                    }
                                 }
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("归档管理") },
-                            onClick = {
-                                showMenu = false
-                                onNavigateToArchiveList()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("打开文件") },
-                            onClick = {
-                                showMenu = false
-                                openFile(context, useSAF, fileUri, defaultFile)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("自定义目录") },
-                            onClick = {
-                                showMenu = false
-                                changeFileLauncher.launch("Appendo.md")
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("提醒自检") },
-                            onClick = {
-                                showMenu = false
-                                showSelfCheck = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("主题") },
-                            onClick = {
-                                showMenu = false
-                                showThemePicker = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("关于") },
-                            onClick = {
-                                showMenu = false
-                                showAboutDialog = true
-                            }
-                        )
+                            )
+                            DropdownMenuItem(
+                                text = { Text("归档管理") },
+                                onClick = {
+                                    showMenu = false
+                                    onNavigateToArchiveList()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("打开文件") },
+                                onClick = {
+                                    showMenu = false
+                                    openFile(context, useSAF, fileUri, defaultFile)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("自定义目录") },
+                                onClick = {
+                                    showMenu = false
+                                    changeFileLauncher.launch("Appendo.md")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("提醒自检") },
+                                onClick = {
+                                    showMenu = false
+                                    showSelfCheck = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("主题") },
+                                onClick = {
+                                    showMenu = false
+                                    showThemePicker = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("关于") },
+                                onClick = {
+                                    showMenu = false
+                                    showAboutDialog = true
+                                }
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
         Column(
@@ -465,124 +505,127 @@ fun MainScreen(
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Button grid - 2x2 layout
-            // First row: Manual Input and Copy
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    onClick = {
-                        showInputDialog = true
-                        // Auto-show keyboard
-                        keyboardController?.show()
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    shape = RoundedCornerShape(16.dp)
+            // §7.2：多选态隐藏 2x2 按钮网格（整屏只服务选择，P1）；退出多选即恢复
+            if (!selectionMode) {
+                // Button grid - 2x2 layout
+                // First row: Manual Input and Copy
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(
-                        Icons.Default.AddCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.size(4.dp))
-                    Text(
-                        "手动输入",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        copyContent(context, getCurrentMarkdownFile())
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text("复制全部", fontWeight = FontWeight.Medium)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Second row: Share and Clear (Long press)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        shareContent(context, getCurrentMarkdownFile())
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text("分享全部", fontWeight = FontWeight.Medium)
-                }
-
-                // Custom clear button with long-press support
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp)
-                        .combinedClickable(
-                            onClick = {
-                                // Show hint for long press
-                                showToast(context, "长按以清空内容")
-                            },
-                            onLongClick = {
-                                // Vibrate feedback (with hasVibrator check)
-                                performVibration(context, VIBRATION_DURATION_LONG_MS)
-                                showClearDialog = true
-                            },
-                            onLongClickLabel = "长按清空"
-                        )
-                        .background(
-                            color = Color.Transparent,
-                            shape = RoundedCornerShape(16.dp)
+                    Button(
+                        onClick = {
+                            showInputDialog = true
+                            // Auto-show keyboard
+                            keyboardController?.show()
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
                         ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
-                        color = Color.Transparent
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                Microcopy.BTN_CLEAR,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.error
+                        Icon(
+                            Icons.Default.AddCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.size(4.dp))
+                        Text(
+                            "手动输入",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            copyContent(context, getCurrentMarkdownFile())
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text("复制全部", fontWeight = FontWeight.Medium)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Second row: Share and Clear (Long press)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            shareContent(context, getCurrentMarkdownFile())
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text("分享全部", fontWeight = FontWeight.Medium)
+                    }
+
+                    // Custom clear button with long-press support
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                            .combinedClickable(
+                                onClick = {
+                                    // Show hint for long press
+                                    showToast(context, "长按以清空内容")
+                                },
+                                onLongClick = {
+                                    // Vibrate feedback (with hasVibrator check)
+                                    performVibration(context, VIBRATION_DURATION_LONG_MS)
+                                    showClearDialog = true
+                                },
+                                onLongClickLabel = "长按清空"
                             )
+                            .background(
+                                color = Color.Transparent,
+                                shape = RoundedCornerShape(16.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
+                            color = Color.Transparent
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    Microcopy.BTN_CLEAR,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
+            }
 
             // Content section
             if (entries.isEmpty()) {
@@ -621,6 +664,16 @@ fun MainScreen(
                     entries = entries,
                     entryCount = entryCount,
                     listState = entryListState,
+                    selectionMode = selectionMode,
+                    selectedKeys = selectedKeys,
+                    onToggleSelection = { entry ->
+                        // §7.3：按 key 增删选中集（与 LazyColumn 复合 key 解耦）
+                        val key = entry.entryKey
+                        selectedKeys = if (key in selectedKeys) selectedKeys - key else selectedKeys + key
+                    },
+                    onPreview = {
+                        // T-06 接线位：多选态长按预览对话框（§7.4，本体归属 TopicMoveDialogs.kt）；本任务空实现占位
+                    },
                     onEntryLongClick = { content ->
                         // Copy to clipboard
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
