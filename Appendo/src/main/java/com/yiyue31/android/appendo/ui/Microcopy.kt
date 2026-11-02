@@ -164,4 +164,30 @@ internal object Microcopy {
 
     /** 创建文档失败（新建路径，§8.1：toast 后流程中止）。 */
     fun toastMoveFailedCreateTopic(): String = "移入失败（创建主题文档失败）"
+
+    // ---- 「移入主题」分区列表（topic-move 设计 §8.3/§9.2；T-07 增量落盘，T-08 全套核对收口）----
+
+    /** 分区标题（§9.2）：主题分区在前（高频取用）、归档分区在后。 */
+    const val SECTION_TOPICS = "主题文档"
+    const val SECTION_ARCHIVES = "归档"
+
+    /** 整页空态两行（§8.3 结构行：两区皆空）。 */
+    const val ARCHIVE_TOPIC_EMPTY_TITLE = "暂无归档与主题"
+    const val ARCHIVE_TOPIC_EMPTY_BODY = "归档与主题文件会显示在这里"
+
+    /** 空主题删除（§9.2）：标题（error 红，78(a) 破坏性=红）/ 正文；按钮「删除」（红）/「取消」沿既有字面。 */
+    const val DLG_TOPIC_DELETE_TITLE = "删除空主题"
+    fun dlgTopicDeleteBody(x: String): String = "确定删除空主题“$x”吗？此操作无法撤销。"
+
+    /** 空主题删除失败 toast（NotEmpty 兜底同文案）。 */
+    const val TOAST_TOPIC_DELETE_FAILED = "删除失败"
+
+    /** 主题恢复注明行（86 修订，§9.2：追加在恢复确认正文末——恢复＝复制语义）。 */
+    const val TOPIC_RESTORE_NOTE = "追加后主题文档中仍保留这些条目。"
+
+    /** 主题卡片副文案（§8.3：「创建时间 · N 条」弱化小字，onSurfaceVariant；[timeLabel] 为调用方格式化串）。 */
+    fun topicCardSubtitle(timeLabel: String, count: Int): String = "$timeLabel · $count 条"
+
+    /** 空主题副文案（§8.3：可发现性——右滑删除手势不可见，副文案「空」补位提示可删状态）。 */
+    const val TOPIC_EMPTY_SUBTITLE = "空"
 }

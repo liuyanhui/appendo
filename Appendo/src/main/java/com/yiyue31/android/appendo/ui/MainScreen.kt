@@ -586,7 +586,7 @@ fun MainScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("归档管理") },
+                                text = { Text("归档与主题") },
                                 onClick = {
                                     showMenu = false
                                     onNavigateToArchiveList()

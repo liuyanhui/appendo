@@ -41,11 +41,19 @@ import com.yiyue31.android.appendo.data.ArchiveFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * 归档 / 主题详情页共用（T-07，§8.5）：[kind] = [ArchiveEntryKind.TOPIC] 时标题用 [screenTitle]
+ * （调用方传「主题详情」）＋列表头部经 [EntryListScreen] 既有 `sourceFileName` 参数展示文件名小字
+ * （displayName，不含 .md）；归档默认路径（[screenTitle] 缺省「归档详情」＋TopAppBar 文件名小字）
+ * 显示行为零变化（89(h)）。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArchiveDetailScreen(
     archive: ArchiveFile,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    screenTitle: String = "归档详情",
+    kind: ArchiveEntryKind = ArchiveEntryKind.ARCHIVE
 ) {
     val context = LocalContext.current
 
@@ -77,20 +85,23 @@ fun ArchiveDetailScreen(
             TopAppBar(
                 title = {
                     // 文件名紧跟标题同一行弱化展示（小号灰字），不占正文空间
+                    // （主题路径不在顶栏重复展示——文件名小字经 EntryListScreen.sourceFileName 落列表头部，§8.5）
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "归档详情",
+                            screenTitle,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            archive.name.removeSuffix(".md"),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (kind == ArchiveEntryKind.ARCHIVE) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                archive.name.removeSuffix(".md"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -137,11 +148,18 @@ fun ArchiveDetailScreen(
                     entries = entries,
                     entryCount = entryCount,
                     readOnly = true,
+                    // §8.5：主题传 displayName（不含 .md）作文件名小字；归档不传、行为零变化
+                    sourceFileName = if (kind == ArchiveEntryKind.TOPIC) {
+                        archive.name.removeSuffix(".md")
+                    } else {
+                        null
+                    },
                     onEntryLongClick = { content ->
                         // Vibration is handled by EntryListScreen
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("archive_entry", content))
-                        showToast(context, "已复制")
+                        // 常量化归位（T-06 核验建议 D6 同款）
+                        showToast(context, Microcopy.TOAST_COPIED)
                     },
                     onEntrySwipeToDelete = {
                         // Should not be called in read-only mode

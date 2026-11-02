@@ -21,6 +21,7 @@ import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.data.ThemePreferences
 import com.yiyue31.android.appendo.reminder.ReminderIntents
 import com.yiyue31.android.appendo.ui.ArchiveDetailScreen
+import com.yiyue31.android.appendo.ui.ArchiveEntryKind
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.ui.ArchiveListScreen
 import com.yiyue31.android.appendo.ui.MainScreen
@@ -107,20 +108,34 @@ fun AppendoNavHost(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onArchiveClick = { archive ->
+                onFileClick = { file, kind ->
                     // Encode file path for safe navigation
-                    val encodedPath = Uri.encode(archive.file.absolutePath)
-                    navController.navigate("archive_detail/$encodedPath")
+                    val encodedPath = Uri.encode(file.absolutePath)
+                    // §8.5：主题详情经可选 kind 查询参数区分（归档不带，路由匹配向后兼容）
+                    val route = if (kind == ArchiveEntryKind.TOPIC) {
+                        "archive_detail/$encodedPath?kind=${ArchiveEntryKind.TOPIC.routeValue}"
+                    } else {
+                        "archive_detail/$encodedPath"
+                    }
+                    navController.navigate(route)
                 }
             )
         }
 
         composable(
-            route = "archive_detail/{filePath}",
-            arguments = listOf(navArgument("filePath") { type = NavType.StringType })
+            route = "archive_detail/{filePath}?kind={kind}",
+            arguments = listOf(
+                navArgument("filePath") { type = NavType.StringType },
+                navArgument("kind") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
         ) { backStackEntry ->
             val encodedPath = backStackEntry.arguments?.getString("filePath")
             val filePath = encodedPath?.let { Uri.decode(it) }
+            val kind = ArchiveEntryKind.fromRouteValue(backStackEntry.arguments?.getString("kind"))
             val file = File(filePath ?: "")
 
             if (file.exists()) {
@@ -132,7 +147,9 @@ fun AppendoNavHost(
                     archive = archive,
                     onNavigateBack = {
                         navController.popBackStack()
-                    }
+                    },
+                    screenTitle = if (kind == ArchiveEntryKind.TOPIC) "主题详情" else "归档详情",
+                    kind = kind
                 )
             }
         }

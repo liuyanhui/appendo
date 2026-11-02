@@ -55,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,49 +69,77 @@ import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.ArchiveFile
 import com.yiyue31.android.appendo.data.ArchiveRepository
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.data.TopicDeleteResult
+import com.yiyue31.android.appendo.data.TopicDocument
+import com.yiyue31.android.appendo.data.TopicRepository
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.ui.theme.onSuccessColor
 import com.yiyue31.android.appendo.ui.theme.successColor // 滑动指示背景色（ArchiveCard）仍用
 import com.yiyue31.android.appendo.util.EntryParser
-import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.Date
 
 // Constants for magic numbers
 private const val VIBRATION_DURATION_SHORT_MS = 100L
 private const val VIBRATION_DURATION_LONG_MS = 200L
 private const val SWIPE_THRESHOLD_DP = 120f
 
+/**
+ * 「归档与主题」列表条目种类（T-07，§8.3/§8.5）。定义在本文件（分区列表页为唯一产出源）；
+ * MainActivity 以 [routeValue] 构造/解析 `archive_detail/{filePath}?kind=` 查询参数。
+ */
+enum class ArchiveEntryKind(val routeValue: String) {
+    ARCHIVE("archive"),
+    TOPIC("topic");
+
+    companion object {
+        /** 路由查询参数解析：null / 未知值一律按归档（向后兼容旧归档路由，§8.5「归档详情行为零变化」）。 */
+        fun fromRouteValue(value: String?): ArchiveEntryKind =
+            if (value == TOPIC.routeValue) TOPIC else ARCHIVE
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArchiveListScreen(
     fileRepository: FileRepository,
     onNavigateBack: () -> Unit,
-    onArchiveClick: (ArchiveFile) -> Unit
+    onFileClick: (file: File, kind: ArchiveEntryKind) -> Unit
 ) {
     val context = LocalContext.current
     val archiveRepository = remember { ArchiveRepository(context) }
+    val topicRepository = remember { TopicRepository(context) }
+    val coroutineScope = rememberCoroutineScope()
 
     var archives by remember { mutableStateOf<List<ArchiveFile>>(emptyList()) }
+    var topics by remember { mutableStateOf<List<TopicDocument>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var archiveToDelete by remember { mutableStateOf<ArchiveFile?>(null) }
     var archiveToDeleteIndex by remember { mutableIntStateOf(-1) }
+    var showTopicDeleteDialog by remember { mutableStateOf(false) }
+    var topicToDelete by remember { mutableStateOf<TopicDocument?>(null) }
     var showRestoreDialog by remember { mutableStateOf(false) }
-    var archiveToRestore by remember { mutableStateOf<ArchiveFile?>(null) }
+    var restoreFile by remember { mutableStateOf<File?>(null) }
+    var restoreName by remember { mutableStateOf("") }
+    var restoreKind by remember { mutableStateOf(ArchiveEntryKind.ARCHIVE) }
     var restoreEntryCount by remember { mutableIntStateOf(0) }
 
-    fun loadArchives() {
+    fun loadFiles() {
         isLoading = true
-        // Load archives in IO context
+        // topics + archives 合并加载（§8.3，对齐迁移前 loadArchives 形态）
         archives = archiveRepository.listArchiveFiles()
+        topics = topicRepository.listTopics()
         isLoading = false
     }
 
-    // Load archives on first launch
+    // Load files on first launch
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            loadArchives()
+            loadFiles()
         }
     }
 
@@ -119,7 +148,7 @@ fun ArchiveListScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "归档管理",
+                        "归档与主题",
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -151,7 +180,8 @@ fun ArchiveListScreen(
                 ) {
                     Text("加载中...")
                 }
-            } else if (archives.isEmpty()) {
+            } else if (archives.isEmpty() && topics.isEmpty()) {
+                // 两区皆空 → 整页空态（§8.3）
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -160,77 +190,137 @@ fun ArchiveListScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            "暂无归档文件",
+                            Microcopy.ARCHIVE_TOPIC_EMPTY_TITLE,
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "归档的文件会显示在这里",
+                            Microcopy.ARCHIVE_TOPIC_EMPTY_BODY,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                 }
             } else {
-                Text(
-                    "共 ${archives.size} 个归档",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-
+                // 单 LazyColumn 两分区：主题文档在前（高频取用）、归档在后；空区不渲染含标题（§8.3）
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(
-                        items = archives,
-                        key = { it.file.absolutePath }
-                    ) { archive ->
-                        val index = archives.indexOf(archive)
-                        ArchiveCard(
-                            archive = archive,
-                            archiveRepository = archiveRepository,
-                            index = index,
-                            onClick = { onArchiveClick(archive) },
-                            onLongClick = {
-                                performVibration(context, VIBRATION_DURATION_SHORT_MS)
-                                // Copy all content from archive
-                                try {
-                                    // 出口格式化（v1.3，specs 68）：与复制/分享全部同一格式（全文复制出口）
-                                    val content = EntryParser.formatForExport(
-                                        EntryParser.parse(archive.file.readText())
+                    if (topics.isNotEmpty()) {
+                        item(key = "section_topics") {
+                            SectionHeader(Microcopy.SECTION_TOPICS)
+                        }
+                        items(
+                            items = topics,
+                            key = { "topic_" + it.file.absolutePath }
+                        ) { topic ->
+                            val index = topics.indexOf(topic)
+                            ArchiveCard(
+                                title = topic.displayName,
+                                // 空主题副文案「空」（§8.3 可发现性：滑动手势不可见，副文案补位提示可删状态）
+                                subtitle = if (topic.entryCount == 0) {
+                                    Microcopy.TOPIC_EMPTY_SUBTITLE
+                                } else {
+                                    Microcopy.topicCardSubtitle(
+                                        archiveRepository.formatTimestamp(Date(topic.createdAt)),
+                                        topic.entryCount
                                     )
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("archive", content))
-                                    showToast(context, Microcopy.TOAST_COPIED_ALL)
-                                } catch (e: Exception) {
-                                    if (BuildConfig.DEBUG) {
-                                        android.util.Log.e("ArchiveListScreen", "Failed to copy archive", e)
+                                },
+                                index = index,
+                                // 非空主题滑动删除恒不触发（85(a)：零响应——右向位移钳 0，无滑动反馈）；
+                                // 仅空主题（0 条）启用右滑删除
+                                swipeToDeleteEnabled = topic.entryCount == 0,
+                                onClick = { onFileClick(topic.file, ArchiveEntryKind.TOPIC) },
+                                onLongClick = {
+                                    performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                                    // Copy all content from topic（与归档长按复制同款：parse＋formatForExport，
+                                    // 需求 85 出口铁律——无 ##/---/# Appendo 结构标记、无 ZWSP）
+                                    try {
+                                        val content = EntryParser.formatForExport(
+                                            EntryParser.parse(topic.file.readText())
+                                        )
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("topic", content))
+                                        showToast(context, Microcopy.TOAST_COPIED_ALL)
+                                    } catch (e: Exception) {
+                                        if (BuildConfig.DEBUG) {
+                                            android.util.Log.e("ArchiveListScreen", "Failed to copy topic", e)
+                                        }
+                                        showToast(context, "复制失败")
                                     }
-                                    showToast(context, "复制失败")
+                                },
+                                onSwipeToDelete = {
+                                    performVibration(context, VIBRATION_DURATION_LONG_MS)
+                                    topicToDelete = topic
+                                    showTopicDeleteDialog = true
+                                },
+                                onSwipeLeftRestore = {
+                                    performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                                    restoreFile = topic.file
+                                    restoreName = topic.displayName
+                                    restoreKind = ArchiveEntryKind.TOPIC
+                                    restoreEntryCount = topic.entryCount
+                                    showRestoreDialog = true
                                 }
-                            },
-                            onSwipeToDelete = {
-                                performVibration(context, VIBRATION_DURATION_LONG_MS)
-                                archiveToDelete = archive
-                                archiveToDeleteIndex = index
-                                showDeleteDialog = true
-                            },
-                            onSwipeLeftRestore = {
-                                performVibration(context, VIBRATION_DURATION_SHORT_MS)
-                                archiveToRestore = archive
-                                restoreEntryCount = archive.entryCount
-                                showRestoreDialog = true
-                            }
-                        )
+                            )
+                        }
+                    }
+                    if (archives.isNotEmpty()) {
+                        item(key = "section_archives") {
+                            SectionHeader(Microcopy.SECTION_ARCHIVES)
+                        }
+                        items(
+                            items = archives,
+                            key = { it.file.absolutePath }
+                        ) { archive ->
+                            val index = archives.indexOf(archive)
+                            ArchiveCard(
+                                title = archive.name.removeSuffix(".md"),
+                                subtitle = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
+                                index = index,
+                                onClick = { onFileClick(archive.file, ArchiveEntryKind.ARCHIVE) },
+                                onLongClick = {
+                                    performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                                    // Copy all content from archive
+                                    try {
+                                        // 出口格式化（v1.3，specs 68）：与复制/分享全部同一格式（全文复制出口）
+                                        val content = EntryParser.formatForExport(
+                                            EntryParser.parse(archive.file.readText())
+                                        )
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("archive", content))
+                                        showToast(context, Microcopy.TOAST_COPIED_ALL)
+                                    } catch (e: Exception) {
+                                        if (BuildConfig.DEBUG) {
+                                            android.util.Log.e("ArchiveListScreen", "Failed to copy archive", e)
+                                        }
+                                        showToast(context, "复制失败")
+                                    }
+                                },
+                                onSwipeToDelete = {
+                                    performVibration(context, VIBRATION_DURATION_LONG_MS)
+                                    archiveToDelete = archive
+                                    archiveToDeleteIndex = index
+                                    showDeleteDialog = true
+                                },
+                                onSwipeLeftRestore = {
+                                    performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                                    restoreFile = archive.file
+                                    restoreName = archive.name
+                                    restoreKind = ArchiveEntryKind.ARCHIVE
+                                    restoreEntryCount = archive.entryCount
+                                    showRestoreDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    // Delete confirmation dialog
+    // Delete confirmation dialog（归档，迁移前原样）
     if (showDeleteDialog && archiveToDelete != null) {
         AlertDialog(
             onDismissRequest = {
@@ -254,7 +344,7 @@ fun ArchiveListScreen(
                         val deleted = archiveRepository.deleteArchive(archiveToDelete!!.file)
                         if (deleted) {
                             showToast(context, "已删除")
-                            loadArchives()
+                            loadFiles()
                         } else {
                             showToast(context, "删除失败")
                         }
@@ -280,88 +370,57 @@ fun ArchiveListScreen(
         )
     }
 
-    // Restore confirmation dialog
-    if (showRestoreDialog && archiveToRestore != null) {
+    // Delete confirmation dialog（空主题，§8.3：error 红标题＋红「删除」按钮，78(a) 破坏性=红）
+    if (showTopicDeleteDialog && topicToDelete != null) {
         AlertDialog(
             onDismissRequest = {
-                showRestoreDialog = false
-                archiveToRestore = null
-                restoreEntryCount = 0
+                showTopicDeleteDialog = false
+                topicToDelete = null
             },
             title = {
                 Text(
-                    "追加到当前文档",
+                    Microcopy.DLG_TOPIC_DELETE_TITLE,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.error
                 )
             },
             text = {
-                Text("确定要将归档 \"${archiveToRestore!!.name}\" 中的 $restoreEntryCount 条内容追加到当前文档吗？")
+                Text(Microcopy.dlgTopicDeleteBody(topicToDelete!!.displayName))
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        try {
-                            val archiveContent = archiveToRestore!!.file.readText()
-                            val archiveEntries = parseMarkdownEntries(archiveContent)
-
-                            val mdFile = MarkdownFileFactory.create(
-                                context,
-                                fileRepository.isUsingSAF(),
-                                fileRepository.getFileUri(),
-                                fileRepository.getDefaultFile()
-                            )
-
-                            // 去重（timestamp|content），用 appendEntry 保留归档原时间戳（v1.1 B3：去重 key 才真正生效）
-                            val existingContent = mdFile.readAll()
-                            val existingEntries = parseMarkdownEntries(existingContent)
-                            val existingKeys = existingEntries
-                                .map { "${it.timestamp}|${it.content}" }
-                                .toMutableSet()
-
-                            var addedCount = 0
-                            var skippedCount = 0
-                            for (entry in archiveEntries) {
-                                val key = "${entry.timestamp}|${entry.content}"
-                                if (key !in existingKeys) {
-                                    mdFile.appendEntry(entry.timestamp, entry.content)
-                                    existingKeys.add(key)
-                                    addedCount++
-                                } else {
-                                    skippedCount++
+                        val target = topicToDelete!!
+                        // 删除走 TopicRepository.deleteTopic（文件＋SP key 同清）；SP commit 同步盘，
+                        // Dispatchers.IO 对齐 T-06 事务先例（§8.3）
+                        coroutineScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                topicRepository.deleteTopic(target)
+                            }
+                            when (result) {
+                                TopicDeleteResult.Deleted -> {
+                                    showToast(context, "已删除")
+                                    loadFiles()
+                                }
+                                // NotEmpty（确认停留期间被移入）/ Failed（IO 失败）→ 统一失败 toast＋重载如实反映
+                                else -> {
+                                    showToast(context, Microcopy.TOAST_TOPIC_DELETE_FAILED)
+                                    loadFiles()
                                 }
                             }
-
-                            if (addedCount > 0) {
-                                fileRepository.setFileLastModified(System.currentTimeMillis())
-                            }
-                            // 透明提示（specs 43）：Y=0 不显示跳过后缀
-                            val msg = when {
-                                addedCount == 0 && skippedCount == 0 -> "归档为空，无需追加"
-                                skippedCount == 0 -> Microcopy.toastAppendedCount(addedCount)
-                                else -> Microcopy.toastAppendedCountSkipped(addedCount, skippedCount)
-                            }
-                            showToast(context, msg)
-                        } catch (e: Exception) {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("ArchiveListScreen", "Failed to restore archive", e)
-                            }
-                            showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                            showTopicDeleteDialog = false
+                            topicToDelete = null
                         }
-                        showRestoreDialog = false
-                        archiveToRestore = null
-                        restoreEntryCount = 0
                     }
                 ) {
-                    Text(Microcopy.BTN_APPEND, color = MaterialTheme.colorScheme.primary)
+                    Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
-                        showRestoreDialog = false
-                        archiveToRestore = null
-                        restoreEntryCount = 0
+                        showTopicDeleteDialog = false
+                        topicToDelete = null
                     }
                 ) {
                     Text("取消")
@@ -369,14 +428,53 @@ fun ArchiveListScreen(
             }
         )
     }
+
+    // Restore confirmation dialog（归档/主题共用件，§8.4：主题差异仅注明行＋同字面 toast）
+    if (showRestoreDialog && restoreFile != null) {
+        RestoreConfirmDialog(
+            file = restoreFile!!,
+            sourceLabel = if (restoreKind == ArchiveEntryKind.TOPIC) "主题" else "归档",
+            sourceName = restoreName,
+            entryCount = restoreEntryCount,
+            fileRepository = fileRepository,
+            restoreNote = if (restoreKind == ArchiveEntryKind.TOPIC) {
+                Microcopy.TOPIC_RESTORE_NOTE
+            } else {
+                null
+            },
+            onDismiss = {
+                showRestoreDialog = false
+                restoreFile = null
+                restoreEntryCount = 0
+            },
+            onConfirmed = {
+                showRestoreDialog = false
+                restoreFile = null
+                restoreEntryCount = 0
+                // §8.3：恢复/删除操作后重载（主题恢复后显式重载）
+                loadFiles()
+            }
+        )
+    }
+}
+
+/** 分区标题（§8.3）：labelMedium＋primary——分区标题属组件级用途、非正文，P8 允许。 */
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArchiveCard(
-    archive: ArchiveFile,
-    archiveRepository: ArchiveRepository,
+    title: String,
+    subtitle: String,
     index: Int,
+    swipeToDeleteEnabled: Boolean = true,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSwipeToDelete: () -> Unit,
@@ -476,7 +574,10 @@ private fun ArchiveCard(
                             onHorizontalDrag = { _, dragAmount ->
                                 val newOffset = offsetX + dragAmount
                                 // Allow both positive and negative offset
-                                offsetX = newOffset.coerceIn(-SWIPE_THRESHOLD_DP * 1.5f, SWIPE_THRESHOLD_DP * 1.5f)
+                                // 右滑删除禁用时（非空主题，85(a) 零响应）：正向位移钳 0——卡片无滑动反馈，
+                                // onDragEnd 的 > 阈值分支不可达；负向（左滑恢复）不受限
+                                val maxPositive = if (swipeToDeleteEnabled) SWIPE_THRESHOLD_DP * 1.5f else 0f
+                                offsetX = newOffset.coerceIn(-SWIPE_THRESHOLD_DP * 1.5f, maxPositive)
                             }
                         )
                     },
@@ -503,13 +604,13 @@ private fun ArchiveCard(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = archive.name.removeSuffix(".md"),
+                            text = title,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
+                            text = subtitle,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
