@@ -110,8 +110,8 @@
   - [ ] 代码评审确认：move 方法体为单个 synchronized 块（grep `synchronized` 仅一处包裹全程）；六步骤各有 runCatching 映射
   - [ ] 全量单测 `--max-workers=1` 全绿
 - **评估方法**: 编译＋单测＋grep＋代码评审（锁结构 / 异常映射 / 幂等收敛用例）。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-02）**——Planner 独立核验 5 条全 PASS：五分类逐字对齐 §6.4、①~⑬ 全实质覆盖（⑦ 裁定「每轮 Success」为逻辑必然非时序断言＋3 次重复全绿；⑪ 真实 IO 沿 T-02 注入先例）、单锁 :108 一处包裹全程＋六段映射齐、`--rerun` 177/0/0/0、恰 2 新文件。走查 a~f 全裁定相容（toAdd 空免写／missing 三分互斥／同 key 双条写收敛删全清／拼接逐字节同构 appendEntryInternal／atomicWrite 边界未动）。**遗留建议**：① ⑦ 区分度可加「并发 updateEntry 所选键」变体（T-09/debt-tracker 参考）② 设计 §6.4 引用行号 :143 已漂移至 :161（T-11 顺手更正）。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-04 TopicRepository 主题仓储
 
@@ -363,3 +363,4 @@
 - 2026-11-02：**用户确认计划定稿**——阶段3 完成，进入阶段4 编码；T-01 启动。
 - 2026-11-02：**T-01 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS）：`scanEntriesWithSpans` 共享扫描＋`parse` 薄包装＋`countEntries` 公开＋两处消重；全量 149 条（142 既有＋7 新增）`--rerun` 复跑全绿。遗留建议 1 条（FileBased/Saf `count()` 表达式收敛）→ T-11 登 debt-tracker。下一任务 T-02。
 - 2026-11-02：**T-02 完成**（Generator 1 轮＋Planner 核验 6 条全 PASS）：EntryKey＋接口 `deleteEntries`（两实现，null⟺操作未发生）＋`buildContentWithoutEntries`（keep-mask 同源）；全量 164 条 `--rerun` 0 失败 0 跳过。权限注入按 Windows 等价替换（写注入打源文件 setWritable）。遗留建议 S1（全删×空内容区域组合用例）→ T-09/T-11。下一任务 T-03。
+- 2026-11-02：**T-03 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS＋走查 a~f 全相容）：`TopicMoveTransaction`（MoveResult 五分类＋move 六步单锁编排＋MoveFaults 注入）＋13 组单测；全量 177 条 `--rerun` 0 失败（⑦ 并发 3 次重复全绿）。遗留建议 2 条（⑦ 区分度变体；§6.4 行号漂移 T-11 更正）。下一任务 T-04。

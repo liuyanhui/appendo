@@ -11,6 +11,7 @@
 > | 2026-11-02 | Yiyue + Claude | **用户确认计划定稿**——阶段3 闭环；阶段4 编码启动，T-01（EntryParser 同源重构）执行中 |
 > | 2026-11-02 | Yiyue + Claude | **T-01 完成**（Generator＋Planner 核验 5 条全 PASS，149 用例 `--rerun` 复跑全绿）；下一任务 T-02（EntryKey＋deleteEntries＋buildContentWithoutEntries）。遗留建议：FileBased/Saf `count()` 收敛 → T-11 登 debt-tracker |
 > | 2026-11-02 | Yiyue + Claude | **T-02 完成**（Planner 核验 6 条全 PASS，`--rerun` 164/0/0/0）：EntryKey＋`deleteEntries` 两实现＋`buildContentWithoutEntries`；权限注入 Windows 等价替换获认可。下一任务 T-03（TopicMoveTransaction）。遗留建议 S1（全删×空内容区域组合用例）→ T-09/T-11 |
+> | 2026-11-02 | Yiyue + Claude | **T-03 完成**（Planner 核验 5 条全 PASS＋走查 a~f 相容，`--rerun` 177/0/0/0，⑦ 并发 3 次重复全绿）：`TopicMoveTransaction` 组合事务落盘。下一任务 T-04（TopicRepository）。遗留建议 2 条（⑦ 区分度变体→T-09；设计 §6.4 行号漂移→T-11 更正） |
 
 ---
 
@@ -35,7 +36,7 @@
 
 ## 1. 状态快照（2026-10-30）
 
-- **流程位置（CLAUDE.md 六阶段）**：阶段1 需求 ✅ → 阶段2 设计 ✅（定稿 2026-11-01）→ 阶段3 计划 ✅（**2026-11-02 用户确认定稿**）→ **阶段4 编码（当前）——T-01/T-02 ✅（Planner 核验通过），下一任务 T-03** → 阶段5 真机验收。每阶段完成需用户确认方可进入下一阶段。
+- **流程位置（CLAUDE.md 六阶段）**：阶段1 需求 ✅ → 阶段2 设计 ✅（定稿 2026-11-01）→ 阶段3 计划 ✅（**2026-11-02 用户确认定稿**）→ **阶段4 编码（当前）——T-01~T-03 ✅（Planner 核验通过），下一任务 T-04** → 阶段5 真机验收。每阶段完成需用户确认方可进入下一阶段。
 - **git 状态**：计划批次（执行计划 362 行＋本文档换机交接更新）于 2026-11-02 提交推送；此前 `9fb4b57`（设计定稿）→ `d29452e`（设计草案）→ `d2e7ff0`（specs 评审修订）→ `1c8dd1e`（v1.3.1 基线）。
 - **另一未完流**：v1.3.x 微文案批次的真机走查仍开放（见 `v1.3.x-microcopy-handoff.md`），与本流无关，勿混淆。
 
