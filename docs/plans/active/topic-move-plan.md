@@ -152,8 +152,8 @@
   - [ ] 浏览态入口图标常驻且条目数 0 隐藏；`retainedSelection` 接入点在 entries 更新处（MainScreen.kt:239 附近）
   - [ ] `grep -n "Color(0x" ui/MultiSelect.kt` 零命中；全量单测 `--max-workers=1` 全绿
 - **评估方法**: 编译＋单测＋grep＋代码走查（对照 §7.1/§7.2/§7.3 逐条）。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-02）**——Planner 独立核验 7 条全 PASS（评审对象＝提交 `0fa9cab`，与在途 T-06 工作区改动隔离）：三组用例 7 例全绿、四参数带默认值＋ArchiveDetailScreen 零改动、五要素可指认＋浏览态零语义变化（`-w` diff 铁证：删除行仅 1 行）、SAF 先退出后弹窗、入口 0 条目隐藏＋retainedSelection 接入、零写死色＋干净树复跑 194/0/0/0、恰 5 文件。三偏离全采纳（Row 前置勾选框／BackHandler／contentDescription 直写沿惯例）。**遗留建议**：① §7.2「叠加」措辞与 Row 前置实现的表述分歧 → T-09/T-11 文档同步记注；② EntryCard 分支优先级 `selectionMode > readOnly`（当前不可达组合，T-06/T-07 评审留意）。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-06 移入流程 UI
 
@@ -366,3 +366,4 @@
 - 2026-11-02：**T-03 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS＋走查 a~f 全相容）：`TopicMoveTransaction`（MoveResult 五分类＋move 六步单锁编排＋MoveFaults 注入）＋13 组单测；全量 177 条 `--rerun` 0 失败（⑦ 并发 3 次重复全绿）。遗留建议 2 条（⑦ 区分度变体；§6.4 行号漂移 T-11 更正）。下一任务 T-04。
 - 2026-11-02：**执行模式修订（用户指示）**：允许并行子任务。裁定：编码 Generator 保持串行（共享工作区＋MainScreen.kt/MainActivity.kt 交叉文件＋逐任务全量测试门），**只读核验（Planner）与文件不相交的下一任务 Generator 流水线并行**（gradle 项目锁自然排队）。T-05 Generator 与 T-04 Planner 并行启动（ui/ 与 data/ 零交集，T-05 硬依赖 T-01/T-02 已提交）。
 - 2026-11-02：**T-04 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS＋走查 a~f 相容，`--rerun` 187/0/0/0）：`TopicRepository`（命名校验/createdAt SP 全 commit/首见回写一次/双候选合并扫描/删除保守拒绝）＋10 用例。⑥⑦ 注入配方按测试 JVM 实证更换获认可。**新发现既有 flake**（nextTimestamp 亚毫秒重复 ts）→ T-11 登 debt-tracker＋T-09 复跑口径。T-05 进行中（并行流水线首例）。
+- 2026-11-02：**T-05 完成**（提交 `0fa9cab` 后 Planner 干净树核验 7 条全 PASS，194/0/0/0；流水线：T-05 Planner 与 T-06 Generator 并行）：多选 UI 落盘，三偏离全采纳（Row 前置勾选框/BackHandler/contentDescription 直写）。遗留 2 条建议级（§7.2 措辞记注→T-09/T-11；EntryCard 分支优先级→T-06/T-07 评审留意）。T-06 进行中。
