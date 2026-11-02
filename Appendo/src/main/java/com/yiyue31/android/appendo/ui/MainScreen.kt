@@ -87,6 +87,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.data.FileRepository
+import com.yiyue31.android.appendo.data.TopicCreateResult
+import com.yiyue31.android.appendo.data.TopicDocument
+import com.yiyue31.android.appendo.data.TopicRepository
 import com.yiyue31.android.appendo.reminder.AlarmScheduler
 import com.yiyue31.android.appendo.reminder.ReminderStore
 import com.yiyue31.android.appendo.reminder.rescheduleAll
@@ -112,6 +115,8 @@ import com.yiyue31.android.appendo.util.MarkdownFormatter
 import com.yiyue31.android.appendo.util.MarkdownFileOperations
 import com.yiyue31.android.appendo.util.RefreshGuard
 import com.yiyue31.android.appendo.util.SafMarkdownFile
+import com.yiyue31.android.appendo.util.MoveResult
+import com.yiyue31.android.appendo.util.TopicMoveTransaction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
@@ -170,6 +175,42 @@ fun MainScreen(
     fun exitSelectionMode() {
         selectionMode = false
         selectedKeys = emptySet()
+    }
+
+    // —— 「移入主题」流程（T-06，§8.1）：对话框栈状态（1 目标选择 / 2 新建命名 / 2b 同名指路 / 3 确认）——
+    var moveFlowStep by remember { mutableStateOf<MoveFlowStep?>(null) }
+    var moveTopics by remember { mutableStateOf(emptyList<TopicDocument>()) }
+    var moveTarget by remember { mutableStateOf<TopicDocument?>(null) }
+    var sameNameExisting by remember { mutableStateOf<TopicDocument?>(null) }
+    // 对话框 2 输入由本处持有：2b「取消」返回对话框 2 时输入保留（§8.1）
+    var newTopicInput by remember { mutableStateOf("") }
+    // 对话框 3 执行/失败态（§8.1）：执行中按钮禁用＋「移入中…」；失败对话框保持变「重试」
+    var moveExecuting by remember { mutableStateOf(false) }
+    var moveFailed by remember { mutableStateOf(false) }
+    // 多选态长按预览（§7.4）：持有预览条目，对话框本体＝TopicMoveDialogs.EntryPreviewDialog
+    var previewEntry by remember { mutableStateOf<LinkEntry?>(null) }
+
+    val topicRepository = remember { TopicRepository(context) }
+
+    /**
+     * 关闭移入流程全部对话框（§8.1「取消」路径：**保持多选态与选中集**——用户可换目标重来；
+     * 本流程新建的空主题保留，可删可复用，§6.5 创建时机取舍）。
+     */
+    fun closeMoveFlow() {
+        moveFlowStep = null
+        moveTarget = null
+        sameNameExisting = null
+        newTopicInput = ""
+        moveExecuting = false
+        moveFailed = false
+    }
+
+    /** 打开对话框 1：主题列表 createdAt 倒序；每主题实时读文件计数，加载下放 [Dispatchers.IO]。 */
+    fun openMoveFlow() {
+        coroutineScope.launch {
+            moveTopics = withContext(Dispatchers.IO) { topicRepository.listTopics() }
+            moveFlowStep = MoveFlowStep.SELECT_TARGET
+        }
     }
 
     // 深链：从提醒通知点按进来后，滚动到该记录（仅滚一次）
@@ -244,6 +285,8 @@ fun MainScreen(
                     // TD-021：SAF 授权丢失（覆盖安装等）→ 弹窗引导，不再静默空列表
                     if (safReadFailed) {
                         // §7.2：SAF 失效模态引导优先——自动退出多选并清空选中集（源不可读时选择上下文已无意义）
+                        // T-06：移入流程对话框若在途一并关闭（同因：源不可读，移入事务失去前提）
+                        closeMoveFlow()
                         exitSelectionMode()
                         showSafInvalidDialog = true
                     }
@@ -273,6 +316,100 @@ fun MainScreen(
                 }
                 entryCount = 0
                 entries = emptyList()
+            }
+        }
+    }
+
+    // —— 「移入主题」执行（T-06，§8.1 对话框 3 确认/重试共用入口；§6.6/§8.2 处置）——
+    /**
+     * 执行移入组合事务（失败重试同走本入口，move 幂等收敛，84(b)）：
+     * - 事务与提醒联动的源重读均在 [Dispatchers.IO]（200 条＝2 次全文件写，不 ANR，89(p)）；
+     * - 提醒联动严格 §8.2 执行序：① 仅 Success（含 N=0）取消——一切失败态（含 SourceDeleteFailed）
+     *   均不取消；② K 在成功回调内以 sidecar 时点快照重算（确认框 K 仅预览）；③ 同 ts 连坐防护
+     *   ——以移入后的源重读解析为准，同 ts 仍有条目留在源则不取消该提醒；④ 取消动作与删除条目
+     *   联动同款（AlarmScheduler.cancel ＋ ReminderStore.remove 成对）；⑤ K>0 时 toast 追加附注；
+     *   ⑥ 恢复不复活＝零代码保证（纯条目追加无复活路径，README 声明落 T-11/R1）。
+     * - 成功：关全部对话框＋退出多选＋toast 三态（K>0 追加提醒附注）＋setFileLastModified＋
+     *   refreshEntryCount（§6.6 立即主动刷新，不等 2 秒轮询）。
+     * - 失败：toast 按分类、对话框 3 保持变「重试」、保持勾选与目标；仅 SourceDeleteFailed
+     *   例外同时刷新（源可能已部分移除，即刻如实反映，§6.6），其余失败态源未动不刷新。
+     */
+    fun executeMove() {
+        val target = moveTarget ?: return
+        val keys = selectedKeys
+        if (keys.isEmpty()) {
+            // 防御：确认停留期间选中集被清空（轮询剔除/SAF 失效退出）——无条目可移，关流程保多选语义
+            closeMoveFlow()
+            return
+        }
+        val source = getCurrentMarkdownFile()
+        val targetMd = FileBasedMarkdownFile(context, target.file)
+        moveExecuting = true
+        coroutineScope.launch {
+            var cancelledReminders = 0
+            val result = withContext(Dispatchers.IO) {
+                val r = TopicMoveTransaction.move(source, targetMd, keys)
+                if (r is MoveResult.Success) {
+                    // §8.2（①仅 Success 分支内；②以执行时点 sidecar 为准；③源重读解析）
+                    val store = ReminderStore.get(context)
+                    val unfiredTs = store.allKeys().filterTo(mutableSetOf()) { store.hasUnfired(it) }
+                    val remainingTs = runCatching {
+                        EntryParser.parse(source.readAll()).mapTo(mutableSetOf()) { it.rawTimestamp }
+                    }.getOrNull() // 源读失败 → null → 保守不取消（§8.2 ③，孤儿对账兜底）
+                    val toCancel = remindersToCancel(
+                        selectedTs = keys.mapTo(mutableSetOf()) { it.timestamp },
+                        unfiredReminderTs = unfiredTs,
+                        remainingSourceTs = remainingTs
+                    )
+                    for (ts in toCancel) {
+                        // ④ 与删除条目联动同款（成对调用，对齐删除路径先例）
+                        AlarmScheduler.cancel(context, ts)
+                        store.remove(ts)
+                    }
+                    cancelledReminders = toCancel.size
+                }
+                r
+            }
+            moveExecuting = false
+            when (result) {
+                is MoveResult.Success -> {
+                    closeMoveFlow()
+                    exitSelectionMode()
+                    // toast 三态（§9.1；N＝moved 实写数）＋⑤ K>0 追加附注（K＝实际取消数）
+                    val base = when {
+                        result.moved == 0 -> Microcopy.toastMovedAllExisting(result.skippedExisting)
+                        result.skippedExisting > 0 ->
+                            Microcopy.toastMovedCountSkipped(result.moved, result.skippedExisting)
+                        else -> Microcopy.toastMovedCount(result.moved)
+                    }
+                    val msg =
+                        if (cancelledReminders > 0) base + Microcopy.removedRemindersSuffix(cancelledReminders)
+                        else base
+                    showToast(context, msg)
+                    // §6.6：立即主动刷新（mtime 双保险，不等 2 秒轮询）
+                    fileRepository.setFileLastModified(System.currentTimeMillis())
+                    refreshEntryCount()
+                }
+                is MoveResult.SourceDeleteFailed -> {
+                    moveFailed = true // 对话框 3 保持变「重试」、保持勾选与目标（84(b)）
+                    showToast(context, Microcopy.toastMoveFailedSourceDelete())
+                    // §6.6 例外：源可能已部分移除，即刻如实反映；其余失败态不刷新（见下）
+                    fileRepository.setFileLastModified(System.currentTimeMillis())
+                    refreshEntryCount()
+                }
+                is MoveResult.SourceReadFailed -> {
+                    moveFailed = true
+                    showToast(
+                        context,
+                        // SAF 失效场景叠加 TD-021 句式（§9.1）；默认模式源读失败用统一兜底句式
+                        if (useSAF) Microcopy.TOAST_MOVE_FAILED_SAF_REVOKED
+                        else Microcopy.TOAST_MOVE_FAILED
+                    )
+                }
+                is MoveResult.TargetReadFailed, is MoveResult.TargetWriteFailed -> {
+                    moveFailed = true
+                    showToast(context, Microcopy.toastMoveFailedTargetWrite())
+                }
             }
         }
     }
@@ -396,9 +533,7 @@ fun MainScreen(
                 MultiSelectTopBar(
                     selectedCount = selectedKeys.size,
                     onExit = { exitSelectionMode() },
-                    onMoveIn = {
-                        // T-06 接线位：移入流程（目标选择对话框等）；本任务占位空实现
-                    }
+                    onMoveIn = { openMoveFlow() } // T-06：打开对话框 1 目标选择（§8.1）
                 )
             } else {
                 TopAppBar(
@@ -671,14 +806,15 @@ fun MainScreen(
                         val key = entry.entryKey
                         selectedKeys = if (key in selectedKeys) selectedKeys - key else selectedKeys + key
                     },
-                    onPreview = {
-                        // T-06 接线位：多选态长按预览对话框（§7.4，本体归属 TopicMoveDialogs.kt）；本任务空实现占位
+                    onPreview = { entry ->
+                        // T-06（§7.4，82 修订 b）：多选态长按预览——持有条目，弹 EntryPreviewDialog
+                        previewEntry = entry
                     },
                     onEntryLongClick = { content ->
                         // Copy to clipboard
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("entry", content))
-                        showToast(context, "已复制")
+                        showToast(context, Microcopy.TOAST_COPIED)
                     },
                     onEntrySwipeToDelete = { timestamp ->
                         entryToDeleteTimestamp = timestamp
@@ -1436,6 +1572,90 @@ fun MainScreen(
                 }
             }
         )
+    }
+
+    // —— 「移入主题」流程对话框栈（T-06，§8.1；对话框本体在 TopicMoveDialogs.kt）——
+    when (moveFlowStep) {
+        MoveFlowStep.SELECT_TARGET -> TopicSelectDialog(
+            topics = moveTopics, // createdAt 倒序（TopicRepository.listTopics 序）
+            onSelect = { topic ->
+                // 点选已有主题 → 对话框 3（§8.1）
+                moveTarget = topic
+                moveFailed = false
+                moveFlowStep = MoveFlowStep.CONFIRM
+            },
+            onNewTopic = { moveFlowStep = MoveFlowStep.NEW_TOPIC },
+            // 点外/返回关全部——保持多选态与选中集（与对话框 3「取消」同处置）
+            onDismiss = ::closeMoveFlow
+        )
+        MoveFlowStep.NEW_TOPIC -> NewTopicNameDialog(
+            name = newTopicInput,
+            onNameChange = { newTopicInput = it },
+            onCreate = {
+                // 校验链＋创建一体经 createEmptyTopic（原子，无「先校验后创建」间隙）；
+                // 校验各失败分支 → 对应 toast 且对话框保持（§8.1）；取消留空文档不回收（§6.5）
+                coroutineScope.launch {
+                    val created = withContext(Dispatchers.IO) {
+                        topicRepository.createEmptyTopic(newTopicInput)
+                    }
+                    when (created) {
+                        is TopicCreateResult.Created -> {
+                            // 进确认框前已建空文档（§6.5 创建时机取舍）：确认框取消留空文档，可删可复用
+                            moveTarget = TopicDocument(
+                                file = created.file,
+                                displayName = newTopicInput.trim(),
+                                createdAt = System.currentTimeMillis(),
+                                entryCount = 0
+                            )
+                            moveFailed = false
+                            moveFlowStep = MoveFlowStep.CONFIRM
+                        }
+                        is TopicCreateResult.NameExists -> {
+                            // 同名 → 对话框 2b 指路（83 修订 c）
+                            sameNameExisting = created.existing
+                            moveFlowStep = MoveFlowStep.SAME_NAME
+                        }
+                        TopicCreateResult.NameEmpty -> showToast(context, Microcopy.TOAST_TOPIC_NAME_EMPTY)
+                        TopicCreateResult.NameReserved -> showToast(context, Microcopy.TOAST_TOPIC_NAME_RESERVED)
+                        TopicCreateResult.NameIllegalChars -> showToast(context, Microcopy.TOAST_TOPIC_NAME_ILLEGAL)
+                        TopicCreateResult.NameTooLong -> showToast(context, Microcopy.TOAST_TOPIC_NAME_TOO_LONG)
+                        TopicCreateResult.WriteFailed -> {
+                            // 创建失败 → toast 中止流程（§8.1）；多选态与选中集保持
+                            showToast(context, Microcopy.toastMoveFailedCreateTopic())
+                            closeMoveFlow()
+                        }
+                    }
+                }
+            },
+            onDismiss = { moveFlowStep = MoveFlowStep.SELECT_TARGET } // 「取消」→ 回对话框 1（§8.1）
+        )
+        MoveFlowStep.SAME_NAME -> SameNameDialog(
+            existingName = sameNameExisting?.displayName ?: "",
+            onMoveToExisting = {
+                // 「移入该主题」→ 目标切该已有主题，直达对话框 3（§8.1）
+                moveTarget = sameNameExisting
+                sameNameExisting = null
+                moveFailed = false
+                moveFlowStep = MoveFlowStep.CONFIRM
+            },
+            onDismiss = { moveFlowStep = MoveFlowStep.NEW_TOPIC } // 「取消」→ 回对话框 2，输入保留（§8.1）
+        )
+        MoveFlowStep.CONFIRM -> MoveConfirmDialog(
+            count = selectedKeys.size, // N＝所选条数（84(d)/88 口径）
+            topicName = moveTarget?.displayName ?: "",
+            // K 预览（§8.2 ②：执行取消在成功回调内重算，此处仅确认框前置告知）
+            reminderCount = selectedKeys.count { ReminderStore.get(context).hasUnfired(it.timestamp) },
+            executing = moveExecuting,
+            failed = moveFailed,
+            onConfirm = { executeMove() }, // 失败重试同入口（move 幂等收敛）
+            onDismiss = ::closeMoveFlow // 「取消」关全部对话框，保持多选态与选中集（§8.1）
+        )
+        null -> {}
+    }
+
+    // 多选态长按预览对话框（§7.4，82 修订 b；本体 TopicMoveDialogs.EntryPreviewDialog）
+    previewEntry?.let { entry ->
+        EntryPreviewDialog(entry = entry, onDismiss = { previewEntry = null })
     }
 }
 

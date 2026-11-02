@@ -85,4 +85,83 @@ internal object Microcopy {
 
     /** 多选态顶栏标题「已选 N 条」（§9.2，N = selectedKeys.size 实时）。 */
     fun topBarSelectedCount(count: Int): String = "已选 $count 条"
+
+    /** 预览对话框复制反馈（§9.2 预览行；需求 79「已复制」句式，浏览态长按复制同字面共用）。 */
+    const val TOAST_COPIED = "已复制"
+
+    // ---- 「移入主题」移入词族（topic-move 设计 §9.1；T-06 增量落盘，T-08 全套核对收口）----
+    // 数字口径：N＝所选条数（成功文案取实际 moved；所选 N = moved + skipped(+missing)），
+    // K＝提醒取消数（独立附注，非条目计数）。
+
+    /** 执行中按钮（对话框 3；89(p) 可感知进行反馈，事务在 Dispatchers.IO 不 ANR）。 */
+    const val BTN_MOVING = "移入中…"
+
+    /** 失败重试按钮（对话框 3 失败态：对话框保持，重试幂等收敛，84(b)）。 */
+    const val BTN_RETRY = "重试"
+
+    /** 成功（M=0）：「已移入 N 条」。 */
+    fun toastMovedCount(n: Int): String = "已移入 $n 条"
+
+    /** 成功（M>0）：对齐第 15 章归档恢复「（跳过 M 条已存在）」句式族（O2 裁定）。 */
+    fun toastMovedCountSkipped(n: Int, m: Int): String = "已移入 $n 条（跳过 $m 条已存在）"
+
+    /** 成功（N=0，87 修订）：直陈事实句式，禁「已移入 0 条」失败读感。 */
+    fun toastMovedAllExisting(m: Int): String = "$m 条已在该主题中，已从当前列表移除"
+
+    /** 成功附注（K>0，84(c)）：与主文案直接拼接；K＝防护过滤后实际取消数（§8.2 ⑤）。 */
+    fun removedRemindersSuffix(k: Int): String = "，已取消 $k 条提醒"
+
+    /** 失败（统一兜底；非 SAF 源读失败等无专属句式场景）。 */
+    const val TOAST_MOVE_FAILED = "移入失败"
+
+    /** 失败·源读（SAF 授权失效）：对齐 TOAST_APPEND_FAILED_SAF_REVOKED 冒号句式（动词失败：原因，行动指引）。 */
+    const val TOAST_MOVE_FAILED_SAF_REVOKED = "移入失败：自定义目录授权可能已失效，请打开 appendo 重选文件"
+
+    /** 失败·写入段（84(b)：目标可能已部分写入，可整体重试）。 */
+    fun toastMoveFailedTargetWrite(): String = "移入失败（写入主题文档失败）"
+
+    /** 失败·删除段（84(b)：明示「重试安全」——内容已在目标，重试只完成移除）。 */
+    fun toastMoveFailedSourceDelete(): String = "移入失败（主题已保存，从当前列表移除未完成，请重试）"
+
+    // ---- 「移入主题」流程与校验（topic-move 设计 §9.2；T-06 增量落盘，T-08 收口）----
+
+    /** 对话框 1/3 标题。 */
+    const val DLG_MOVE_TITLE = "移入主题"
+
+    /** 确认正文（84(d) 后果去向两行）。 */
+    fun dlgMoveConfirmBody(n: Int, topic: String): String =
+        "将把 $n 条移入主题「$topic」。\n移入后这些条目将从主列表消失，可在「归档与主题」的主题分区查看。"
+
+    /** 确认正文提醒行（K>0 追加一行；K 为预览值，成功回调内重算，§8.2 ②）。 */
+    fun dlgMoveConfirmReminder(k: Int): String = "其中 $k 条设有未触发提醒，移入后将取消。"
+
+    /** 对话框 1 列表末项。 */
+    const val ITEM_NEW_TOPIC = "新建主题…"
+
+    /** 对话框 2 标题 / 输入占位。 */
+    const val DLG_NEW_TOPIC_TITLE = "新建主题"
+    const val PLACEHOLDER_TOPIC_NAME = "请输入主题名称"
+
+    /** 对话框 2 确认按钮。 */
+    const val BTN_CREATE_TOPIC = "创建"
+
+    /** 命名·空（对齐「内容不能为空」句式）。 */
+    const val TOAST_TOPIC_NAME_EMPTY = "名称不能为空"
+
+    /** 命名·保留字。 */
+    const val TOAST_TOPIC_NAME_RESERVED = "不能用“Appendo”命名，也不能以“Appendo_”开头"
+
+    /** 命名·非法字符。 */
+    const val TOAST_TOPIC_NAME_ILLEGAL = "名称不能包含 / \\ : * ? “ < > | 等字符"
+
+    /** 命名·超长。 */
+    const val TOAST_TOPIC_NAME_TOO_LONG = "名称过长（上限 50 字符）"
+
+    /** 同名指路（83 修订 c）：标题 / 正文 / 「移入该主题」按钮。 */
+    const val DLG_SAME_NAME_TITLE = "已存在同名主题"
+    fun dlgSameNameBody(x: String): String = "已存在同名主题“$x”，是否移入该主题？"
+    const val BTN_MOVE_TO_EXISTING = "移入该主题"
+
+    /** 创建文档失败（新建路径，§8.1：toast 后流程中止）。 */
+    fun toastMoveFailedCreateTopic(): String = "移入失败（创建主题文档失败）"
 }
