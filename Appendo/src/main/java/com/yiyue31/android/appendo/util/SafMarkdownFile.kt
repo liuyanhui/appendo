@@ -172,6 +172,25 @@ class SafMarkdownFile(
         }
     }
 
+    /**
+     * 批量删除（T-02）：持锁 → readMainForWrite 读（先恢复 .pending 残留再读，TD-013）→
+     * buildContentWithoutEntries → 一次 safAtomicWrite（与 FileBasedMarkdownFile 实现逐行对照）。
+     * 读失败中止不写返回 null；写失败返回 null 且 .pending 残留走既有软恢复
+     * （下次读 ensureConsistent 从 .bak 回滚，无需新代码处理）。null ⟺ 操作未发生。
+     */
+    override fun deleteEntries(keys: Set<EntryKey>): Int? = synchronized(FileOperationLock) {
+        try {
+            val (current, readFailed) = readMainForWrite()
+            if (readFailed) return@synchronized null // 读失败中止不写（TD-012）
+            val (newContent, deleted) = EntryParser.buildContentWithoutEntries(current, keys)
+            if (deleted == 0) return@synchronized 0 // 无命中：内容不变，免一次 .bak/.pending 写
+            if (safAtomicWrite(newContent, current)) deleted else null
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteEntries failed", e)
+            null
+        }
+    }
+
     override fun updateEntry(timestamp: String, newContent: String): Boolean = synchronized(FileOperationLock) {
         try {
             val (current, readFailed) = readMainForWrite()

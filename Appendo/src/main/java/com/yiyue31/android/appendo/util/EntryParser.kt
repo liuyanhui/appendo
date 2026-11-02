@@ -159,6 +159,50 @@ object EntryParser {
         return if (isTimestampLine(stripped) || isSkippableLine(stripped)) stripped else line
     }
 
+    // ==================== 批量删除（T-02，消费共享扫描区间）====================
+
+    /**
+     * 返回删除 [keys] 命中条目后的全文与实删条数（纯函数，设计 §6.3）。
+     *
+     * 同源规约：行分类与条目区间全部来自 [scanEntriesWithSpans]——**匹配看 key**（parse 语义：
+     * key 的 content 不含遗留分隔形态行）、**删除看扫描行区间**（命中条目整个区间含遗留行一并
+     * 消失），不另写平行边界算法（TD-015 根因原则：保护范围与丢失范围由同一函数定义）。
+     *
+     * 语义（设计 §6.3 定稿）：
+     * - 空 keys / 无命中 → 返回原文（逐字节不变）与 0，早退不做任何重排/换行归一；
+     * - 命中区间整体删除；区间前一行恰为 [MarkdownFormatter.SEPARATOR_LINE] 时连带删除
+     *   （引用常量，不硬编码 `"---"`——既有 [buildDeletedLines] 的硬编码是已登记规避项，不在本特性修改）；
+     * - 空内容区域不产出 ScannedEntry（无 key）→ 不可被删、原样保留；
+     * - 全删归一化：删除后剩余内容 parse 得 0 条条目 → 输出恰为 [MarkdownFormatter.FILE_HEADER]
+     *   （89(m)：主文件恰为 `# Appendo\n`，常量含尾换行）。归一化只发生在删空分支，非全删不重排；
+     * - 同 key 多条完全重复条目全部删除，实删计数含每一条；
+     * - 重构按 content.lines() → 删区间 → join("\n")，与既有 deleteEntry 写路径同构：
+     *   CRLF 归一为 LF、尾换行随 lines() 语义（末空行元素）。
+     */
+    fun buildContentWithoutEntries(content: String, keys: Set<EntryKey>): Pair<String, Int> {
+        if (keys.isEmpty()) return content to 0
+        val hits = scanEntriesWithSpans(content).filter { EntryKey.of(it.entry) in keys }
+        if (hits.isEmpty()) return content to 0
+
+        val lines = content.lines()
+        val keep = BooleanArray(lines.size) { true }
+        for (hit in hits) {
+            val deleteFrom =
+                if (hit.startLine > 0 && lines[hit.startLine - 1] == MarkdownFormatter.SEPARATOR_LINE) {
+                    hit.startLine - 1 // 前导分隔线连带（引用常量，勿硬编码 "---"）
+                } else {
+                    hit.startLine
+                }
+            for (i in deleteFrom..hit.endLineInclusive) keep[i] = false
+        }
+        val remaining = lines.filterIndexed { index, _ -> keep[index] }.joinToString("\n")
+        return if (parse(remaining).isEmpty()) {
+            MarkdownFormatter.FILE_HEADER to hits.size // 全删归一化：恰为文件头（89(m)）
+        } else {
+            remaining to hits.size
+        }
+    }
+
     // ==================== 写侧：format / nextTimestamp / strip（T-003）====================
 
     /** 把 [Instant] 格式化为时间戳字符串（系统默认时区，固定 3 位毫秒）。 */

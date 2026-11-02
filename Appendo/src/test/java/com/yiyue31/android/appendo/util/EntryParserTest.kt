@@ -541,4 +541,177 @@ class EntryParserTest {
         assertEquals("2026-07-20 10:00:00", scanned[0].entry.rawTimestamp)
         assertEquals("内容", scanned[0].entry.content) // trim 后内容
     }
+
+    // ---------- buildContentWithoutEntries（T-02：设计 §10.2 第二行 ①~⑧）----------
+
+    @Test
+    fun buildContentWithoutEntries_sameTimestampDifferentContent_deletesOnlySelected() {
+        // ① 同秒碰撞：同 ts 不同 content 两条只删所选（timestamp|content 组合键区分）
+        val content =
+            "# Appendo\n\n---\n\n## 2026-07-20 09:30:00\n\n甲\n\n---\n\n## 2026-07-20 09:30:00\n\n乙\n\n---\n"
+        val entries = EntryParser.parse(content)
+        assertEquals(2, entries.size)
+
+        val (result, deleted) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey.of(entries[0])) // (ts, "甲")
+        )
+        assertEquals(1, deleted)
+        assertEquals(
+            "# Appendo\n\n---\n\n## 2026-07-20 09:30:00\n\n乙\n\n---\n",
+            result
+        )
+    }
+
+    @Test
+    fun buildContentWithoutEntries_duplicateKey_deletesAllCountsEach() {
+        // ② 同 key 双条完全重复条目：全部删除，实删计数含每一条（计 2）
+        val content =
+            "# Appendo\n\n---\n\n## 2026-07-20 09:30:00\n\n重复\n\n---\n\n## 2026-07-20 09:30:00\n\n重复\n\n---\n\n## 2026-07-20 10:00:00\n\n其他\n\n---\n"
+        val (result, deleted) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey("2026-07-20 09:30:00", "重复"))
+        )
+        assertEquals("同 key 双条全删，各计 1", 2, deleted)
+        assertEquals("# Appendo\n\n---\n\n## 2026-07-20 10:00:00\n\n其他\n\n---\n", result)
+        assertEquals("非全删不归一化", 1, EntryParser.parse(result).size)
+    }
+
+    @Test
+    fun buildContentWithoutEntries_firstLast_leadingSeparatorAndHeader() {
+        // ③ 首条/末条/前导 --- 连带/文件头保留（紧凑布局：分隔线紧贴时间戳行，触发连带判定）
+        val content = "# Appendo\n\n---\n## 2026-07-20 09:30:00\n首条\n---\n## 2026-07-20 10:00:00\n末条\n"
+
+        // 删首条：前一行恰为分隔线 → 连带删除；文件头保留
+        val (delFirst, n1) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey("2026-07-20 09:30:00", "首条"))
+        )
+        assertEquals(1, n1)
+        assertEquals("# Appendo\n\n## 2026-07-20 10:00:00\n末条\n", delFirst)
+
+        // 删末条：连带其前导分隔线；末条区间含末空行 → 结果无尾换行（lines() 语义，与既有 deleteEntry 同构）
+        val (delLast, n2) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey("2026-07-20 10:00:00", "末条"))
+        )
+        assertEquals(1, n2)
+        assertEquals("# Appendo\n\n---\n## 2026-07-20 09:30:00\n首条", delLast)
+    }
+
+    @Test
+    fun buildContentWithoutEntries_isolatedShapeLines_preservedOrDeletedWithEntry() {
+        // ④ 内容含 ---、# Appendo、时间戳形态行（ZWSP 隔离往返）：删别的条目时原样保留含 ZWSP；
+        //    删含它们的条目时整段消失
+        val zwsp = EntryParser.ISOLATION_MARKER
+        val content = "# Appendo\n\n---\n\n## 2026-07-20 09:30:00.000\n\n" +
+            "$zwsp---\n$zwsp# Appendo 备忘\n$zwsp## 2026-07-20 08:00:00\n正文\n\n---\n\n" +
+            "## 2026-07-20 10:00:00.000\n\nsecond\n\n---\n"
+        val entries = EntryParser.parse(content)
+        assertEquals(2, entries.size)
+        assertEquals("---\n# Appendo 备忘\n## 2026-07-20 08:00:00\n正文", entries[0].content)
+
+        // 删第二条：首条含隔离行整段原样保留（含 ZWSP，逐字节）
+        val (keepFirst, n1) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey.of(entries[1]))
+        )
+        assertEquals(1, n1)
+        assertEquals(
+            "# Appendo\n\n---\n\n## 2026-07-20 09:30:00.000\n\n" +
+                "$zwsp---\n$zwsp# Appendo 备忘\n$zwsp## 2026-07-20 08:00:00\n正文\n\n---\n",
+            keepFirst
+        )
+
+        // 删首条：隔离行随条目整段消失，无残留
+        val (delFirst, n2) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey.of(entries[0]))
+        )
+        assertEquals(1, n2)
+        assertEquals("# Appendo\n\n---\n\n## 2026-07-20 10:00:00.000\n\nsecond\n\n---\n", delFirst)
+    }
+
+    @Test
+    fun buildContentWithoutEntries_emptyKeysOrNoHit_returnsOriginalVerbatim() {
+        // ⑤ keys 空 / 无命中 → 原文逐字节不变（含 CRLF 也不归一）、返回 0
+        val content = "# Appendo\r\n\r\n---\r\n\r\n## 2026-07-20 09:30:00\r\n\r\n内容\r\n\r\n---\r\n"
+
+        val (emptyKeys, deleted1) = EntryParser.buildContentWithoutEntries(content, emptySet())
+        assertEquals(0, deleted1)
+        assertEquals("keys 空：原文逐字节不变", content, emptyKeys)
+
+        val (noHit, deleted2) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey("1999-01-01 00:00:00", "不存在"))
+        )
+        assertEquals(0, deleted2)
+        assertEquals("无命中：原文逐字节不变", content, noHit)
+    }
+
+    @Test
+    fun buildContentWithoutEntries_crlfInput_normalizedToLfLikeDeleteEntryPath() {
+        // ⑥-a CRLF 输入：命中删除后按 lines()→join("\n") 重构——CRLF 归一为 LF
+        //    （与既有 deleteEntry 写路径同构，即与 parse 同源同行为）；尾换行经末空行元素保留
+        val content =
+            "# Appendo\r\n\r\n---\r\n\r\n## 2026-07-20 09:30:00\r\n\r\nfirst\r\n\r\n---\r\n\r\n## 2026-07-20 10:00:00\r\n\r\nsecond\r\n\r\n---\r\n"
+        val (result, deleted) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey("2026-07-20 10:00:00", "second"))
+        )
+        assertEquals(1, deleted)
+        assertEquals("# Appendo\n\n---\n\n## 2026-07-20 09:30:00\n\nfirst\n\n---\n", result)
+    }
+
+    @Test
+    fun buildContentWithoutEntries_noTrailingNewline_resultHasNoTrailingNewline() {
+        // ⑥-b 无尾换行：尾换行随 lines() 语义（无末空行元素 → 结果亦无尾换行）
+        val content =
+            "# Appendo\n\n---\n\n## 2026-07-20 09:30:00\n\nfirst\n\n---\n\n## 2026-07-20 10:00:00\n\nsecond"
+        val (result, deleted) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey("2026-07-20 09:30:00", "first"))
+        )
+        assertEquals(1, deleted)
+        assertEquals("# Appendo\n\n---\n\n## 2026-07-20 10:00:00\n\nsecond", result)
+    }
+
+    @Test
+    fun buildContentWithoutEntries_legacyUnisolatedLines_matchByKeyDeleteBySpan() {
+        // ⑥-c TD-015 修复前旧数据：内容区间内遗留未隔离 --- / # Appendo 行——
+        //     匹配看 key（parse 跳过语义，key 的 content 不含遗留行）、删除看扫描行区间（遗留行随条目消失）
+        val content =
+            "# Appendo\n\n---\n\n## 2026-08-31 09:00:00.000\n\n前言\n---\n# Appendo 备忘\n后记\n\n---\n\n## 2026-08-31 10:00:00.000\n\n正常\n\n---\n"
+        val entries = EntryParser.parse(content)
+        assertEquals("parse 跳过遗留行（key 不含它们）", "前言\n后记", entries[0].content)
+
+        val (result, deleted) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey.of(entries[0]))
+        )
+        assertEquals(1, deleted)
+        assertEquals(
+            "# Appendo\n\n---\n\n## 2026-08-31 10:00:00.000\n\n正常\n\n---\n",
+            result
+        )
+        assertFalse("遗留 --- 行随条目消失", result.contains("前言"))
+        assertFalse("遗留 # Appendo 行随条目消失", result.contains("# Appendo 备忘"))
+    }
+
+    @Test
+    fun buildContentWithoutEntries_deleteAll_normalizesToFileHeader() {
+        // ⑦ 全删归一化：输出恰为 FILE_HEADER（89(m)：主文件恰为 `# Appendo\n`——常量含尾换行），
+        //    无残留 --- / 空行
+        val content =
+            "# Appendo\n\n---\n\n## 2026-07-20 09:30:00\n\n甲\n\n---\n\n## 2026-07-20 10:00:00.456\n\n乙\n\n---\n"
+        val keys = EntryParser.parse(content).map { EntryKey.of(it) }.toSet()
+        val (result, deleted) = EntryParser.buildContentWithoutEntries(content, keys)
+        assertEquals(2, deleted)
+        assertEquals(MarkdownFormatter.FILE_HEADER, result)
+        assertEquals("# Appendo\n", result)
+        assertFalse(result.contains("---"))
+    }
+
+    @Test
+    fun buildContentWithoutEntries_emptyContentRegion_preservedVerbatim() {
+        // ⑧ 空内容区域（时间戳行后无内容）：不产出 key、不可被删、原样保留（删的是别的条目）
+        val content =
+            "## 2026-07-20 09:30:00\n\n## 2026-07-20 10:00:00\n\n第二条\n\n---\n\n## 2026-07-20 11:00:00\n\n第三条\n"
+        val (result, deleted) = EntryParser.buildContentWithoutEntries(
+            content, setOf(EntryKey("2026-07-20 10:00:00", "第二条"))
+        )
+        assertEquals(1, deleted)
+        assertEquals("## 2026-07-20 09:30:00\n\n## 2026-07-20 11:00:00\n\n第三条\n", result)
+        assertEquals("空区域仍 parse 不到条目", 1, EntryParser.parse(result).size)
+    }
 }

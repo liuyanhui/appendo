@@ -9,6 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.Assume.assumeTrue
 import org.mockito.kotlin.mock
 import java.io.File
 
@@ -242,5 +243,83 @@ class FileBasedMarkdownFileTest {
         file.mkdirs()
         assertNull("读失败返回 null（⟺ 追加未发生）", md.appendReturningTimestamp("x"))
         assertTrue("不应产生任何写入痕迹", file.listFiles()!!.isEmpty())
+    }
+
+    // ==================== deleteEntries（T-02：批量删除原语，null ⟺ 操作未发生）====================
+
+    @Test
+    fun deleteEntries_deletesSelectedEntriesAndReturnsCount() {
+        md.initHeader()
+        md.appendEntry("2026-07-20 09:00:00.000", "first")
+        md.appendEntry("2026-07-20 10:00:00.000", "second")
+        md.appendEntry("2026-07-20 11:00:00.000", "third")
+        val deleted = md.deleteEntries(
+            setOf(
+                EntryKey("2026-07-20 09:00:00.000", "first"),
+                EntryKey("2026-07-20 11:00:00.000", "third")
+            )
+        )
+        assertEquals("实删 2 条", 2, deleted)
+        val entries = EntryParser.parse(md.readAll())
+        assertEquals(1, entries.size)
+        assertEquals("second", entries[0].content)
+    }
+
+    @Test
+    fun deleteEntries_emptyKeys_returnsZeroWithoutWrite() {
+        md.initHeader()
+        md.appendEntry("2026-07-20 09:00:00.000", "x")
+        val before = file.readText()
+        assertEquals("keys 空 → 0（非 null）", 0, md.deleteEntries(emptySet()))
+        assertEquals("无命中不重写文件", before, file.readText())
+    }
+
+    @Test
+    fun deleteEntries_readFailure_returnsNull_notZero() {
+        // 读失败注入：路径为目录（沿用本文件既有 TD-012 注入先例；等价"源文件 setReadable(false)"
+        // 意图——Windows 上 File 权限 API 不可靠，以实际可运行的等价注入为准）
+        file.mkdirs()
+        assertNull(
+            "读失败返回 null（≠ 0），操作未发生（TD-012：读失败 ≠ 空文件）",
+            md.deleteEntries(setOf(EntryKey("2026-07-20 09:00:00.000", "x")))
+        )
+        assertTrue("不应产生任何写入痕迹", file.listFiles()!!.isEmpty())
+    }
+
+    @Test
+    fun deleteEntries_writeFailure_returnsNull_notZero_thenRetrySucceeds() {
+        md.initHeader()
+        md.appendEntry("2026-07-20 09:00:00.000", "x")
+        md.appendEntry("2026-07-20 10:00:00.000", "y")
+        val keys = setOf(EntryKey("2026-07-20 09:00:00.000", "x"))
+        val before = file.readText()
+        // 写失败注入：源文件置只读（等价"源目录 setWritable(false)"意图——Windows 上目录只读属性
+        // 不阻断其内文件创建，故改打在文件上：renameTo 只读目标被拒 + fallback 直接覆写被拒 →
+        // atomicWrite false）。注：POSIX 上 rename 可替换只读目标、此注入不生效；
+        // 真机目录级 chmod（89(c)）与 T-03 注入参数另行覆盖。
+        assumeTrue("本环境可将文件置只读", file.setWritable(false))
+        try {
+            assertNull("写失败返回 null（≠ 0）", md.deleteEntries(keys))
+            assertEquals("写未发生：内容原样", before, file.readText())
+        } finally {
+            file.setWritable(true) // 恢复权限（teardown 需可删）
+        }
+        // 恢复权限后同 keys 重试：成功且计数正确（幂等——失败时操作未发生，从原内容删起）
+        assertEquals(1, md.deleteEntries(keys))
+        val entries = EntryParser.parse(md.readAll())
+        assertEquals(1, entries.size)
+        assertEquals("y", entries[0].content)
+        // 同 keys 再删：无命中 → 0（非 null、不重复计）
+        assertEquals(0, md.deleteEntries(keys))
+    }
+
+    @Test
+    fun deleteEntries_deleteAll_normalizesFileToFileHeader() {
+        md.initHeader()
+        md.appendEntry("2026-07-20 09:00:00.000", "x")
+        md.appendEntry("2026-07-20 10:00:00.000", "y")
+        val keys = EntryParser.parse(md.readAll()).map { EntryKey.of(it) }.toSet()
+        assertEquals(2, md.deleteEntries(keys))
+        assertEquals("全删归一化：文件恰为 # Appendo\\n（89(m)，无残留 ---）", "# Appendo\n", md.readAll())
     }
 }

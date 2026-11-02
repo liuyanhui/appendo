@@ -113,6 +113,24 @@ class FileBasedMarkdownFile(
         }
     }
 
+    /**
+     * 批量删除（T-02）：持锁 → readForStatus 读 → buildContentWithoutEntries → 一次 atomicWrite。
+     * 读失败用 [readForStatus] 区分（不得走吞异常返回 "" 的 [readAll]——读失败 ≠ 空文件，TD-012），
+     * 中止不写返回 null；写失败返回 null（null ⟺ 操作未发生）。
+     */
+    override fun deleteEntries(keys: Set<EntryKey>): Int? = synchronized(FileOperationLock) {
+        try {
+            val (current, readFailed) = readForStatus()
+            if (readFailed) return@synchronized null // 读失败中止不写（TD-012）
+            val (newContent, deleted) = EntryParser.buildContentWithoutEntries(current, keys)
+            if (deleted == 0) return@synchronized 0 // 无命中：内容不变，免一次无谓写（幂等重试面）
+            if (atomicWrite(newContent.toByteArray(Charsets.UTF_8))) deleted else null
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to deleteEntries", e)
+            null
+        }
+    }
+
     override fun updateEntry(timestamp: String, newContent: String): Boolean = synchronized(FileOperationLock) {
         try {
             val lines = readAll().lines()

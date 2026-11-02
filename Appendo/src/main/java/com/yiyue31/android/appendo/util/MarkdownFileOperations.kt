@@ -74,6 +74,21 @@ interface MarkdownFileOperations {
     fun deleteEntry(timestamp: String): Boolean
 
     /**
+     * 批量删除指定条目（需求 84(e)：按 timestamp|content 寻址，补齐 [deleteEntry] 仅按时间戳的缺口）。
+     *
+     * - 持 [FileOperationLock]；共享扫描（EntryParser.scanEntriesWithSpans）→ 一次原子写
+     *   （不逐条写，200 条仅 1 次全文件写）。
+     * - 同 key 多条完全重复条目（历史数据理论存在）全部删除（幂等彻底）。
+     * - 读失败中止不写（TD-012 纪律：读失败 ≠ 空文件）。
+     *
+     * @return 实删条数；无命中返回 0。读失败或写失败返回 **null ⟺ 操作未发生**——
+     *         对齐 [appendReturningTimestamp] 语义（弃 -1 哨兵：哨兵值是合法 Int，可能被
+     *         下游当有效计数消费；null 类型上不可误用）。SAF 实现写失败时 .pending 残留，
+     *         下次读经 ensureConsistent 从 .bak 回滚（既有软恢复）。
+     */
+    fun deleteEntries(keys: Set<EntryKey>): Int?
+
+    /**
      * Update the content of an existing entry identified by its timestamp.
      * The timestamp remains unchanged; only the content is replaced.
      *

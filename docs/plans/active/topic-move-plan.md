@@ -91,8 +91,8 @@
   - [ ] 代码评审确认：行算法仅消费共享扫描产物，无平行边界逻辑；分隔线引用 `SEPARATOR_LINE`
   - [ ] 全量单测 `--max-workers=1` 全绿
 - **评估方法**: 编译＋单测＋grep（`SEPARATOR_LINE` 引用点）＋代码评审。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-02）**——Planner 独立核验 6 条全 PASS：EntryKey/接口/null 语义、①~⑧ 10 用例实质覆盖（含 CRLF 原引用逐字节断言）、权限注入 Windows 等价替换获认可（真实生效 skipped=0）、keep-mask 同源＋`SEPARATOR_LINE` 引用、`--rerun` 164/0/0/0、恰 7 文件纯追加。两实现 `deleted==0` 早退返 0 不写文件被裁定合规（T-03 不消费 deleteEntries 返回值，无口径漂移）。**遗留建议（T-09 补用例或 T-11 登 debt-tracker）**：S1「全删＋文件含空内容区域」组合边界无专门用例（行为与 §6.3 归一化条款一致，非缺陷）。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-03 TopicMoveTransaction 组合事务
 
@@ -362,3 +362,4 @@
 - 2026-11-02：Evaluator 第 1 轮评估（13 项检查单 11 PASS/2 FAIL）判定**不合格（修订后重评）**——3 必修：P1 T-07 缺页面 TopAppBar 标题更名落点（`ArchiveListScreen.kt:122`「归档管理」）、P2 T-11 评估标准与 §12 处置列矛盾（R8 不展开 / R4＝TD-027 / R9 无新路径）、P3 T-07 缺主题详情 displayName 小字实现位（`EntryListScreen.kt:76` `sourceFileName` 现无调用方传值）；6 可后置（P4~P9：计数口径统一 6 新增/12 修改、Q1/Q2 裁定同步进任务文本、§8.2 六条口径、交叉文件补 MainActivity、T-09 内存数值判据、R8 引用位置修正）。已按反馈全量修订（必修＋可后置一并清理，§6 裁定记录去重合并）。状态：草案（待用户确认）。
 - 2026-11-02：**用户确认计划定稿**——阶段3 完成，进入阶段4 编码；T-01 启动。
 - 2026-11-02：**T-01 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS）：`scanEntriesWithSpans` 共享扫描＋`parse` 薄包装＋`countEntries` 公开＋两处消重；全量 149 条（142 既有＋7 新增）`--rerun` 复跑全绿。遗留建议 1 条（FileBased/Saf `count()` 表达式收敛）→ T-11 登 debt-tracker。下一任务 T-02。
+- 2026-11-02：**T-02 完成**（Generator 1 轮＋Planner 核验 6 条全 PASS）：EntryKey＋接口 `deleteEntries`（两实现，null⟺操作未发生）＋`buildContentWithoutEntries`（keep-mask 同源）；全量 164 条 `--rerun` 0 失败 0 跳过。权限注入按 Windows 等价替换（写注入打源文件 setWritable）。遗留建议 S1（全删×空内容区域组合用例）→ T-09/T-11。下一任务 T-03。
