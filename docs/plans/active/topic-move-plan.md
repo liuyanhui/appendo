@@ -130,8 +130,8 @@
   - [ ] `grep -n "apply()" Appendo/src/main/java/com/yiyue31/android/appendo/data/TopicRepository.kt` 零命中（全部 commit()）
   - [ ] 全量单测 `--max-workers=1` 全绿
 - **评估方法**: 编译＋单测＋grep＋代码评审（校验顺序 / 顺序约束 / topicsDir 兜底）。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-02）**——Planner 独立核验 5 条全 PASS：类型/签名逐字对齐 §6.5＋Q2（prefs 默认真实实例）、①~⑧ 全实质断言＋第 10 个超纲用例（兜底/合并扫描）被认可、`apply()` 零命中（SP 写入点 3 处全 commit）、`--rerun` 187/0/0/0、恰 2 新文件。走查 a~f 全裁定相容（⑥⑦ 注入配方更换等价性实证成立——⑥ 同名文件占位与 89(c) 真机 chmod 同落 createTempFile try 外分支；deleteTopic 读失败→Failed 保守取向被认可）。**遗留（T-11 登 debt-tracker）**：既有 flake `appendReturningTimestamp_consecutiveCalls_uniqueTimestamps`——根因＝`nextTimestamp`（EntryParser.kt:257）全精度比较 vs 毫秒截断，同毫秒连续 append 重复 ts；T-01~T-04 零触碰确证既有缺陷，本机 0/4 复现低频负载相关；修法方向＝按截断串比较＋`now` 参数注入做确定性钉死用例；**T-09 口径＝遇此类 flake 复跑确认，仅确定性失败阻断**。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-05 多选模式 UI
 
@@ -364,3 +364,5 @@
 - 2026-11-02：**T-01 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS）：`scanEntriesWithSpans` 共享扫描＋`parse` 薄包装＋`countEntries` 公开＋两处消重；全量 149 条（142 既有＋7 新增）`--rerun` 复跑全绿。遗留建议 1 条（FileBased/Saf `count()` 表达式收敛）→ T-11 登 debt-tracker。下一任务 T-02。
 - 2026-11-02：**T-02 完成**（Generator 1 轮＋Planner 核验 6 条全 PASS）：EntryKey＋接口 `deleteEntries`（两实现，null⟺操作未发生）＋`buildContentWithoutEntries`（keep-mask 同源）；全量 164 条 `--rerun` 0 失败 0 跳过。权限注入按 Windows 等价替换（写注入打源文件 setWritable）。遗留建议 S1（全删×空内容区域组合用例）→ T-09/T-11。下一任务 T-03。
 - 2026-11-02：**T-03 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS＋走查 a~f 全相容）：`TopicMoveTransaction`（MoveResult 五分类＋move 六步单锁编排＋MoveFaults 注入）＋13 组单测；全量 177 条 `--rerun` 0 失败（⑦ 并发 3 次重复全绿）。遗留建议 2 条（⑦ 区分度变体；§6.4 行号漂移 T-11 更正）。下一任务 T-04。
+- 2026-11-02：**执行模式修订（用户指示）**：允许并行子任务。裁定：编码 Generator 保持串行（共享工作区＋MainScreen.kt/MainActivity.kt 交叉文件＋逐任务全量测试门），**只读核验（Planner）与文件不相交的下一任务 Generator 流水线并行**（gradle 项目锁自然排队）。T-05 Generator 与 T-04 Planner 并行启动（ui/ 与 data/ 零交集，T-05 硬依赖 T-01/T-02 已提交）。
+- 2026-11-02：**T-04 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS＋走查 a~f 相容，`--rerun` 187/0/0/0）：`TopicRepository`（命名校验/createdAt SP 全 commit/首见回写一次/双候选合并扫描/删除保守拒绝）＋10 用例。⑥⑦ 注入配方按测试 JVM 实证更换获认可。**新发现既有 flake**（nextTimestamp 亚毫秒重复 ts）→ T-11 登 debt-tracker＋T-09 复跑口径。T-05 进行中（并行流水线首例）。
