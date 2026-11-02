@@ -175,8 +175,8 @@
   - [ ] 执行中按钮禁用＋字面「移入中…」；失败按钮字面「重试」
   - [ ] 本任务消费的 §9 常量已入 `Microcopy.kt` 且字面与 §9 定稿一致；全量单测 `--max-workers=1` 全绿
 - **评估方法**: 编译＋单测＋grep＋代码走查（对照 §8.1/§8.2/§6.6/§9.1 逐条）。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-02）**——Planner 独立核验 6 条全 PASS（评审对象＝提交 `0513877`）：五对话框齐备、§8.1 四关键路径逐节点走查成立（输入保留/closeMoveFlow 不触碰选中集）、§8.2 六条逐条可指认（① cancel/remove 仅 Success——其余四处命中经父提交比对均为既有代码；⑤ toast 用实际取消数）、刷新联动差异正确（SourceDeleteFailed 双刷新/其余失败不刷新）、三态按钮经 Microcopy、12 条常量逐字比对一致；全量 200 条复跑双绿（首跑唯一失败＝既有负载 flake `concurrentAppend_allEntriesPreserved_noInterleaving`，定向＋全量复跑均绿，按 T-04 口径不阻断）。六偏离 D1~D6＋四走查点全裁定采纳/相容（D3 双句式有 §6.4 表格明文依据；K 预览≥实际属 R8 同根边界）。**建议分流**：① 对话框 1 无取消按钮→真机 89(a)/(g) 留意；② R8 补「K 预览口径」一句→T-11；③ ArchiveDetailScreen:144「已复制」直写→**已补发 T-07 顺路消除**；④ flake 家族补列 concurrentAppend 用例名→T-11 debt-tracker。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-07 「归档与主题」分区列表＋主题详情＋恢复共用抽取
 
@@ -367,3 +367,4 @@
 - 2026-11-02：**执行模式修订（用户指示）**：允许并行子任务。裁定：编码 Generator 保持串行（共享工作区＋MainScreen.kt/MainActivity.kt 交叉文件＋逐任务全量测试门），**只读核验（Planner）与文件不相交的下一任务 Generator 流水线并行**（gradle 项目锁自然排队）。T-05 Generator 与 T-04 Planner 并行启动（ui/ 与 data/ 零交集，T-05 硬依赖 T-01/T-02 已提交）。
 - 2026-11-02：**T-04 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS＋走查 a~f 相容，`--rerun` 187/0/0/0）：`TopicRepository`（命名校验/createdAt SP 全 commit/首见回写一次/双候选合并扫描/删除保守拒绝）＋10 用例。⑥⑦ 注入配方按测试 JVM 实证更换获认可。**新发现既有 flake**（nextTimestamp 亚毫秒重复 ts）→ T-11 登 debt-tracker＋T-09 复跑口径。T-05 进行中（并行流水线首例）。
 - 2026-11-02：**T-05 完成**（提交 `0fa9cab` 后 Planner 干净树核验 7 条全 PASS，194/0/0/0；流水线：T-05 Planner 与 T-06 Generator 并行）：多选 UI 落盘，三偏离全采纳（Row 前置勾选框/BackHandler/contentDescription 直写）。遗留 2 条建议级（§7.2 措辞记注→T-09/T-11；EntryCard 分支优先级→T-06/T-07 评审留意）。T-06 进行中。
+- 2026-11-02：**T-06 完成**（提交 `0513877`，Planner 核验 6 条全 PASS＋六偏离全采纳，200 条复跑双绿；流水线：T-06 Planner 与 T-07 Generator 并行）：移入流程 UI 落盘。4 条建议分流（对话框 1 取消可发现性→真机走查；K 预览口径→T-11 R8；ArchiveDetailScreen「已复制」直写→已补发 T-07 顺路消除；concurrentAppend flake 补列→T-11）。T-07 进行中。
