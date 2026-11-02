@@ -461,4 +461,84 @@ class EntryParserTest {
         val r = EntryParser.decideRecovery(pendingExists = true, bakExists = false)
         assertFalse(r.useBackup)
     }
+
+    // ---------- countEntries 公开纯函数（T-01 钉死：宽松正则计数，TD-010 防复发）----------
+
+    @Test
+    fun countEntries_pureSecondPrecision() {
+        // 纯秒级（旧格式）3 条 → 3
+        val content = "## 2026-01-01 09:00:00\na\n\n---\n\n" +
+            "## 2026-01-02 09:00:00\nb\n\n---\n\n" +
+            "## 2026-01-03 09:00:00\nc\n\n---\n"
+        assertEquals(3, EntryParser.countEntries(content))
+    }
+
+    @Test
+    fun countEntries_pureMillisecondVariants() {
+        // 纯毫秒级 3 条 → 3：含 1/2/3 位毫秒变体（.1 / .12 / .123）
+        val content = "## 2026-01-01 09:00:00.1\na\n" +
+            "## 2026-01-02 09:00:00.12\nb\n" +
+            "## 2026-01-03 09:00:00.123\nc\n"
+        assertEquals(3, EntryParser.countEntries(content))
+    }
+
+    @Test
+    fun countEntries_mixedSecondAndMillisecond() {
+        // 秒/毫混合 5 条 → 5（TD-010：两种形态都数得到，不得收窄为单形态）
+        val content = "## 2026-01-01 09:00:00\na\n" +
+            "## 2026-01-02 09:00:00.123\nb\n" +
+            "## 2026-01-03 09:00:00\nc\n" +
+            "## 2026-01-04 09:00:00.5\nd\n" +
+            "## 2026-01-05 09:00:00.25\ne\n"
+        assertEquals(5, EntryParser.countEntries(content))
+    }
+
+    @Test
+    fun countEntries_emptyAndStructuralOnly() {
+        // 边界：空串 → 0；只有文件头/分隔线（无时间戳行）→ 0
+        assertEquals(0, EntryParser.countEntries(""))
+        assertEquals(0, EntryParser.countEntries("# Appendo\n\n---\n"))
+    }
+
+    @Test
+    fun countEntries_ignoresZwspPrefixedIsolatedLine() {
+        // 隔离行不计入：内容行恰好形如时间戳但带 ZWSP 前缀（写侧隔离产物）——
+        // 宽松正则按行首 ^## 匹配，带前缀行不是边界；本例仅 1 条真实条目 → 1
+        val content = "# Appendo\n\n---\n\n## 2026-07-20 14:00:00.000\n\n" +
+            EntryParser.ISOLATION_MARKER + "## 2026-07-20 09:30:00\n\n---\n"
+        assertEquals(1, EntryParser.countEntries(content))
+    }
+
+    // ---------- scanEntriesWithSpans 行区间（T-01 结构钉死：T-02 批量删除消费的区间语义）----------
+
+    @Test
+    fun scanEntriesWithSpans_spansCoverTimestampToNextTimestamp() {
+        // 区间语义：startLine=条目时间戳行；endLineInclusive=下一时间戳行前一行（含条目间分隔线）或末行
+        val content =
+            "# Appendo\n\n---\n\n## 2026-07-20 09:30:00\n\n第一条\n\n---\n\n## 2026-07-20 10:00:00.456\n\n第二条\n\n---\n"
+        val lines = content.lines()
+        val scanned = EntryParser.scanEntriesWithSpans(content)
+
+        assertEquals("条目集与 parse 一致（parse 是薄包装）", EntryParser.parse(content), scanned.map { it.entry })
+        assertEquals(2, scanned.size)
+
+        val firstTsIdx = lines.indexOf("## 2026-07-20 09:30:00")
+        val secondTsIdx = lines.indexOf("## 2026-07-20 10:00:00.456")
+        assertEquals(firstTsIdx, scanned[0].startLine)
+        assertEquals("首条区间含条目间分隔线，止于第二条时间戳行前一行", secondTsIdx - 1, scanned[0].endLineInclusive)
+        assertEquals(secondTsIdx, scanned[1].startLine)
+        assertEquals("末条区间到文件末行", lines.size - 1, scanned[1].endLineInclusive)
+    }
+
+    @Test
+    fun scanEntriesWithSpans_emptyEntryProducesNothing() {
+        // 空内容区域不产出条目、无区间（与 parse「丢弃无内容条目」语义一致，设计 §6.3：
+        // 不产出 key、不可被删除、原样保留）
+        val content = "## 2026-07-20 09:30:00\n\n## 2026-07-20 10:00:00\n\n内容\n"
+        val scanned = EntryParser.scanEntriesWithSpans(content)
+
+        assertEquals(1, scanned.size)
+        assertEquals("2026-07-20 10:00:00", scanned[0].entry.rawTimestamp)
+        assertEquals("内容", scanned[0].entry.content) // trim 后内容
+    }
 }

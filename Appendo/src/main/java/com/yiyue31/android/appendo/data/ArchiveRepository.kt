@@ -86,9 +86,9 @@ class ArchiveRepository(private val context: Context) {
      * Count entries in archive file
      */
     private fun countEntries(file: File): Int {
+        // 行为等价消重（T-01）：计数收敛到 EntryParser.countEntries（宽松正则，TD-010）；本包装保留读失败返回 0
         return try {
-            // 宽松正则（TD-010）：秒级/毫秒级条目都数得到，与主列表计数同源
-            EntryParser.getTimestampRegex().findAll(file.readText()).count()
+            EntryParser.countEntries(file.readText())
         } catch (e: Exception) {
             0
         }

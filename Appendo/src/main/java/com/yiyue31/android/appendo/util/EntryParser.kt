@@ -22,6 +22,8 @@ import java.util.Locale
  *   该行因前缀不匹配边界、被当作内容，并在收集时剥离前缀还原原文。用户自有的、非此类行的
  *   ZWSP 不受影响（specs 38；TD-015 扩展）。
  * - **单调防碰撞**：[nextTimestamp] 保证文件内时间戳严格递增唯一（仅 append() now 路径）。
+ * - **同源扫描（T-01）**：[scanEntriesWithSpans] 一次遍历产出条目＋行区间，[parse] 是其薄包装；
+ *   批量删除（T-02）消费同一区间——读/删边界单一权威定义（设计 §6.3 路径 1）。
  * - **边界算法不依赖唯一性**：[findEntryBounds] 按首条匹配 + 区间，保留"找首条"语义。
  *
  * 时间戳时区沿用原 SimpleDateFormat 的系统默认时区（[timestampZone]），保证新旧条目格式一致。
@@ -54,6 +56,14 @@ object EntryParser {
     fun getTimestampRegex(): Regex =
         Regex("^## \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?$", RegexOption.MULTILINE)
 
+    /**
+     * 宽松正则计数（TD-010 防复发）：秒级（无毫秒）与毫秒级（.S/.SS/.SSS）时间戳行
+     * 都计入，不得收窄为单形态。纯函数、不碰 I/O。
+     * 消费方：MainActivity / ArchiveRepository 的 File 包装（读失败各自返回 0，T-01 消重）
+     * 与主题列表（TopicRepository，T-04）。
+     */
+    fun countEntries(content: String): Int = getTimestampRegex().findAll(content).count()
+
     /** 单行是否为时间戳标题行 `## YYYY-MM-DD HH:mm:ss[.SSS]`。带 [ISOLATION_MARKER] 前缀返回 false（视为内容）。 */
     fun isTimestampLine(line: String): Boolean = TIMESTAMP_LINE_REGEX.matches(line)
 
@@ -65,28 +75,55 @@ object EntryParser {
     fun isSkippableLine(line: String): Boolean =
         line == MarkdownFormatter.SEPARATOR_LINE || line.startsWith(MarkdownFormatter.FILE_HEADER_PREFIX)
 
-    // ==================== 读侧：parse ====================
+    // ==================== 读侧：共享扫描 + parse（T-01 同源重构）====================
 
     /**
-     * 解析 Markdown 内容为条目列表。
+     * 共享扫描产物（设计 §6.3 路径 1）：条目 + 行区间。
      *
-     * - 跳过文件头 `# Appendo` 与分隔线 `---`。
-     * - 以时间戳行作为条目边界。
-     * - 带 [ISOLATION_MARKER] 前缀的行不当边界（视为内容）；收集时若去掉所有前导
-     *   [ISOLATION_MARKER] 后恰为时间戳行，则剥离前缀还原原文；用户自有的非时间戳行 ZWSP 保留。
+     * - [startLine] = 该条目时间戳行号；
+     * - [endLineInclusive] = 下一时间戳行前一行或文件末行——区间内含该条目内容行与
+     *   遗留分隔形态行（TD-015 修复前旧数据的未隔离 `---` / `# Appendo` 行）。
+     *
+     * 行区间是批量删除算法（buildContentWithoutEntries，T-02）的精确输入：
+     * 「匹配看 key（parse 语义）、删除看区间」均由共享扫描 [scanEntriesWithSpans] 定义。
      */
-    fun parse(content: String): List<ParsedEntry> {
-        val entries = mutableListOf<ParsedEntry>()
+    internal data class ScannedEntry(val entry: ParsedEntry, val startLine: Int, val endLineInclusive: Int)
+
+    /**
+     * 共享扫描（parse-with-spans，设计 §6.3 路径 1）：一次遍历同时产出条目列表与
+     * 每条目的行区间。[parse] 与批量删除算法都消费本函数产物——条目边界只有这一份
+     * 权威定义，读侧与删除侧零分叉（TD-015 根因原则：保护范围与丢失范围由同一函数定义）。
+     *
+     * 行为与重构前 parse 逐行等价：仅当 timestamp 与 content 均非空才产出条目
+     * （无内容条目不产出、无区间），content 做 trim()。
+     */
+    internal fun scanEntriesWithSpans(content: String): List<ScannedEntry> {
+        val lines = content.lines()
+        val scanned = mutableListOf<ScannedEntry>()
         var currentTimestamp = ""
+        var currentStartLine = -1
         var currentContent = StringBuilder()
 
-        for (line in content.lines()) {
+        fun flush(endLineInclusive: Int) {
+            if (currentTimestamp.isNotEmpty() && currentContent.isNotEmpty()) {
+                scanned.add(
+                    ScannedEntry(
+                        ParsedEntry(currentTimestamp, currentContent.toString().trim()),
+                        currentStartLine,
+                        endLineInclusive
+                    )
+                )
+            }
+        }
+
+        for (i in lines.indices) {
+            val line = lines[i]
             when {
                 isTimestampLine(line) -> {
-                    if (currentTimestamp.isNotEmpty() && currentContent.isNotEmpty()) {
-                        entries.add(ParsedEntry(currentTimestamp, currentContent.toString().trim()))
-                    }
+                    // 冲刷上一条目：区间止于本时间戳行前一行——不论本行最终是否产出条目
+                    flush(i - 1)
                     currentTimestamp = line.removePrefix(TIMESTAMP_LINE_PREFIX).trim()
+                    currentStartLine = i
                     currentContent = StringBuilder()
                 }
                 isSkippableLine(line) -> {
@@ -98,11 +135,22 @@ object EntryParser {
                 }
             }
         }
-        if (currentTimestamp.isNotEmpty() && currentContent.isNotEmpty()) {
-            entries.add(ParsedEntry(currentTimestamp, currentContent.toString().trim()))
-        }
-        return entries
+        flush(lines.size - 1) // EOF 冲刷：末条目区间到文件末行
+        return scanned
     }
+
+    /**
+     * 解析 Markdown 内容为条目列表。
+     *
+     * - 跳过文件头 `# Appendo` 与分隔线 `---`。
+     * - 以时间戳行作为条目边界。
+     * - 带 [ISOLATION_MARKER] 前缀的行不当边界（视为内容）；收集时若去掉所有前导
+     *   [ISOLATION_MARKER] 后恰为时间戳行，则剥离前缀还原原文；用户自有的非时间戳行 ZWSP 保留。
+     *
+     * 实现为 [scanEntriesWithSpans] 的薄包装（丢弃行区间，T-01）：公共签名与语义不变，
+     * 既有调用方零改动。
+     */
+    fun parse(content: String): List<ParsedEntry> = scanEntriesWithSpans(content).map { it.entry }
 
     /** 还原被隔离的内容行：去所有前导 [ISOLATION_MARKER] 后若为时间戳行或分隔形态则剥离；否则原样保留用户 ZWSP。 */
     private fun restoreLine(line: String): String {

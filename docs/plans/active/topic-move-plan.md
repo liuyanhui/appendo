@@ -7,7 +7,7 @@
 > | 2026-11-01 | Claude（Generator） | 首次创建（**草案待评审**）：依定稿设计拆解 11 个串行任务（T-01~T-11）＋计划级 Evaluator 检查单＋89(a)~(p) 真机验收表（§10.1 注入配方照抄）＋风险注意事项＋开放问题 Q1/Q2 |
 > | 2026-11-02 | Claude（Generator） | Evaluator 第 1 轮评估：13 项检查单 11 PASS/2 FAIL，3 必修＋6 可后置；按反馈修订（P1~P3 必修落 T-07/T-11：页面标题更名、displayName 小字、README 评估标准改按 §12 处置列；P4~P9 一并清理：计数口径统一 6 新增/12 修改、Q1/Q2 裁定同步进任务文本、§8.2 六条口径、交叉文件补 MainActivity、T-09 内存数值判据、R8 引用位置修正） |
 >
-> **状态：草案（待用户确认）**
+> **状态：已定稿（2026-11-02 用户确认）——阶段4 编码中，自 T-01 起**
 >
 > 依据（冲突时以先者为准）：
 > 1. `docs/specs.md` 第 16 章（需求 82~89 含修订注，2026-10-30 用户确认）——验收基线
@@ -70,8 +70,8 @@
   - [ ] `countEntries` 为 `EntryParser` 公开纯函数；`grep -n "countEntries" Appendo/src/main/java/com/yiyue31/android/appendo/MainActivity.kt Appendo/src/main/java/com/yiyue31/android/appendo/data/ArchiveRepository.kt` 显示两处私有实现已删除、均改调 `EntryParser.countEntries`
   - [ ] 新增钉死用例覆盖三类计数：纯秒级、纯毫秒级、秒/毫混合（断言值逐条写明）
 - **评估方法**: 编译＋全量单测（串行）＋grep＋代码评审。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-02）**——Planner 独立核验 5 条全 PASS：既有用例纯追加（80+/0-）、`--rerun` 强制复跑 149 条全绿、parse 确为薄包装无平行边界逻辑、countEntries 公开＋两处消重 grep 确认、文件边界干净。Generator 加分项：2 条 span 区间语义用例（Planner 认可）。**遗留建议（T-11 登 debt-tracker）**：`FileBasedMarkdownFile.kt:86` / `SafMarkdownFile.kt:96` 的 `count()` 与 `countEntries` 逐字同式，可收敛（不在 T-01 边界，R11 不扩面，正确未动）。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-02 EntryKey＋deleteEntries 接口原语
 
@@ -360,3 +360,5 @@
 - 2026-11-01：计划创建（Generator 草案，11 任务，待 Evaluator 评估＋用户确认后进入阶段4 编码）。
 - 2026-11-01：开放问题 Q1（v1.4.0）/Q2（允许 SP 注入）用户裁定落盘；进入计划级 Evaluator 评估。
 - 2026-11-02：Evaluator 第 1 轮评估（13 项检查单 11 PASS/2 FAIL）判定**不合格（修订后重评）**——3 必修：P1 T-07 缺页面 TopAppBar 标题更名落点（`ArchiveListScreen.kt:122`「归档管理」）、P2 T-11 评估标准与 §12 处置列矛盾（R8 不展开 / R4＝TD-027 / R9 无新路径）、P3 T-07 缺主题详情 displayName 小字实现位（`EntryListScreen.kt:76` `sourceFileName` 现无调用方传值）；6 可后置（P4~P9：计数口径统一 6 新增/12 修改、Q1/Q2 裁定同步进任务文本、§8.2 六条口径、交叉文件补 MainActivity、T-09 内存数值判据、R8 引用位置修正）。已按反馈全量修订（必修＋可后置一并清理，§6 裁定记录去重合并）。状态：草案（待用户确认）。
+- 2026-11-02：**用户确认计划定稿**——阶段3 完成，进入阶段4 编码；T-01 启动。
+- 2026-11-02：**T-01 完成**（Generator 1 轮＋Planner 核验 5 条全 PASS）：`scanEntriesWithSpans` 共享扫描＋`parse` 薄包装＋`countEntries` 公开＋两处消重；全量 149 条（142 既有＋7 新增）`--rerun` 复跑全绿。遗留建议 1 条（FileBased/Saf `count()` 表达式收敛）→ T-11 登 debt-tracker。下一任务 T-02。
