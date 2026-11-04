@@ -21,9 +21,6 @@ internal object Microcopy {
     /** 手动输入与编辑两对话框的确认按钮（2026-10-08 修订：字面统一「保存」）。 */
     const val BTN_SAVE = "保存"
 
-    /** 清空确认按钮（需求 77「确定」→「清空」；与主界面清空按钮同字面共用）。 */
-    const val BTN_CLEAR = "清空"
-
     // ---- 新增条目 / 归档恢复反馈（specs 74）----
 
     /** 追加成功（无旁注；手动输入两次级动作路径共用，不带重复旁注）。 */
@@ -132,9 +129,9 @@ internal object Microcopy {
     /** 对话框 1/3 标题。 */
     const val DLG_MOVE_TITLE = "移入主题"
 
-    /** 确认正文（84(d) 后果去向两行）；N＝所选条数（selectedKeys.size，打开对话框时快照）。 */
+    /** 确认正文（84(d) 后果去向两行；修订二 §16.2：第二行去向改顶栏入口，specs 92 逐字）；N＝所选条数（selectedKeys.size，打开对话框时快照）。 */
     fun dlgMoveConfirmBody(n: Int, topic: String): String =
-        "将把 $n 条移入主题「$topic」。\n移入后这些条目将从主列表消失，可在「归档与主题」的主题分区查看。"
+        "将把 $n 条移入主题「$topic」。\n移入后这些条目将从主列表消失，可在顶栏『主题』入口查看。"
 
     /** 确认正文提醒行（K>0 追加一行）；K＝预览值、按条计（所选中 ts 设有未触发提醒的条数；同 ts 多条重复计），实际取消按 ts 计、成功回调内重算（§8.2 ②）——预览 K ≥ 实际 K 属 R8 同根边界。 */
     fun dlgMoveConfirmReminder(k: Int): String = "其中 $k 条设有未触发提醒，移入后将取消。"
@@ -213,4 +210,42 @@ internal object Microcopy {
 
     /** 页内新建·创建文档失败（框保持、输入保留可重试）。 */
     const val TOAST_TOPIC_CREATE_FAILED = "创建失败"
+
+    // ---- 归档清空合并（topic-move 设计修订二 §16.1；T-15 增量落盘，T-16 全套核对收口）----
+
+    /** 网格第四格按钮（§15.3：与「复制全部/分享全部」同款形态，点击触发；旧长按清空退役）。 */
+    const val BTN_CELL_ARCHIVE = "归档"
+
+    /** 二选一对话框标题（§15.3 C6：默认色——路径选择非破坏）。 */
+    const val DLG_ARCHIVE_TITLE = "归档"
+
+    /** 二选一对话框正文（§15.3：N＝entryCount 实时值，88 数字透明口径）。 */
+    fun dlgArchiveBody(n: Int): String = "将把已收集的 $n 条全部备份为归档文件。"
+
+    /** 路径一「归档并清空」（78(a) 破坏性警示下沉至此按钮=error 红填充；默认焦点，93）。 */
+    const val BTN_ARCHIVE_AND_CLEAR = "归档并清空"
+
+    /** 路径二「只归档，保留列表」（78(b) 备份非破坏=primary；需求 12 快照语义）。 */
+    const val BTN_ARCHIVE_ONLY = "只归档，保留列表"
+
+    /** 只归档成功（§16.1：现状字面去「: 」常量化）。 */
+    fun toastArchivedTo(name: String): String = "已归档到 $name"
+
+    /** 归档并清空成功（C6 双 toast 归并：备份去向＋清空结果一句说完，信息零丢失）。 */
+    fun toastArchivedAndCleared(name: String): String = "已归档到 $name，已清空"
+
+    /** 只归档失败。 */
+    const val TOAST_ARCHIVE_FAILED = "归档失败"
+
+    /** 归档并清空·归档失败（TD-017：失败不得清空，94(d) 断言）。 */
+    const val TOAST_ARCHIVE_FAILED_CLEAR_KEPT = "归档失败，未清空"
+
+    /** 归档并清空·清空段失败（明示备份安全）。 */
+    const val TOAST_CLEAR_FAILED_ARCHIVED = "清空失败（归档已保存）"
+
+    /** 触发守卫（§15.3：主列表 0 条点击 → toast 不开框；现状字面常量化）。 */
+    const val TOAST_NOTHING_TO_ARCHIVE = "暂无内容可归档"
+
+    /** 首次指路后缀（§15.4 U1：拼接序末位——基础→提醒附注→本后缀，单 toast 原则）。 */
+    const val firstMoveGuideSuffix = "，可在顶栏『主题』查看"
 }

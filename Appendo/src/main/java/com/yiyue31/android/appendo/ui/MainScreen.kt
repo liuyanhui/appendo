@@ -19,13 +19,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,7 +58,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -77,7 +72,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -131,7 +125,7 @@ private const val FILE_CHANGE_POLL_INTERVAL_MS = 2000L
 fun parseMarkdownEntries(content: String): List<LinkEntry> =
     EntryParser.parse(content).map { LinkEntry.from(it) }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     fileRepository: FileRepository,
@@ -150,7 +144,7 @@ fun MainScreen(
     var defaultFile by remember { mutableStateOf(fileRepository.getDefaultFile()) }
     var entryCount by remember { mutableIntStateOf(0) }
     var entries by remember { mutableStateOf(emptyList<LinkEntry>()) }
-    var showClearDialog by remember { mutableStateOf(false) }
+    var showArchiveDialog by remember { mutableStateOf(false) }
     var showInputDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showSelfCheck by remember { mutableStateOf(false) }
@@ -345,6 +339,7 @@ fun MainScreen(
         moveExecuting = true
         coroutineScope.launch {
             var cancelledReminders = 0
+            var firstMoveGuide = false
             val result = withContext(Dispatchers.IO) {
                 val r = TopicMoveTransaction.move(source, targetMd, keys)
                 if (r is MoveResult.Success) {
@@ -365,6 +360,10 @@ fun MainScreen(
                         store.remove(ts)
                     }
                     cancelledReminders = toCancel.size
+                    // 首次指路（§15.4 U1）：仅 moved>0 的 Success 消耗旗标（N=0 不消耗不展示）
+                    if (r.moved > 0) {
+                        firstMoveGuide = topicRepository.consumeFirstMoveGuide()
+                    }
                 }
                 r
             }
@@ -374,15 +373,17 @@ fun MainScreen(
                     closeMoveFlow()
                     exitSelectionMode()
                     // toast 三态（§9.1；N＝moved 实写数）＋⑤ K>0 追加附注（K＝实际取消数）
+                    // ＋首次指路后缀（§15.4 U1：拼接序末位，单 toast 原则；moved=0 不展示不消耗）
                     val base = when {
                         result.moved == 0 -> Microcopy.toastMovedAllExisting(result.skippedExisting)
                         result.skippedExisting > 0 ->
                             Microcopy.toastMovedCountSkipped(result.moved, result.skippedExisting)
                         else -> Microcopy.toastMovedCount(result.moved)
                     }
-                    val msg =
+                    var msg =
                         if (cancelledReminders > 0) base + Microcopy.removedRemindersSuffix(cancelledReminders)
                         else base
+                    if (firstMoveGuide) msg += Microcopy.firstMoveGuideSuffix
                     showToast(context, msg)
                     // §6.6：立即主动刷新（mtime 双保险，不等 2 秒轮询）
                     fileRepository.setFileLastModified(System.currentTimeMillis())
@@ -408,6 +409,60 @@ fun MainScreen(
                     moveFailed = true
                     showToast(context, Microcopy.toastMoveFailedTargetWrite())
                 }
+            }
+        }
+    }
+
+    /** 归档后重同步三状态（A-2 onComplete 等价动作）。 */
+    fun resyncArchiveState() {
+        useSAF = fileRepository.isUsingSAF()
+        fileUri = fileRepository.getFileUri()
+        defaultFile = fileRepository.getDefaultFile()
+    }
+
+    /**
+     * 归档二选一执行编排（修订二 §15.3：两路径表逐行实现）。
+     * 编排层只执行 [archiveActionFor] 的决定；归档/清空各以 runCatching 兜底（E-1），
+     * 全程 IO（A-9：修正旧清空框主线程文件 IO）；TD-017：Failed 不得清空。
+     */
+    fun runArchiveAction(path: ArchivePath) {
+        val mdFile = getCurrentMarkdownFile()
+        coroutineScope.launch {
+            // 归档段（异常 → Failed，E-1）
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching {
+                    archiveFile(context, mdFile, fileRepository.getArchiveFile())
+                }.getOrDefault(ArchiveOutcome.Failed)
+            }
+            val archiveName = (outcome as? ArchiveOutcome.Archived)?.file?.name ?: ""
+            val action = archiveActionFor(outcome, path, archiveName)
+
+            if (outcome is ArchiveOutcome.Archived && action.shouldClear) {
+                // 清空段（异常/返回 false → 清空失败文案，归档已保存；E-1）
+                val cleared = withContext(Dispatchers.IO) {
+                    runCatching { mdFile.clear() }.getOrDefault(false)
+                }
+                if (!cleared) {
+                    showToast(context, clearFailedAction().toast!!)
+                    resyncArchiveState()
+                    return@launch
+                }
+                // 取消全部提醒（需求 63 联动保持，与旧清空路径同款）
+                val store = ReminderStore.get(context)
+                store.allKeys().forEach { AlarmScheduler.cancel(context, it) }
+                store.removeAll()
+            }
+
+            action.toast?.let { showToast(context, it) }
+
+            // onComplete 等价动作（A-2）：两路径共用重同步三状态；归档并清空另加
+            // clearFileLastModified（替换口径：原 setFileLastModified 改清键——同驱动轮询刷新，
+            // 清空后文件已空、清键语义更准）＋refreshEntryCount（承接原计数清零）；
+            // 只归档丢弃 clearFileLastModified（主文件未动，remove key 为无害 no-op，A-2 附由）。
+            resyncArchiveState()
+            if (action.shouldClear) {
+                fileRepository.clearFileLastModified()
+                refreshEntryCount()
             }
         }
     }
@@ -578,21 +633,9 @@ fun MainScreen(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            // 「归档」菜单项已移除（修订二 93：入口唯一化到 2x2 网格「归档」二选一）
                             DropdownMenuItem(
-                                text = { Text("归档") },
-                                onClick = {
-                                    showMenu = false
-                                    archiveFile(context, fileRepository, getCurrentMarkdownFile(), fileRepository.getArchiveFile()) {
-                                        useSAF = fileRepository.isUsingSAF()
-                                        fileUri = fileRepository.getFileUri()
-                                        defaultFile = fileRepository.getDefaultFile()
-                                        fileRepository.clearFileLastModified()
-                                        refreshEntryCount()
-                                    }
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("归档与主题") },
+                                text = { Text("归档管理") },
                                 onClick = {
                                     showMenu = false
                                     onNavigateToArchiveList()
@@ -620,7 +663,7 @@ fun MainScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("主题") },
+                                text = { Text("外观") },
                                 onClick = {
                                     showMenu = false
                                     showThemePicker = true
@@ -721,47 +764,26 @@ fun MainScreen(
                         Text("分享全部", fontWeight = FontWeight.Medium)
                     }
 
-                    // Custom clear button with long-press support
-                    Box(
+                    // 第四格「归档」（修订二 93：清空/归档合并，点击触发二选一；旧长按清空退役）
+                    OutlinedButton(
+                        onClick = {
+                            if (entries.isEmpty()) {
+                                // 触发守卫（§15.3 ②）：0 条不开框，消除旧路径双 toast 冗余
+                                showToast(context, Microcopy.TOAST_NOTHING_TO_ARCHIVE)
+                            } else {
+                                showArchiveDialog = true
+                            }
+                        },
                         modifier = Modifier
                             .weight(1f)
-                            .height(56.dp)
-                            .combinedClickable(
-                                onClick = {
-                                    // Show hint for long press
-                                    showToast(context, "长按以清空内容")
-                                },
-                                onLongClick = {
-                                    // Vibrate feedback (with hasVibrator check)
-                                    performVibration(context, VIBRATION_DURATION_LONG_MS)
-                                    showClearDialog = true
-                                },
-                                onLongClickLabel = "长按清空"
-                            )
-                            .background(
-                                color = Color.Transparent,
-                                shape = RoundedCornerShape(16.dp)
-                            ),
-                        contentAlignment = Alignment.Center
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary
+                        )
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
-                            color = Color.Transparent
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(56.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    Microcopy.BTN_CLEAR,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
+                        Text(Microcopy.BTN_CELL_ARCHIVE, fontWeight = FontWeight.Medium)
                     }
                 }
 
@@ -1027,66 +1049,58 @@ fun MainScreen(
         )
     }
 
-    // Clear confirmation dialog - with backup option
-    if (showClearDialog) {
+    // 归档清空二选一对话框（修订二 93 方案 X：替换旧清空确认框；旧框标题/正文/直写族随之退役）
+    if (showArchiveDialog) {
+        val archiveAndClearFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { archiveAndClearFocus.requestFocus() } // 93：默认焦点落「归档并清空」
         AlertDialog(
-            onDismissRequest = { showClearDialog = false },
+            onDismissRequest = { showArchiveDialog = false },
             title = {
-                Text(
-                    "清空内容",
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.error
-                )
+                // 路径选择非破坏（§15.3 C6）：标题默认色；破坏性警示下沉到「归档并清空」按钮
+                Text(Microcopy.DLG_ARCHIVE_TITLE, fontWeight = FontWeight.SemiBold)
             },
             text = {
-                Text(
-                    "将自动备份当前内容到新文件，然后清空当前文件。\n\n确定要继续吗？"
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showClearDialog = false
-                        try {
-                            val mdFile = getCurrentMarkdownFile()
-
-                            // First, create a backup archive（TD-017：归档失败不得清空）
-                            val archived = archiveFile(context, fileRepository, mdFile, fileRepository.getArchiveFile()) {
-                                useSAF = fileRepository.isUsingSAF()
-                                fileUri = fileRepository.getFileUri()
-                                defaultFile = fileRepository.getDefaultFile()
-                            }
-                            if (!archived) {
-                                showToast(context, "已取消清空（归档失败）")
-                                return@TextButton
-                            }
-
-                            // Then clear current file
-                            if (mdFile.clear()) {
-                                fileRepository.setFileLastModified(System.currentTimeMillis())
-                                entryCount = 0
-                                entries = emptyList()
-                                showToast(context, "已清空")
-                                // 联动清空所有提醒（cancel 全部闹钟 + 清 sidecar）
-                                val store = ReminderStore.get(context)
-                                store.allKeys().forEach { AlarmScheduler.cancel(context, it) }
-                                store.removeAll()
-                            } else {
-                                showToast(context, "清空失败")
-                            }
-                        } catch (e: Exception) {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("MainScreen", "Failed to clear", e)
-                            }
-                            showToast(context, "操作失败")
-                        }
+                Column {
+                    Text(Microcopy.dlgArchiveBody(entryCount))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // 路径一（78(a)：清空属破坏类＝error 红填充；＝原「清空」语义——需求 13 先备份后清空）
+                    Button(
+                        onClick = {
+                            showArchiveDialog = false
+                            runArchiveAction(ArchivePath.ARCHIVE_AND_CLEAR)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(archiveAndClearFocus),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text(Microcopy.BTN_ARCHIVE_AND_CLEAR)
                     }
-                ) {
-                    Text(Microcopy.BTN_CLEAR, color = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // 路径二（78(b)：备份非破坏＝primary；＝原菜单「归档」语义——需求 12 快照不清空）
+                    OutlinedButton(
+                        onClick = {
+                            showArchiveDialog = false
+                            runArchiveAction(ArchivePath.ARCHIVE_ONLY)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text(Microcopy.BTN_ARCHIVE_ONLY)
+                    }
                 }
             },
+            confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) {
+                TextButton(onClick = { showArchiveDialog = false }) {
                     Text("取消")
                 }
             }
@@ -1680,7 +1694,7 @@ private fun ThemePickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("主题", fontWeight = FontWeight.SemiBold) },
+        title = { Text("外观", fontWeight = FontWeight.SemiBold) },
         text = {
             Column {
                 // 首行整宽：四字标签独占一行不换行；次行两个二字标签并列（真机两轮验收定稿）
@@ -1812,26 +1826,84 @@ private fun openFile(context: android.content.Context, useSAF: Boolean, fileUri:
     }
 }
 
+/** 归档执行结果（修订二 93 ④：archiveFile 重构返回通道——写盘段逐字节等价，仅返回值与 toast 通道变更）。 */
+sealed interface ArchiveOutcome {
+    /** 归档副本已生成。 */
+    data class Archived(val file: File) : ArchiveOutcome
+
+    /**
+     * 空内容（仅文件头）。**行为变更（A-3/T-3）**：现状（重构前）返 true 且调用方继续清空；
+     * 重构后语义＝不清空，由调用方按决策映射提示（入口守卫配套防呆，R15 陈旧窗口下可达）。
+     */
+    object NothingToArchive : ArchiveOutcome
+
+    /** 归档失败（含异常；TD-017：调用方不得清空）。 */
+    object Failed : ArchiveOutcome
+}
+
+/** 归档清空二选一路径（修订二 93 方案 X）。 */
+enum class ArchivePath { ARCHIVE_AND_CLEAR, ARCHIVE_ONLY }
+
+/** 二选一决策映射产物（§17.1 M1：编排层只执行决定，不自行判断）。 */
+data class ArchiveAction(
+    val toast: String?,
+    val shouldClear: Boolean,
+    val shouldCancelAllReminders: Boolean
+)
+
 /**
- * Archive current content to a new file.
- * 返回归档是否成功（TD-017：清空路径以此为前置条件，失败不得清空）。
- * 空内容（仅文件头）视为"无需备份"的成功。
+ * 归档二选一决策映射（§17.1 M1 ①~④，纯函数 JVM 可测）：
+ * Archived×归档并清空→归并 toast＋清空＋取消全部提醒；Archived×只归档→只报备不清空不动提醒；
+ * Failed×两路径→两失败字面且均不清空（TD-017）；NothingToArchive×两路径→守卫字面无动作。
+ */
+internal fun archiveActionFor(
+    outcome: ArchiveOutcome,
+    path: ArchivePath,
+    archiveName: String
+): ArchiveAction = when (outcome) {
+    is ArchiveOutcome.Archived -> when (path) {
+        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(
+            toast = Microcopy.toastArchivedAndCleared(archiveName),
+            shouldClear = true,
+            shouldCancelAllReminders = true
+        )
+        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(
+            toast = Microcopy.toastArchivedTo(archiveName),
+            shouldClear = false,
+            shouldCancelAllReminders = false
+        )
+    }
+    ArchiveOutcome.Failed -> when (path) {
+        // TD-017：归档失败不得清空——归档并清空路径明示「未清空」
+        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED_CLEAR_KEPT, false, false)
+        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED, false, false)
+    }
+    ArchiveOutcome.NothingToArchive -> ArchiveAction(Microcopy.TOAST_NOTHING_TO_ARCHIVE, false, false)
+}
+
+/** 清空段失败映射（§17.1 M1 ⑤：两路径同字面——归档已保存，仅清空未完成）。 */
+internal fun clearFailedAction(): ArchiveAction =
+    ArchiveAction(Microcopy.TOAST_CLEAR_FAILED_ARCHIVED, shouldClear = false, shouldCancelAllReminders = false)
+
+/**
+ * Archive current content to a new file（修订二 93 ④ 重构）。
+ * **writeAll 写盘段与重构前逐字节等价**（等价宣称限于写盘段，A-3/T-3）；
+ * toast 全部上移调用方（经 [archiveActionFor] 决策映射）；onComplete 通道改为调用方
+ * 编排（runArchiveAction 的 resyncArchiveState 等价动作）；
+ * 未使用的 fileRepository 参数已删除（E-1）；调用方负责 IO 线程（A-9）。
  */
 private fun archiveFile(
     context: android.content.Context,
-    fileRepository: FileRepository,
     currentMdFile: MarkdownFileOperations,
-    archiveFile: File,
-    onComplete: () -> Unit
-): Boolean {
+    archiveFile: File
+): ArchiveOutcome {
     return try {
         // Read current content BEFORE creating new archive file
         val currentContent = currentMdFile.readAll()
 
         // Check if content is empty (only has header, no actual entries)
         if (currentContent.isBlank() || !currentContent.contains("## ")) {
-            showToast(context, "暂无内容可归档")
-            return true // 无需备份
+            return ArchiveOutcome.NothingToArchive
         }
 
         // 通过 MarkdownFileOperations.writeAll 写归档（v1.1 CB6：享 atomicWrite + 锁 + 同源同格式 ZWSP）
@@ -1842,18 +1914,14 @@ private fun archiveFile(
         }
         val archiveMdFile = FileBasedMarkdownFile(context, archiveFile)
         if (!archiveMdFile.writeAll(MarkdownFormatter.FILE_HEADER + contentWithoutHeader)) {
-            showToast(context, "归档失败")
-            return false // TD-017：失败上抛，调用方不得继续清空
+            return ArchiveOutcome.Failed // TD-017：失败上抛，调用方不得继续清空
         }
 
-        showToast(context, "已归档到: ${archiveFile.name}")
-        onComplete()
-        true
+        ArchiveOutcome.Archived(archiveFile)
     } catch (e: Exception) {
         if (BuildConfig.DEBUG) {
             android.util.Log.e("MainScreen", "Archive failed", e)
         }
-        showToast(context, "归档失败: ${e.message}")
-        false
+        ArchiveOutcome.Failed
     }
 }
