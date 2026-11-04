@@ -110,8 +110,8 @@
   - [ ] 本任务消费常量入 Microcopy 且字面与 §16.1 定稿**逐字一致**（6 项）；`grep -rn "暂无主题\|知道了\|已创建\|创建失败\|请换一个名称" Appendo/src/main/java --include="*.kt" | grep -v Microcopy.kt` → 仅 KDoc/注释命中
   - [ ] 全量单测 `--max-workers=1` 全绿（既有 200 零修改）
 - **评估方法**: 编译＋单测＋grep＋代码走查（对照 §15.1 逐行/§16.1 逐字）。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-04）**——Planner 独立核验 7 条全 PASS（评审对象＝提交 `e84aea9`，工作区与提交一致实证）：签名/路由链与既有 archive_list 同一构造式、§15.1 七行逐行落点（reloadTopics 统一 IO 口四处重载全覆盖；C5 同名框独立实现无误引无指路按钮、输入保留成立；取色链页级派生完整）、顶栏排列与显隐（0 条常驻/多选态整体替换）、首字标零写死＋新序唯一（:108 有意未动属 T-16）、Microcopy 6 项全角标点逐字一致、`--rerun` 206/0/0/0 实测、恰 5 文件（loadFiles 有意未修遵守约束）。两偏离全接受（AutoMirrored.List＝弃用警告规避＋RTL 正确＋先例一致；448 行＝KDoc 密度）。**建议 2 条**：MainScreen:561 注释措辞（T-15 顺手修）／TopicListScreen:195 indexOf O(n²)（后续 itemsIndexed 对齐，非阻断）。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-15 MainScreen 归档清空合并（X 方案）＋首次指路＋菜单改造
 
@@ -346,3 +346,4 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 - 2026-11-04：**用户确认计划定稿**（三角色计划级评审经评估不需要——计划为已三评审设计的机械拆解，Evaluator 已覆盖计划级核验面；沿原批次先例）。阶段4 编码启动：T-12 开工。
 - 2026-11-04：**T-12 完成**（提交 `bb2786f`，Planner 核验 6 条全 PASS，206/0/0/0 `--rerun` 实测）：TopicBadge 四函数＋consumeFirstMoveGuide 落盘；流水线首对启动（T-12 Planner 与 T-13 Generator 并行）。T-13 已提交 `91fdaaa` 待核验，T-14 进行中。
 - 2026-11-04：**T-13 完成**（提交 `91fdaaa`，Planner 核验 6 条全 PASS——六件套 token 级逐字一致硬证据，零必修；1 建议＝EntryListScreen 死包装/常量重复→T-19 登记）。**T-14 完成**（提交 `e84aea9`，206 零修改全绿待核验；偏离 2＝AutoMirrored.List 图标（弃用警告规避）/448 行 KDoc 密度）。T-14 Planner 与 T-15 Generator 并行中。
+- 2026-11-04：**T-14 核验闭环**（Planner 7 条全 PASS 零必修；两偏离接受；建议 2＝注释措辞 T-15 顺手修＋indexOf 优化非阻断）。T-15 Generator 进行中。
