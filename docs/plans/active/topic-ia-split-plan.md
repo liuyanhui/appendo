@@ -90,8 +90,8 @@
   - [ ] **既有 200 测试零修改全绿**：`git status Appendo/src/test/` 零改动＋`./gradlew testDebugUnitTest --max-workers=1` 0 失败
   - [ ] 机械重构 diff 清单留档并逐项可对（offset/阈值/指示字面/指示色/钳制/elevation 六件套逐项「迁移前后行对＋零语义变更」结论）
 - **评估方法**: 编译＋全量单测＋grep＋diff 清单评审。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-04）**——Planner 独立核验 6 条全 PASS（评审对象＝提交 `91fdaaa`）：**六件套 token 级逐字一致**（去缩进 diff 两侧各 90 行 IDENTICAL——offset/阈值 120dp/指示字面/六色/禁删钳/elevation spring 全在列）、恒真 AnimatedVisibility 丢弃无语义损失（布尔重载恒真无进场动画实证）、振动三拷贝合一（旧拷贝逐字比对仅 tag/可见性差异；时长常量集中＝CODINGRULES:32 义务）、9 调用点文本未变同包解析、206 本机 `--rerun` 零失败、恰 4 文件。四偏离全裁定成立（①②③合规、④红线内正确）。**建议（T-19 登 debt-tracker）**：EntryListScreen:254 同款恒真死包装＋私有 SWIPE_THRESHOLD_DP 与 SwipeCard 同值重复——待 EntryCard 未来收敛时一并清理。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-14 主题独立页（topics 路由＋顶栏入口）
 
@@ -345,3 +345,4 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 - 2026-11-04：Evaluator 第 1 轮评估（11 项 10 PASS/1 FAIL，必修 2＋后置 4）→ 修订全落（P-1/P-2/C-1~C-4）。状态：修订版（待用户确认）。
 - 2026-11-04：**用户确认计划定稿**（三角色计划级评审经评估不需要——计划为已三评审设计的机械拆解，Evaluator 已覆盖计划级核验面；沿原批次先例）。阶段4 编码启动：T-12 开工。
 - 2026-11-04：**T-12 完成**（提交 `bb2786f`，Planner 核验 6 条全 PASS，206/0/0/0 `--rerun` 实测）：TopicBadge 四函数＋consumeFirstMoveGuide 落盘；流水线首对启动（T-12 Planner 与 T-13 Generator 并行）。T-13 已提交 `91fdaaa` 待核验，T-14 进行中。
+- 2026-11-04：**T-13 完成**（提交 `91fdaaa`，Planner 核验 6 条全 PASS——六件套 token 级逐字一致硬证据，零必修；1 建议＝EntryListScreen 死包装/常量重复→T-19 登记）。**T-14 完成**（提交 `e84aea9`，206 零修改全绿待核验；偏离 2＝AutoMirrored.List 图标（弃用警告规避）/448 行 KDoc 密度）。T-14 Planner 与 T-15 Generator 并行中。
