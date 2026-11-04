@@ -1,10 +1,5 @@
 package com.yiyue31.android.appendo.ui
 
-import android.content.Context
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -62,12 +57,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.yiyue31.android.appendo.BuildConfig
 import com.yiyue31.android.appendo.reminder.ReminderStore
 import com.yiyue31.android.appendo.util.EntryKey
 import com.yiyue31.android.appendo.util.ReminderText
 
-private const val VIBRATION_DURATION_SHORT_MS = 100L
+// 振动时长常量与 performVibration 已随 SwipeCard 骨架共享下沉（T-13，A-4/E-3），本文件直接引用
 private const val SWIPE_THRESHOLD_DP = 120f
 
 /**
@@ -375,36 +369,6 @@ private fun SelectIndicator(selected: Boolean, modifier: Modifier = Modifier) {
                     .size(14.dp)
                     .scale(checkScale)
             )
-        }
-    }
-}
-
-/**
- * Perform vibration with safety checks.
- */
-private fun performVibration(context: Context, durationMs: Long) {
-    try {
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            vibratorManager.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (vibrator.hasVibrator()) {
-                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            if (vibrator.hasVibrator()) {
-                vibrator.vibrate(durationMs)
-            }
-        }
-    } catch (e: Exception) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.e("EntryListScreen", "Vibration failed", e)
         }
     }
 }

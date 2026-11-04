@@ -6,9 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -126,9 +123,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 // Constants for magic numbers
+// 振动时长常量与 performVibration 已随 SwipeCard 骨架共享下沉（T-13，A-4/E-3），本文件直接引用
 private const val FILE_CHANGE_POLL_INTERVAL_MS = 2000L
-private const val VIBRATION_DURATION_LONG_MS = 200L
-private const val VIBRATION_DURATION_SHORT_MS = 100L
 
 // parseMarkdownEntries 委托给 EntryParser（v1.1 收敛）；保留至 T-016 迁移现有调用方后删除。
 fun parseMarkdownEntries(content: String): List<LinkEntry> =
@@ -1656,39 +1652,6 @@ fun MainScreen(
     // 多选态长按预览对话框（§7.4，82 修订 b；本体 TopicMoveDialogs.EntryPreviewDialog）
     previewEntry?.let { entry ->
         EntryPreviewDialog(entry = entry, onDismiss = { previewEntry = null })
-    }
-}
-
-/**
- * Perform vibration with safety checks.
- * Checks hasVibrator() before vibrating.
- */
-private fun performVibration(context: android.content.Context, durationMs: Long) {
-    try {
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            vibratorManager.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as Vibrator
-        }
-
-        // Check if vibration is supported
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (vibrator.hasVibrator()) {
-                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            if (vibrator.hasVibrator()) {
-                vibrator.vibrate(durationMs)
-            }
-        }
-    } catch (e: Exception) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.e("MainScreen", "Vibration failed", e)
-        }
-        // Ignore vibration errors - not critical
     }
 }
 
