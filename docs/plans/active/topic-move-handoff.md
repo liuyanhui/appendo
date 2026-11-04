@@ -20,6 +20,7 @@
 > | 2026-11-02 | Yiyue + Claude | **T-09 完成（质量门通过）**：全量 200/0/0/0＋assembleDebug 成功＋§10.2/§10.4 核对记录落盘计划 §8（核对记录新增节）。**阶段4 编码闭环**（T-01~T-09 全部一次通过零返工，200 测试）。下一步＝**T-10 真机验收（用户执行，89(a)~(p)＋§10.4 人工回归，计划 §4 验收表）**→ T-11 文档同步 |
 > | 2026-11-03 | Yiyue + Claude | **T-10 快捷验收通过**（用户判定；含 SAF 源移入实测；(c)(d)(i)(m)(p) 5 缺口并入合并验收）。真机记录：platform-tools 补装、RMX3560、数据备份 `D:/tmp/appendo-t10-backup/`。**用户裁定「甲」＝主题一等公民 IA 分家**（85 分区裁定反转，移动式数据模型不变）——回阶段1；**另发现**：本机 adb 曾缺失（platform-tools 空壳，杀软嫌疑）、主文件 SAF 模式（`personal/Appendo.md`） |
 > | 2026-11-04 | Yiyue + Claude | 设计画布 agent 派出（baoyu-design claude-design 技能，现状＋甲变体画板，`docs/design/topic-ia-canvas/`）。链路：挑方案→specs 追加→设计追加→甲批次→合并验收→T-11 |
+> | 2026-11-04 | Yiyue + Claude | **甲批次阶段1~3 全闭环**：specs 16.A 三视角评审定稿（合并方案 X/「外观」消歧/N 条在前）→设计修订二（§14~§18）三视角评审 20 项全落定稿→执行计划 `topic-ia-split-plan.md`（T-12~T-19）Evaluator 核验＋用户确认定稿。**阶段4 编码启动（T-12）**——后续进度记入该计划 §7，本快照以 `topic-ia-split-plan.md` 为甲批次权威进度源 |
 
 ---
 
