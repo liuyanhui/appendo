@@ -189,9 +189,28 @@ internal object Microcopy {
     /** 主题恢复注明行（86 修订，§9.2：追加在恢复确认正文末——恢复＝复制语义）。 */
     const val TOPIC_RESTORE_NOTE = "追加后主题文档中仍保留这些条目。"
 
-    /** 主题卡片副文案（§8.3：「创建时间 · N 条」弱化小字，onSurfaceVariant；[timeLabel] 为调用方格式化串）。 */
-    fun topicCardSubtitle(timeLabel: String, count: Int): String = "$timeLabel · $count 条"
+    /** 主题卡片副文案（修订二 §16.2：「N 条 · 创建时间」**条数在前**，90；[timeLabel] 为调用方格式化串，
+     *  弱化小字 onSurfaceVariant；唯一消费方＝主题页 TopicCard）。 */
+    fun topicCardSubtitle(count: Int, timeLabel: String): String = "$count 条 · $timeLabel"
 
     /** 空主题副文案（§8.3：可发现性——右滑删除手势不可见，副文案「空」补位提示可删状态）。 */
     const val TOPIC_EMPTY_SUBTITLE = "空"
+
+    // ---- 主题独立页（topic-move 设计修订二 §16.1；T-14 增量落盘，T-16 全套核对收口）----
+
+    /** 页级空态两行（§15.1：无任何主题时的引导文案，90）。 */
+    const val TOPIC_PAGE_EMPTY_TITLE = "暂无主题"
+    const val TOPIC_PAGE_EMPTY_BODY = "点击右上角“＋”新建主题，或在主界面多选条目后「移入主题」"
+
+    /** 页内新建·同名提示正文（§15.1 C5：提示非指路——主题页语境无移入动作，无「移入该主题」按钮）。 */
+    fun dlgTopicPageSameNameBody(x: String): String = "已存在同名主题“$x”，请换一个名称。"
+
+    /** 页内新建·同名提示确认按钮（C5：回命名框，输入保留可改名）。 */
+    const val BTN_GOT_IT = "知道了"
+
+    /** 页内新建成功（§15.1 新建流程行：关框＋重载）。 */
+    const val TOAST_TOPIC_CREATED = "已创建"
+
+    /** 页内新建·创建文档失败（框保持、输入保留可重试）。 */
+    const val TOAST_TOPIC_CREATE_FAILED = "创建失败"
 }

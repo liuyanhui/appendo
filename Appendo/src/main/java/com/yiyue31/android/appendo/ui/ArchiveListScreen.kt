@@ -191,9 +191,11 @@ fun ArchiveListScreen(
                                 subtitle = if (topic.entryCount == 0) {
                                     Microcopy.TOPIC_EMPTY_SUBTITLE
                                 } else {
+                                    // T-14：topicCardSubtitle 签名改（修订二 §16.2 条数在前）的编译机械跟随；
+                                    // 本调用行随 T-16 分家消亡（主题分区整体移除）
                                     Microcopy.topicCardSubtitle(
-                                        archiveRepository.formatTimestamp(Date(topic.createdAt)),
-                                        topic.entryCount
+                                        topic.entryCount,
+                                        archiveRepository.formatTimestamp(Date(topic.createdAt))
                                     )
                                 },
                                 index = index,

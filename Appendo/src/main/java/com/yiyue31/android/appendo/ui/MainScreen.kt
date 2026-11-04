@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
@@ -136,6 +137,7 @@ fun MainScreen(
     fileRepository: FileRepository,
     scrollToTs: String? = null,
     onNavigateToArchiveList: () -> Unit = {},
+    onNavigateToTopics: () -> Unit = {},
     currentThemeMode: ThemeMode = ThemeMode.SYSTEM,
     onThemeChange: (ThemeMode) -> Unit = {}
 ) {
@@ -551,6 +553,14 @@ fun MainScreen(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
                     actions = {
+                        // 主题页入口（修订二 §15.1，90）：浏览态常驻（主文件 0 条仍显示，此时排列退化为
+                        // [主题][菜单]）；多选态随 contextual bar 整体隐藏（本顶栏整体替换，P3-13），
+                        // 退出多选即恢复。排列 [主题][多选][菜单]——浏览导航类动作靠左、工具靠右；
+                        // contentDescription 直写沿本文件既有惯例（「多选」「菜单」同款）
+                        IconButton(onClick = onNavigateToTopics) {
+                            // AutoMirrored 版（方向敏感图标 RTL 镜像；与本文件 KeyboardArrowLeft 同款先例）
+                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = "主题")
+                        }
                         // 多选入口（§7.1 方案 A）：浏览态常驻，条目数为 0 时隐藏（空列表无从选择）。
                         // contentDescription 直写沿本文件既有惯例（「菜单」同款），字面=§9.2 定稿
                         if (entryCount > 0) {

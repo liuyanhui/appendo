@@ -25,6 +25,7 @@ import com.yiyue31.android.appendo.ui.ArchiveEntryKind
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.ui.ArchiveListScreen
 import com.yiyue31.android.appendo.ui.MainScreen
+import com.yiyue31.android.appendo.ui.TopicListScreen
 import com.yiyue31.android.appendo.ui.theme.AppendoTheme
 import com.yiyue31.android.appendo.ui.theme.ThemeMode
 import java.io.File
@@ -97,8 +98,29 @@ fun AppendoNavHost(
                 onNavigateToArchiveList = {
                     navController.navigate("archive_list")
                 },
+                onNavigateToTopics = {
+                    navController.navigate("topics")
+                },
                 currentThemeMode = currentThemeMode,
                 onThemeChange = onThemeChange
+            )
+        }
+
+        // 主题独立页（修订二 §14.2 路由图，T-14）：main 顶栏「主题」入口进入
+        composable("topics") {
+            TopicListScreen(
+                fileRepository = fileRepository,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onTopicClick = { file ->
+                    // Encode file path for safe navigation（沿 archive_list 调用点构造式：
+                    // 主题详情显式携带 kind=topic，§14.2）
+                    val encodedPath = Uri.encode(file.absolutePath)
+                    navController.navigate(
+                        "archive_detail/$encodedPath?kind=${ArchiveEntryKind.TOPIC.routeValue}"
+                    )
+                }
             )
         }
 
