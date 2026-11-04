@@ -71,8 +71,8 @@
   - [ ] `grep -n "android.graphics" Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicBadge.kt` 零命中（HSL 纯 Kotlin）
   - [ ] 全量单测 `--max-workers=1` 全绿（既有 200 条零修改＋新增全绿）
 - **评估方法**: 编译＋单测＋grep＋代码评审（HSL 派生/明度带/散列/旗标读写）。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-04）**——Planner 独立核验 6 条全 PASS（评审对象＝提交 `bb2786f`，工作区隔离实证）：四函数签名逐项落实（Planner 自写双精度复算脚本验证 HSL 旋转/饱和度钳制/色相回绕/明度带判别——**不偷读 MaterialTheme**；对比度实测 light 5.475/dark 4.610 与精确数学 5.480/4.625 三方互证，量化差属 compose Color 半精度打包固有）、TopicBadgeTest ①~④实质断言（复算公式与 compose luminance 解耦）、仓储扩展两用例（WriteRecording 装饰器使「零写」可断言，类委托零语义改动）、双 grep 零命中、`--rerun` 206/0/0/0、恰 4 文件纯追加。四偏离全接受（行量＝转换器义务＋常量规范；grep 措辞＝正解；装饰器＝最小必要；IDE 警告不可 CLI 复现）。建议 3 条信息级（量化裕度知悉 T-17/IDE 警告登记 T-19/DONE 分支记录）。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-13 SwipeCard 抽取（ArchiveCard 手势件下沉共用）
 
@@ -344,3 +344,4 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 - 2026-11-04：计划创建（Generator 草案，8 任务 T-12~T-19，待计划级 Evaluator 评估＋用户确认后进入阶段4 编码）。
 - 2026-11-04：Evaluator 第 1 轮评估（11 项 10 PASS/1 FAIL，必修 2＋后置 4）→ 修订全落（P-1/P-2/C-1~C-4）。状态：修订版（待用户确认）。
 - 2026-11-04：**用户确认计划定稿**（三角色计划级评审经评估不需要——计划为已三评审设计的机械拆解，Evaluator 已覆盖计划级核验面；沿原批次先例）。阶段4 编码启动：T-12 开工。
+- 2026-11-04：**T-12 完成**（提交 `bb2786f`，Planner 核验 6 条全 PASS，206/0/0/0 `--rerun` 实测）：TopicBadge 四函数＋consumeFirstMoveGuide 落盘；流水线首对启动（T-12 Planner 与 T-13 Generator 并行）。T-13 已提交 `91fdaaa` 待核验，T-14 进行中。
