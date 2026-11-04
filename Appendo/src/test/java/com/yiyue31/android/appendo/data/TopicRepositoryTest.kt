@@ -291,6 +291,31 @@ class TopicRepositoryTest {
         assertEquals(File(internalRoot, "topics"), prodRepo.topicsDir())
         assertEquals(setOf("dup", "I"), prodRepo.listTopics().map { it.displayName }.toSet())
     }
+
+    // ---------- consumeFirstMoveGuide（A-1 改道，§17.1 第二行①②；③门控语义见方法 KDoc，断言落 T-15 M1） ----------
+
+    @Test
+    fun consumeFirstMoveGuide_notShown_setsFlagAndReturnsTrue() {
+        val recording = WriteRecordingSharedPreferences(prefs)
+        val recordingRepo = TopicRepository(context, baseDir, recording)
+
+        assertTrue("未展示过：首次调用应返 true（调用方据此拼接指路后缀）", recordingRepo.consumeFirstMoveGuide())
+        assertTrue("假 SP 应已 commit first_move_guide_shown=true", prefs.getBoolean("first_move_guide_shown", false))
+        assertEquals("置位恰一次", 1, recording.putBooleanCalls.size)
+        assertEquals("first_move_guide_shown", recording.putBooleanCalls.single().first)
+        assertTrue(recording.putBooleanCalls.single().second)
+    }
+
+    @Test
+    fun consumeFirstMoveGuide_alreadyShown_returnsFalseWithoutWrite() {
+        prefs.edit().putBoolean("first_move_guide_shown", true).commit()
+        val recording = WriteRecordingSharedPreferences(prefs)
+        val recordingRepo = TopicRepository(context, baseDir, recording)
+
+        assertFalse("已展示：应返 false", recordingRepo.consumeFirstMoveGuide())
+        assertTrue("已展示后不再写（零 putBoolean）", recording.putBooleanCalls.isEmpty())
+        assertTrue("旗标保持 true", prefs.getBoolean("first_move_guide_shown", false))
+    }
 }
 
 /**
@@ -374,6 +399,29 @@ private class InMemorySharedPreferences : SharedPreferences {
 
         override fun apply() {
             commit()
+        }
+    }
+}
+
+/**
+ * 追加（T-12，§17.1 第二行②）：consumeFirstMoveGuide「置位恰一次／已展示不再写」断言用——
+ * 记录 putBoolean 写操作的装饰器，包裹内存版假 SharedPreferences（Q2 先例形态，不引入
+ * Robolectric／mock）。其余成员经类委托直通。
+ */
+private class WriteRecordingSharedPreferences(
+    private val delegate: SharedPreferences
+) : SharedPreferences by delegate {
+
+    val putBooleanCalls = mutableListOf<Pair<String?, Boolean>>()
+
+    override fun edit(): SharedPreferences.Editor = RecordingEditor(delegate.edit())
+
+    private inner class RecordingEditor(private val editor: SharedPreferences.Editor) :
+        SharedPreferences.Editor by editor {
+
+        override fun putBoolean(key: String?, value: Boolean): SharedPreferences.Editor {
+            putBooleanCalls.add(key to value)
+            return editor.putBoolean(key, value)
         }
     }
 }

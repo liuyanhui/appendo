@@ -116,6 +116,8 @@ class TopicRepository(
         private const val FILE_SUFFIX = ".md"
         private const val KEY_CREATED_PREFIX = "created_"
         private const val CREATED_MISSING = -1L
+        /** 首次「移入主题」指路旗标 key（§15.4 U1；与 created_* 同文件的主题域 UI 引导元数据）。 */
+        private const val KEY_FIRST_MOVE_GUIDE = "first_move_guide_shown"
     }
 
     /** SP key 形态：created_<文件名含.md>（§5.2）。 */
@@ -244,5 +246,22 @@ class TopicRepository(
         if (!deleted) return TopicDeleteResult.Failed
         prefs.edit().remove(createdKey(topic.file.name)).commit()
         return TopicDeleteResult.Deleted
+    }
+
+    /**
+     * 消费首次「移入主题」指路旗标（§15.4 U1；A-1 改道落点——旗标读写通道归 data 层，ui 不直写本 SP）：
+     * 读 [KEY_FIRST_MOVE_GUIDE]——未展示过 → 置位 `commit()` 后返回 true（调用方据此在成功
+     * toast 末尾拼接 `firstMoveGuideSuffix` 指路后缀）；已展示 → 返回 false、不再写。
+     * 与 `created_*` 同 SP 文件（[TOPICS_PREFS]，主题域元数据集中、不新建 SP 文件）；
+     * 写入一律 `commit()`（TD-024 纪律，与 created_* 同口径）。
+     *
+     * 门控语义（§17.1 第二行③）：「N=0 不消耗不展示」＝**调用方门控**——`moved > 0` 的 Success
+     * 才调用本方法（§15.4）；本方法不含 N，无条目离开主列表时不得调用（旗标不被消耗、指路不展示），
+     * 该语义的断言落 T-15 M1 决策映射测试。
+     */
+    fun consumeFirstMoveGuide(): Boolean {
+        if (prefs.getBoolean(KEY_FIRST_MOVE_GUIDE, false)) return false
+        prefs.edit().putBoolean(KEY_FIRST_MOVE_GUIDE, true).commit()
+        return true
     }
 }
