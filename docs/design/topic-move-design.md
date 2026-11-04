@@ -8,6 +8,7 @@
 > | 2026-11-01 | Yiyue + Claude | 开放问题 O1~O3 用户裁定（均采纳推荐）：O1 验收注入＝`run-as chmod` 受控复现＋单测注入参数（89(c) 措辞按 89 尾注授权校正）；O2 成功文案＝M>0 对齐第 15 章「（跳过 M 条已存在）」句式族＋N=0 专用直陈句式；O3 分区排列＝主题分区在前 |
 > | 2026-11-01 | Yiyue + Claude | 三视角设计评审修订（40 项发现→4 必修＋应补收敛），用户已批准：§10.1 注入配方重写（绝对路径／目录 chmod／probe 预检／注入时点／89(d) 确定性主证据）＋§6.4 异常边界（runCatching 映射、`createTempFile` 未捕获分支）；§5.2 createdAt 兜底改「首见回写一次」＋SP `commit()`；§6.3 删除算法与 `parse` 同源规约（共享扫描）＋全删归一化＋`deleteEntries` 弃哨兵改 null 语义；§11 验收表补「构造方法／人工观察点／日志与 SP 文件证据」三列；§6.4 rename-fallback 截断分支如实披露（新增 R11）；§7.2 多选态对浏览态的处置；§8.2 提醒联动三处修正（仅 Success 触发／执行时重算 K／同秒碰撞连坐防护）；§10.2 测试矩阵扩充＋TopicRepository 构造器注入 baseDir；§9 SAF 失败文案对齐实发常量句式；§6.6/§8.1 移入后立即主动刷新；§6.5 `topicsDir()` null 兜底与创建顺序约束；§3.2 补三处接线；§10.4 既有行为回归清单；若干措辞修正 |
 > | 2026-11-04 | Yiyue + Claude | **修订二追加（§14~§18，方案甲，specs 16.A）**：主题一等公民 IA 分家＋归档清空合并——新增 `topics` 路由与主题独立页（彩色首字标＝colorScheme.primary 派生 8 色板＋黑白自适应文字、对比度 ≥4.5:1 数学保证；卡片「N 条 · 创建时间」条数在前）；顶栏「主题」入口（浏览态常驻含 0 条、多选态隐藏）；归档页回名「归档管理」（合并页退役、分区常量退役）；网格第四格「清空」→「归档」点击二选一（X 方案：「归档并清空」error 红默认焦点／「只归档，保留列表」primary；双 toast 归并单条；archiveFile 重构 ArchiveOutcome）；菜单「归档」项移除、「主题」→「外观」；92 去向行＋首次移入指路后缀；SwipeCard 手势骨架抽取共用；C5/C6/C8/U6/A6/A8/P3-13/U1/A4 逐项定稿；94(a)~(f) 验收映射＋89(c)(d) 收口配方；数据层零改动（data/util/reminder 零文件） |
+> | 2026-11-04 | Yiyue + Claude | **修订二·三视角评审修订**（架构师/资深工程师/资深测试工程师三方；必修 A-1/E-1/T-1/T-2＋应补与后置项全落，仅动 §14~§18）：A-1 指路旗标改道 `TopicRepository.consumeFirstMoveGuide()`（弃 ui 层直写 SP，「数据层零改动」口径更正为「事务与协议语义零改动」）；E-1 两段 runCatching 异常兜底＋三处直写退役＋`archiveFile` 删未用参数；T-1 URI 失效配方改**会话中失效构造**（probe＋降级口径＋specs 94(f) 措辞随校正）；T-2 TD-017 补 probe 预检＋chmod 静默失效降级；A-4/E-3 `performVibration` 下沉 SwipeCard 共享；A-5/E-5 `restoreKind` 移除＋`ArchiveEntryKind` KDoc 改写；A-7/E-6/T-5 对比度下界 4.585→4.583＋R17 明暗跳变披露＋派生签名定稿 `(primary, surface)` 双参；A-2 onComplete 等价动作入表＋`ArchiveOutcome` 落点 MainScreen.kt 顶层；A-3/T-3「逐字节等价」限定 writeAll 写盘段＋空内容分支行为变更（`NothingToArchive` 不清空）＋M1 决策映射纯函数测试＋旗标 Q2 注入口测试；E-2 TopicMoveDialogs :108 副文案换序；E-4 主题页重载走 Dispatchers.IO；T-6 主题页手势三验收槽；T-7 89(i)(m)(p) 挂接＋证据命令分场；T-8 新增 §17.4（模式分场/顺序链/备份清单补齐）；A-6/A-9/T-9/T-10 后置项顺手落 |
 >
 > **状态：定稿（2026-11-01 用户确认）**（六阶段流程之阶段2 完成；阶段3 计划以本文为主要输入，执行时以本文为主要参考）
 >
@@ -711,7 +712,7 @@ SAF 源的 `deleteEntries` 无 JVM 单测（TD-003 现状约束），靠 89(c)(d
 
 ## 14. 修订二·模块与改动面（主题一等公民 IA 分家＋归档清空合并，方案甲，2026-11-04）
 
-> 权威输入：`docs/specs.md` 16.A 修订二定稿版（条文 90~94＋需求 12/13/16/17/48/80(b) 就地注），冲突以 specs 为准。三视角评审待设计项（C5/C6/C8/U6/A6/A8/P3-13/U1/A4）逐项收敛于 §15~§17，章尾附条文落点对照表。§1~§13 为合并页方案的历史定稿，与本章冲突处以本章为准（如 §8.3 分区列表由 §15.1/§15.2 取代）。
+> 权威输入：`docs/specs.md` 16.A 修订二定稿版（条文 90~94＋需求 12/13/16/17/48/80(b) 就地注），冲突以 specs 为准。三视角评审待设计项（C5/C6/C8/U6/A6/A8/P3-13/U1/A4）逐项收敛于 §15~§17，章尾附条文落点对照表。**2026-11-04 三视角评审修订（必修 A-1/E-1/T-1/T-2＋应补/后置项）已逐条落实于本章**（明细见修订记录行）。§1~§13 为合并页方案的历史定稿，与本章冲突处以本章为准（如 §8.3 分区列表由 §15.1/§15.2 取代）。
 
 ### 14.1 文件改动面
 
@@ -720,21 +721,23 @@ SAF 源的 `deleteEntries` 无 JVM 单测（TD-003 现状约束），靠 89(c)(d
 | 文件 | 层 | 职责与量级 |
 |---|---|---|
 | `ui/TopicListScreen.kt` | ui | 主题独立页（~260 行）：签名 `TopicListScreen(fileRepository, onNavigateBack, onTopicClick: (File) -> Unit)`；列表（`TopicRepository.listTopics` 直供，createdAt 倒序）、TopicCard（彩色首字标）、页内新建状态机（复用 `NewTopicNameDialog`＋同名提示框）、页级空态、空主题删除与左滑恢复（零改动消费 `RestoreConfirmDialog`） |
-| `ui/SwipeCard.kt` | ui | 滑动手势骨架（~110 行）：自 `ArchiveCard` 私有件下沉为共用组件（offset 状态/120dp 阈值/方向背景指示「删除」红「追加」绿/禁删钳 0/首卡 elevation 动画；行为回调注入，振动留在调用方），`ArchiveCard` 与 `TopicCard` 均为薄包装（A8 裁定见 §15.1） |
-| `ui/TopicBadge.kt` | ui | 首字标色板与纯函数（~80 行，全 JVM 可测，§17.1）：`deriveBadgePalette(seed)`（自 primary HSL 派生 8 色，RGB↔HSL 纯 Kotlin 实现不用 android.graphics）、`contentColorFor`（白/黑自适应）、`badgeIndex`（全名散列）、`firstGrapheme`（BreakIterator 取用户可感知首字） |
-| `ui/MoveGuidePrefs.kt` | ui | 首次移入指路一次性旗标（~25 行）：`appendo_topics` SP 新键 `first_move_guide_shown`，读写均在 ui 层（§14.3 声明） |
+| `ui/SwipeCard.kt` | ui | 滑动手势骨架（~110 行）：自 `ArchiveCard` 私有件下沉为共用组件（offset 状态/120dp 阈值/方向背景指示「删除」红「追加」绿/禁删钳 0/首卡 elevation 动画；行为回调注入；**指示字面与配色随骨架下沉、不参数化**——两页语义同构（删除红/恢复绿），参数化徒增接口面；既有恒真 `AnimatedVisibility` 包装随重构丢弃，列入机械重构范围——A-6 后置项顺手落），`ArchiveCard` 与 `TopicCard` 均为薄包装（A8 裁定见 §15.1）；**`performVibration` 随骨架下沉本文件为 internal 共享**（A-4/E-3 三方收敛：三消费方＝SwipeCard 内两包装卡＋`EntryListScreen`＋`MainScreen` 既有调用点；两旧私有拷贝 `EntryListScreen.kt:385`、`MainScreen.kt:1666` 删除改引用） |
+| `ui/TopicBadge.kt` | ui | 首字标色板与纯函数（~80 行，全 JVM 可测，§17.1）：`deriveBadgePalette(primary: Color, surface: Color)`（**双参纯函数，T-5 定稿**：自 primary HSL 派生 8 色、判深浅用 `surface.luminance()`，RGB↔HSL 纯 Kotlin 实现不用 android.graphics）、`contentColorFor`（白/黑自适应）、`badgeIndex`（全名散列）、`firstGrapheme`（BreakIterator 取用户可感知首字） |
 | 测试 `Appendo/src/test/.../ui/TopicBadgeTest.kt` | test | ~90 行（§17.1） |
+| 测试 `Appendo/src/test/.../ui/ArchiveOutcomeMappingTest.kt` | test | M1 决策映射纯函数测试（~40 行，§17.1；A-3/T-3 定稿新增） |
 
 修改：
 
 | 文件 | 改动与量级 |
 |---|---|
-| `ui/MainScreen.kt` | 净 +20（+110/−90）：① 顶栏浏览态增「主题」入口图标（多选图标左侧，0 条仍显示）；② 新增参数 `onNavigateToTopics: () -> Unit = {}`；③ 第四格「清空」（Box＋combinedClickable 长按＋红描边，:718-759）→ `OutlinedButton`「归档」点击触发（与「复制全部/分享全部」同款形态）；④ 旧清空确认框（:1025-1088）→ 二选一对话框（§15.3）；⑤ `archiveFile`（:1847-1886）重构：内部 toast 移除、返回值 `Boolean` → `sealed ArchiveOutcome`（`Archived(file)`/`NothingToArchive`/`Failed`），写逻辑逐字节等价；⑥ 菜单：删「归档」项（:575-587）、「归档与主题」→「归档管理」（:589）、「主题」→「外观」（:617，含 `ThemePickerDialog` 标题 :1710）；⑦ `executeMove` 成功 toast 追加首次指路后缀（§15.4） |
-| `ui/ArchiveListScreen.kt` | −150 行：主题分区（:210-267）/主题删除框（:373-430）/topics 状态与 `TopicRepository` 依赖移除；标题回「归档管理」（:151）；整页空态改归档单态；`ArchiveCard` 手势段改消费 `SwipeCard`（−60 行机械重构）；签名 `onFileClick(File, kind)` 简化为 `onArchiveClick(File)`（kind 恒归档；`ArchiveEntryKind` 枚举定义留在本文件——包级可见不变，MainActivity/TopicListScreen 照旧 import，零迁移） |
+| `ui/MainScreen.kt` | 净 +20（+110/−90）：① 顶栏浏览态增「主题」入口图标（多选图标左侧，0 条仍显示）；② 新增参数 `onNavigateToTopics: () -> Unit = {}`；③ 第四格「清空」（Box＋combinedClickable 长按＋红描边，:718-759）→ `OutlinedButton`「归档」点击触发（与「复制全部/分享全部」同款形态）；④ 旧清空确认框（:1025-1088）→ 二选一对话框（§15.3）；⑤ `archiveFile`（:1847-1886）重构：内部 toast 移除、返回值 `Boolean` → `sealed ArchiveOutcome`（`Archived(file)`/`NothingToArchive`/`Failed`；sealed 类落 **MainScreen.kt 顶层**，A-2），**writeAll 写盘段逐字节等价**（A-3/T-3：等价宣称限于写盘段——空内容分支行为变更：现状返 true 继续清空 → 新 `NothingToArchive` **不清空**＋提示 toast，入口守卫配套的防呆改进，R15 陈旧窗口下可达），**删除未使用的 `fileRepository` 参数**（E-1）；⑥ 菜单：删「归档」项（:575-587）、「归档与主题」→「归档管理」（:589）、「主题」→「外观」（:617，含 `ThemePickerDialog` 标题 :1710）；⑦ `executeMove` 成功 toast 追加首次指路后缀（§15.4） |
+| `ui/ArchiveListScreen.kt` | −150 行：主题分区（:210-267）/主题删除框（:373-430）/topics 状态与 `TopicRepository` 依赖移除；标题回「归档管理」（:151）；整页空态改归档单态；`ArchiveCard` 手势段改消费 `SwipeCard`（−60 行机械重构）；签名 `onFileClick(File, kind)` 简化为 `onArchiveClick(File)`（kind 恒归档；`ArchiveEntryKind` 枚举定义留在本文件——包级可见不变，MainActivity/TopicListScreen 照旧 import，零迁移；A-5/E-5：`restoreKind` 状态随分家移除（kind 恒归档化简的死代码），KDoc「唯一产出源」句改写为主题页/归档页双源——留驻决定不变） |
 | `MainActivity.kt` | +15 行：`composable("topics")` 路由＋`onNavigateToTopics` 接线；`archive_list` 调用点随签名简化 |
 | `ui/Microcopy.kt` | +28/−10 行（§16 定稿表） |
 | `README.md` / `CHANGELOG.md` | §16.4 义务清单 |
-| `ui/TopicMoveDialogs.kt` / `data/*` / `util/*` / `reminder/*` | **零改动**（`NewTopicNameDialog` 原样复用＝90「复用 83 修订校验链」的落点） |
+| `ui/TopicMoveDialogs.kt` | 仅 :108 副文案模板换序对齐 `topicCardSubtitle`（「N 条 · 创建时间」条数在前，E-2；现状为时间在前的内联直写模板）；其余零改动（`NewTopicNameDialog` 原样复用＝90「复用 83 修订校验链」的落点） |
+| `data/TopicRepository.kt` | ＋~10 行：`consumeFirstMoveGuide()`（A-1 改道，§14.3；`TopicRepositoryTest` 相应扩展见 §17.1）；既有方法与存储协议零改动 |
+| `util/*` / `reminder/*` | **零改动** |
 
 ### 14.2 路由图（+topics）
 
@@ -745,10 +748,10 @@ main ──顶栏「主题」图标（浏览态常驻，90）──▶ topics �
 
 `archive_detail` 路由与 `kind` 解析零改动（§8.5 既有实现直接服务两页）；菜单「归档」项移除（93 入口唯一化到网格）。
 
-### 14.3 数据层零改动落点声明
+### 14.3 数据层改动面声明（「零改动」口径更正，A-1）
 
-- **data/ util/ reminder/ 三目录零文件增删改**：`topics/` 协议、`TopicRepository` 既有方法与 `created_*` 键、`TopicMoveTransaction`、`EntryKey`/`deleteEntries` 全部维持已实现语义（specs 16.A「数据层零改动」）。
-- 唯一新持久化＝`appendo_topics` 增一个 UI 引导布尔键 `first_move_guide_shown`（§15.4 首次指路一次性旗标），经 ui 层 `MoveGuidePrefs` 读写（引用 `TopicRepository.TOPICS_PREFS` 常量、不新建 SP 文件——主题域元数据集中，避免 SP 碎片化；该键是纯 UI 引导元数据而非主题文档元数据，故落 ui 层而不改 data 文件）。写入用 `commit()`（TD-024 纪律）。
+- **原草案「ui 层 `MoveGuidePrefs` 直写 `appendo_topics` SP」弃**（A-1：ui 直写 data 域 SP 文件违反分层——util ← data ← ui 依赖方向；该新增文件已从 §14.1 新增表移除，§18 原未登记此分层风险，改道后亦无需登记——风险不存在）。改道为 **`TopicRepository` 新增 `consumeFirstMoveGuide(): Boolean`**（~10 行：经 Q2 构造器注入的 `prefs` 读 `first_move_guide_shown`，未展示过则置位 `commit()` 后返回 true、已展示返 false；与 `created_*` 同 SP 文件 `appendo_topics`、不新建 SP 文件——主题域元数据集中；同 `commit()` 纪律 TD-024；Q2 注入口＝内存版假 SharedPreferences，JVM 可测，§17.1）。键仍是纯 UI 引导元数据，但读写通道归 data 层——分层干净且 SP 碎片化照旧避免。
+- **「数据层零改动」口径更正**（specs 16.A 字面容纳）：data 目录**新增一个与协议无关的旗标方法**，**事务与协议语义零改动**——`topics/` 协议、`TopicRepository` 既有方法与 `created_*` 键、`TopicMoveTransaction`、`EntryKey`/`deleteEntries` 全部维持已实现语义；util/ reminder/ 两目录零文件增删改。
 
 ---
 
@@ -765,7 +768,7 @@ main ──顶栏「主题」图标（浏览态常驻，90）──▶ topics �
 | 项 | 设计 |
 |---|---|
 | 顶栏 | 标题「主题」（primary SemiBold，沿 ArchiveListScreen 先例）；返回箭头；actions＝`Icons.Default.AddCircle`「新建主题」（常驻含空态；B2 裁定「有」） |
-| 列表 | `LazyColumn`，`listTopics()` 直供（createdAt 倒序＝85(c) 维持）；进入加载（`LaunchedEffect(Unit)`＋`Dispatchers.IO`，「加载中...」沿先例直写）与操作后重载，均沿 ArchiveListScreen 既有模式 |
+| 列表 | `LazyColumn`，`listTopics()` 直供（createdAt 倒序＝85(c) 维持）；进入加载（`LaunchedEffect(Unit)`＋`Dispatchers.IO`，「加载中...」沿先例直写）与操作后重载（**重载亦经 `Dispatchers.IO`**——E-4：修正 ArchiveListScreen 既有主线程重载路径，不沿袭） |
 | TopicCard | `SwipeCard` 骨架＋内容行：**40dp 彩色圆形首字标**（容器色＝`topicBadgeColors(displayName)`、字＝`firstGrapheme(displayName)` titleLarge SemiBold 居中）＋主题名（titleMedium Medium）＋小字「**N 条 · yyyy-MM-dd HH:mm**」（条数在前，90；`onSurfaceVariant`，P8）。空主题小字＝「空」（`TOPIC_EMPTY_SUBTITLE` 平移，右滑删除可发现性补位） |
 | 交互 | 点击 → 主题详情（`archive_detail?kind=topic`，85(d) 只读限制随 90 平移）；长按 → 复制全文（parse＋formatForExport 同款，出口铁律）；左滑 → 恢复（86，`RestoreConfirmDialog`＋`TOPIC_RESTORE_NOTE` 平移消费）；空主题（0 条）右滑 → 删除（85(a)，`DLG_TOPIC_DELETE_TITLE`/`dlgTopicDeleteBody` 平移消费；非空右滑钳 0 零响应——手势语义随 SwipeCard 参数化下沉） |
 | 页级空态 | 无任何主题时：`TOPIC_PAGE_EMPTY_TITLE`（titleMedium/onSurfaceVariant）＋`TOPIC_PAGE_EMPTY_BODY`（bodyMedium 弱化）——文案含新建引导（90，字面见 §16.1） |
@@ -782,9 +785,9 @@ main ──顶栏「主题」图标（浏览态常驻，90）──▶ topics �
 
 | 规则 | 定稿 |
 |---|---|
-| 色板（90「固定色板」） | 运行时自 `colorScheme.primary` 派生 8 色：HSL 色相旋转 45°×i（i=0..7）、饱和度钳制 [0.42, 0.78]、明度固定带（浅色 0.36／深色 0.44，经 `surface.luminance() ≥ 0.5` 判深浅）——**零写死色值**（P7 字面满足），深浅随双色板自动切换；派生是纯函数 ⇒ 同名同色、重启不变（确定性，90） |
+| 色板（90「固定色板」） | 运行时派生 8 色，签名定稿 **`deriveBadgePalette(primary: Color, surface: Color)` 双参纯函数**（T-5：判深浅用 `surface.luminance() ≥ 0.5`，不另传模式枚举）：HSL 色相旋转 45°×i（i=0..7）、饱和度钳制 [0.42, 0.78]、明度固定带（浅色 0.36／深色 0.44）——**零写死色值**（P7 字面满足），深浅随双色板自动切换；派生是纯函数 ⇒ 同名同色、重启不变（确定性，90；「同名同色」在**同主题模式内**成立，明暗切换整体换带见 R17 披露） |
 | 散列（U6 定稿） | `badgeIndex(name) = floorMod(name.hashCode(), 8)`——**全名单因子散列**（非首字主导）：同首字不同名均匀散开；「首字＋名字双因子」统计上不改变均匀性、零收益，弃；8 色板下不同名残余撞色**允许**（90 明令），靠主题名区分 |
-| 对比度（52 量化门槛由本设计定稿：文字 ≥4.5:1） | 首字文字色＝白/黑二选一，取对比度较大者——两对比度曲线交点即数学下界 **4.585:1**，任意容器色恒 ≥4.5:1，无须逐色人工校验（§17.1 测试仍钉死） |
+| 对比度（52 量化门槛由本设计定稿：文字 ≥4.5:1） | 首字文字色＝白/黑二选一，取对比度较大者——两对比度曲线交点即数学下界 **4.583:1**，任意容器色恒 ≥4.5:1，无须逐色人工校验（§17.1 测试仍钉死） |
 | 首字取法（90：用户可感知字符、emoji 整体一字） | `firstGrapheme(name)`＝`java.text.BreakIterator.getCharacterInstance()` 首边界（grapheme cluster：surrogate 对/ZWJ 序列/国旗旗对整体一字）；空名防御返回「？」 |
 
 **A8 裁定（TopicCard 组件策略）**：**抽公共 `SwipeCard` 骨架共用**，`ArchiveCard`/`TopicCard` 做薄布局包装。取舍：独立实现＝复制 ~60 行手势件（两份阈值/钳制/指示逻辑必然分叉，TD-015 同型隐患），抽取代价＝ArchiveListScreen 一次机械重构＋回归抽查（94(c)）。两处手势语义完全同构（右删/左恢复/禁删钳 0）、两页长期并存，抽取净收益为正——推荐并定稿抽取；R16 登记重构回归风险。
@@ -813,17 +816,18 @@ main ──顶栏「主题」图标（浏览态常驻，90）──▶ topics �
   - **「归档并清空」**：`Button` 填充样式（containerColor＝`colorScheme.error`、contentColor＝`onError`，78(a)），全宽；**默认焦点**——对话框打开经 FocusRequester 将初始焦点落于本按钮（触屏无感知差异；物理键盘 Enter 直达、TalkBack 首达，93 明令；该路径恒先备份，数据非破坏，不违背「破坏性动作不设默认焦点」惯例的精神）；
   - **「只归档，保留列表」**：`OutlinedButton`（primary 描边＋文字，78(b)），全宽；
   - action 区：「取消」（dismiss 槽；点外/系统返回同义）——取消键保留（93）。
-- **两路径语义与反馈**（均经重构后的 `archiveFile → ArchiveOutcome` 组合，写盘逻辑与现状逐字节等价；执行在 `Dispatchers.IO`；对话框为一次性动作、失败不设重试态——沿旧清空框处置）：
+- **两路径语义与反馈**（均经重构后的 `archiveFile → ArchiveOutcome` 组合；**writeAll 写盘段与现状逐字节等价**——A-3/T-3：等价宣称限于写盘段，空内容分支行为变更见下表 `NothingToArchive` 格；执行在 `Dispatchers.IO`——A-9：系对旧框主线程 IO 的改进，非沿袭；对话框为一次性动作、失败不设重试态——沿旧清空框处置；两段各以 `runCatching` 包裹的异常兜底见下表末行 E-1）：
 
-| 路径 | 语义 | 成功反馈（C6 双 toast 归并定稿） | 失败反馈 |
-|---|---|---|---|
-| 归档并清空 | ＝原「清空」：`Archived` → `clear()` → setFileLastModified＋计数清零＋**取消全部提醒**（需求 63 联动保持：cancel 全部闹钟＋`removeAll()`）；需求 13 先备份后清空顺序不变 | **单条 toast**：`toastArchivedAndCleared(name)`「已归档到 Appendo_….md，已清空」——现状 `archiveFile` 内「已归档到: name」＋外层「已清空」两条串联**归并为一条**（逗号附注句式，同 `removedRemindersSuffix` 拼接先例；备份去向＋清空结果一句说完，信息零丢失，P4） | `Failed` → toast「归档失败，未清空」＋**不得清空**（TD-017 传承，94(d) 断言）；`clear()` 失败 → toast「清空失败（归档已保存）」（明示备份安全）；`NothingToArchive` → 「暂无内容可归档」（防御分支，入口已守卫） |
-| 只归档，保留列表 | ＝原菜单「归档」：`Archived` 即完成；主列表/计数/提醒不动（需求 12 快照语义） | 单条 toast：`toastArchivedTo(name)`「已归档到 Appendo_….md」（现状字面去 ASCII 冒号后常量化） | `Failed` → toast「归档失败」；`NothingToArchive` → 同上防御 |
+| 路径 | 语义 | onComplete 等价动作（A-2：现状 `onComplete` lambda 在成功尾部调用，重构后按路径等价落位） | 成功反馈（C6 双 toast 归并定稿） | 失败反馈 |
+|---|---|---|---|---|
+| 归档并清空 | ＝原「清空」：`Archived` → `clear()` → setFileLastModified＋计数清零＋**取消全部提醒**（需求 63 联动保持：cancel 全部闹钟＋`removeAll()`）；需求 13 先备份后清空顺序不变 | 重同步三状态（`useSAF`/`fileUri`/`defaultFile`，沿现状 lambda 语义）＋`clearFileLastModified()`＋`refreshEntryCount()`（承接原 `entryCount = 0; entries = emptyList()` 计数清零）＋取消全部提醒 | **单条 toast**：`toastArchivedAndCleared(name)`「已归档到 Appendo_….md，已清空」——现状 `archiveFile` 内「已归档到: name」＋外层「已清空」两条串联**归并为一条**（逗号附注句式，同 `removedRemindersSuffix` 拼接先例；备份去向＋清空结果一句说完，信息零丢失，P4） | `Failed` → toast「归档失败，未清空」＋**不得清空**（TD-017 传承，94(d) 断言）；`clear()` 失败 → toast「清空失败（归档已保存）」（明示备份安全）；`NothingToArchive` → 「暂无内容可归档」**且不清空**（A-3/T-3 行为变更：现状此分支返 true 继续清空——入口守卫配套的防呆改进，R15 陈旧窗口下可达） |
+| 只归档，保留列表 | ＝原菜单「归档」：`Archived` 即完成；主列表/计数/提醒不动（需求 12 快照语义） | 重同步三状态（`useSAF`/`fileUri`/`defaultFile`）；`clearFileLastModified()` **丢弃**——主文件未动、逻辑 mtime 无需失效（`remove` 不存在 key 本为无害 no-op，仍按语义正确性弃调——理由注明） | 单条 toast：`toastArchivedTo(name)`「已归档到 Appendo_….md」（现状字面去 ASCII 冒号后常量化） | `Failed` → toast「归档失败」；`NothingToArchive` → 「暂无内容可归档」无动作（同左行为变更，§17.1 决策映射两路径钉死） |
+| 异常兜底（两路径共有，E-1） | 两段各以 `runCatching` 包裹：**归档段异常 → 归 `Failed`**（异常不上抛 UI，按路径映射既有失败文案）；**清空段异常 → 清空失败文案**（归档已保存语义）——不重蹈旧框 catch-all「操作失败」（:1075，§16.3 退役） | —（异常路径不触发 onComplete 等价动作） | — | 归档段异常 → 「归档失败，未清空」／「归档失败」（按路径）；清空段异常 → 「清空失败（归档已保存）」 |
 
 ### 15.4 移入去向文案与首次指路（92）
 
 - **去向行更正**：`dlgMoveConfirmBody` 第二行改为 specs 92 逐字——「移入后这些条目将从主列表消失，可在顶栏『主题』入口查看。」（替换「…可在「归档与主题」的主题分区查看」，§16.2）。
-- **首次指路 toast（U1 定稿）**：首次**有效移入**（`moved > 0` 的 `Success`）后，成功 toast 末尾**拼接后缀** `firstMoveGuideSuffix`「，可在顶栏『主题』查看」——不弹第二条 toast（单 toast 原则，P4）。拼接序固定：基础文案 → `removedRemindersSuffix(k)`（K>0 时）→ `firstMoveGuideSuffix`（首次时）。一次性旗标 `first_move_guide_shown` 在 `executeMove` 的 IO 段内读取并回写（`MoveGuidePrefs.consume(context): Boolean`——未展示过则置位并返回 true；commit 同步落盘）；N=0 成功（moved=0）不消耗旗标也不展示（无条目离开主列表，无指路必要）。
+- **首次指路 toast（U1 定稿）**：首次**有效移入**（`moved > 0` 的 `Success`）后，成功 toast 末尾**拼接后缀** `firstMoveGuideSuffix`「，可在顶栏『主题』查看」——不弹第二条 toast（单 toast 原则，P4）。拼接序固定：基础文案 → `removedRemindersSuffix(k)`（K>0 时）→ `firstMoveGuideSuffix`（首次时）。一次性旗标 `first_move_guide_shown` 在 `executeMove` 的 IO 段内经 `topicRepository.consumeFirstMoveGuide()` 读后置位一次完成（A-1 改道：MainScreen 既有 `topicRepository` 实例（:193）直调，未展示过则置位 `commit()` 并返回 true；Q2 注入口 JVM 可测，§17.1）；N=0 成功（moved=0）**不调用 consume**——不消耗旗标也不展示（无条目离开主列表，无指路必要；门控语义随 §17.1 M1 决策映射钉死）。
 - **「外观」更名联动（92／需求 48 就地注）**：菜单项字面「主题」→「外观」＋`ThemePickerDialog` 标题同步「外观」（三态功能与持久化语义零变化；可感知显式变更——README/CHANGELOG 注明，§16.4）。
 
 ---
@@ -873,10 +877,12 @@ main ──顶栏「主题」图标（浏览态常驻，90）──▶ topics �
 | `BTN_CLEAR` | 删除 | 93（第四格与旧清空框均退役，无消费方） |
 | 直写「长按以清空内容」/「长按清空」 | 删除 | 93 点击触发 |
 | 直写「已归档到: $name」/「已清空」/「已取消清空（归档失败）」/「归档失败: $msg」 | 删除（→ §16.1 归并/替代字面） | C6 双 toast 归并＋`ArchiveOutcome` 重构 |
+| 直写「操作失败」（MainScreen:1075）／「清空失败」（:1069）／旧框标题「清空内容」（:1030）与正文（:1037） | 删除 | E-1 异常兜底归 `runCatching` 两段映射文案（catch-all「操作失败」退役）＋93 旧框整体退役 |
 
 ### 16.4 句式族对齐与文档义务
 
 - **句式族**（向 §9.1 对齐）：成功＝「已动词＋对象」＋逗号附注链式（已归档到 X，已清空／已移入 N 条，已取消 K 条提醒，可在顶栏『主题』查看）；失败＝「动词失败」＋逗号/括号附注（归档失败，未清空／清空失败（归档已保存））；N/M/K 数字口径沿 §9.1 不变。
+- **副文案序对齐（E-2）**：`TopicMoveDialogs` :108 移入目标列表副文案换序为「N 条 · 创建时间」（与 `topicCardSubtitle` 同序、条数在前）——两处消费同句式族；保持内联直写形态不变、不新增常量。
 - **README 义务**：① 80(b) 区别说明改写——网格「归档」两选项（归档并清空／只归档，保留列表）与「归档管理」的区别（91 就地注）；② 「外观」更名（48 注，可感知显式变更）；③ 主题页与顶栏入口交互说明（90）；④ 菜单「归档」项移除（93）；⑤ 85(e)「复制全部」取舍注维持。**CHANGELOG 义务**：「主题」→「外观」更名、第四格「清空」→「归档」二选一、主题独立页三条可感知变更。
 
 ---
@@ -887,20 +893,22 @@ main ──顶栏「主题」图标（浏览态常驻，90）──▶ topics �
 
 | 测试文件 | 要点 |
 |---|---|
-| `ui/TopicBadgeTest.kt` | ① **hash 稳定性**：同名恒同 index；`floorMod` 恒界内；String.hashCode 为 JVM 规范定值（重启不变的依据）；② **对比度**：自 `AppendoLightScheme.primary`/`AppendoDarkScheme.primary` 分别派生双色板 ×8，逐色以 WCAG 相对亮度公式复算，断言 `contentColorFor` 所选文字色对比度 ≥ 4.5:1（4.585 数学下界的回归钉死）；③ **首字取法**：普通汉字/字母；surrogate 对 emoji（😀）；ZWJ 序列（👨‍👩‍👧）整体一字；国旗旗对；BMP 外生僻字（𠀀）；空串防御返回「？」；④ **派生确定性**：同 seed 同色板（同名同色前提） |
+| `ui/TopicBadgeTest.kt` | ① **hash 稳定性**：同名恒同 index；`floorMod` 恒界内；String.hashCode 为 JVM 规范定值（重启不变的依据）；② **对比度（T-5 签名）**：`(AppendoLightScheme.primary, AppendoLightScheme.surface)`／`(AppendoDarkScheme.primary, AppendoDarkScheme.surface)` **双色板 (primary, surface) 成对断言**——各派生 8 色，逐色以 WCAG 相对亮度公式复算，断言 `contentColorFor` 所选文字色对比度 ≥ 4.5:1（**4.583** 数学下界的回归钉死）；③ **首字取法**：普通汉字/字母；surrogate 对 emoji（😀）；ZWJ 序列（👨‍👩‍👧）整体一字；国旗旗对；BMP 外生僻字（𠀀）；空串防御返回「？」；④ **派生确定性**：同 (primary, surface) 参数对同色板（同名同色前提） |
+| `data/TopicRepositoryTest.kt` 扩展（A-1 改道） | `consumeFirstMoveGuide()` 三条（Q2 注入口＝内存版假 SharedPreferences，不引入 Robolectric）：① 未展示 → 置位并返 true（断言假 SP 已 commit `first_move_guide_shown=true`）；② 已展示 → 返 false 且不再写；③ 「N=0 不消耗不展示」＝调用方门控（`moved > 0` 方调 consume，§15.4）——方法本身不含 N，该语义随下行 M1 决策映射钉死 |
+| `ui/ArchiveOutcomeMappingTest.kt`（M1 决策映射纯函数，A-3/T-3） | 决策函数（MainScreen.kt 顶层 internal：`ArchiveOutcome × 路径 → toast 字面／是否 clear／是否取消提醒`）全组合钉死：① `Archived`×归档并清空 → `toastArchivedAndCleared`＋clear＋取消全部提醒；② `Archived`×只归档 → `toastArchivedTo`＋不 clear＋不动提醒；③ `Failed`×两路径 → 两失败字面＋均不 clear；④ `NothingToArchive`×两路径 → 「暂无内容可归档」＋**均不 clear、无其他动作**（行为变更两路径钉死）；⑤ 清空段异常 → 「清空失败（归档已保存）」（E-1 映射） |
 
-**M1 两路径与 UI 层不可测说明**：归档并清空／只归档的编排在 MainScreen 点击处理器（UI 层），无纯 JVM 测试——语义保障＝① `archiveFile` 写盘逻辑重构前后逐字节等价（`ArchiveOutcome` 只改返回通道、去内部 toast）；② `clear()`/`atomicWrite` 原语行为既有单测覆盖；③ 94(d) 真机断言（含 TD-017 顺序配方，§17.3）。提取编排为可测函数须动 util 层（零改动口径锁定），不做。UI 组件（TopicCard/SwipeCard/二选一框）无 Robolectric（TD-003），走真机走查。
+**M1 两路径与 UI 层可测边界（A-3/T-3 修订）**：归档并清空／只归档的**编排**在 MainScreen 点击处理器（UI 层），编排本身无纯 JVM 测试——语义保障＝① `archiveFile` **writeAll 写盘段**重构前后逐字节等价（`ArchiveOutcome` 只改返回通道、去内部 toast；空内容分支行为变更为 A-3/T-3 定稿改进，不在等价范围内）；② `clear()`/`atomicWrite` 原语行为既有单测覆盖；③ **决策映射提为 MainScreen.kt 顶层 internal 纯函数并新增上表测试**（编排仍不可测，但「结果 → 反馈/副作用」决策可测；不动 util/data，零改动口径不破）；④ 94(d) 真机断言（含 TD-017 顺序配方，§17.3）；⑤ **质量门追加（T-10）：`archiveFile` 重构 git diff 逐行核对清单**——写盘段零语义变更的逐行人工复核（toast 行删除、`fileRepository` 参数删除、返回通道改写逐项打勾，核对记录随 PR 附上）。UI 组件（TopicCard/SwipeCard/二选一框）无 Robolectric（TD-003），走真机走查。
 
 ### 17.2 94(a)~(f) 逐项映射（构造／判据／证据层级）
 
 | 项 | 构造 | 判据 | 证据层级 |
 |---|---|---|---|
 | (a) 顶栏入口 | 主文件清空至 0 条冷启；再造 3 条进多选 | 0 条时主题图标在、进入正常；多选态无主题图标、退出恢复；排列 `[主题][多选][菜单]` | 真机人工 |
-| (b) 主题页 | 建主题 2 个（其一空）＋重启＋尝试同名/非法命名/长按复制 | 首字标同名同色且重启不变、过 52 对比度；「N 条 · 创建时间」与详情一致；空主题「空」；页级空态含引导；新建校验链全分支 toast 正确；**同名分支＝提示无「移入该主题」按钮**、取消后输入保留；长按复制全文格式干净（判据同 89(f)：无 ##/---/# Appendo/零宽字符） | JVM（§17.1）＋真机走查＋粘贴字符级检查 |
+| (b) 主题页 | 建主题 2 个（其一空）＋重启＋尝试同名/非法命名/长按复制 | 首字标同名同色且重启不变、过 52 对比度；「N 条 · 创建时间」与详情一致；空主题「空」；页级空态含引导；新建校验链全分支 toast 正确；**同名分支＝提示无「移入该主题」按钮**、取消后输入保留；长按复制全文格式干净（判据同 89(f)：无 ##/---/# Appendo/零宽字符）；**手势三槽（T-6）**：空主题右滑 → 红框删除确认走 `deleteTopic`（文件＋SP key 同清）；非空主题右滑钳 0 **零响应**；左滑恢复对话框含「仍保留」注明行（`TOPIC_RESTORE_NOTE`）＋去重 toast 计数正确 | JVM（§17.1）＋真机走查＋粘贴字符级检查 |
 | (c) 分家 | 造 1 主题＋1 整文件归档；打开菜单逐项走查 | 归档页仅归档文件、无分区标题；菜单无「归档」项、「归档管理」在且跳转正确；「外观」＝原「主题」三态（切换＋重启保持）；归档卡右删/左恢复仍可用（SwipeCard 重构回归） | 真机＋既有单测全绿门 |
-| (d) X 两路径 | 造 3 条＋1 条设 2 分钟提醒 → 网格「归档」分别走两路径；TD-017 见 §17.3 第三配方 | **归档并清空**：新 `Appendo_*.md` 生成＋主文件恰 `# Appendo\n`＋计数 0＋空态（需求 20）＋提醒全消（徽标/闹钟/sidecar）；**只归档**：副本生成＋主列表/计数/提醒不变；**TD-017**：归档失败路径主文件逐字节不变＋toast「归档失败，未清空」 | 真机＋文件证据（`run-as ls/cat`、`dumpsys alarm`、sidecar xml） |
+| (d) X 两路径 | 造 3 条＋1 条设 2 分钟提醒 → 网格「归档」分别走两路径；TD-017 见 §17.3 第三配方 | **归档并清空**：新 `Appendo_*.md` 生成＋主文件恰 `# Appendo\n`＋计数 0＋空态（需求 20）＋提醒全消（徽标/闹钟/sidecar）；**只归档**：副本生成＋主列表/计数/提醒不变；**TD-017**：归档失败路径主文件逐字节不变＋toast「归档失败，未清空」 | 真机＋文件证据（`run-as ls/cat`、`dumpsys alarm`、sidecar xml；提醒取证＝**前后对照＋对象名**（T-9）——`dumpsys alarm` 中本应用 PendingIntent 与 sidecar `reminder_<ts>` key 逐一消失，非仅看徽标 UI） |
 | (e) 92 文案 | 打开对话框 3 断字面；首次移入＋二次移入；深色逐屏 | 去向行 specs 逐字；首次成功 toast 含指路后缀、二次起无；深色走查主题页/二选一框/「外观」处（89(h) 口径） | 真机＋字面逐字节核对（T-08 手法） |
-| (f) 89(c)(d) 收口 | 见 §17.3 | JVM 既有用例＋真机受控复现双轨；**不新增生产注入钩子** | JVM＋真机＋文件证据 |
+| (f) 89(c)(d) 收口 | 见 §17.3；**89(i)(m)(p) 沿用计划 §4.2 对应行执行（T-7），证据命令按存储模式替换**——SAF 主文件用 `adb shell cat <SAF 路径>`（run-as 不可达 SAF 文档）、默认模式用 `run-as cat` | JVM 既有用例＋真机受控复现双轨；**不新增生产注入钩子** | JVM＋真机＋文件证据 |
 
 ### 17.3 89(c)(d) 受控复现配方（94(f)＝A4 执行方法；沿 §10.1 风格）
 
@@ -913,13 +921,17 @@ adb shell run-as com.yiyue31.android.appendo touch /storage/emulated/0/Android/d
 # run-as cat 源文件逐字节原样；chmod 700 恢复后重试成功
 ```
 
-**89(c) URI 失效场景**（specs 94(f) 点名可真机构造）——SAF 主文件＋覆盖安装清授权（TD-021 本机实况）：
+**89(c) URI 失效场景**（specs 94(f) 点名可真机构造；T-1 修订：原「覆盖安装清授权」配方不可靠——`takePersistableUriPermission` 授权不随 `adb install -r` 一致丢失（TD-021 实况系个别现象而非可复现手段），改**会话中失效构造**）——SAF 主文件、app 前台运行中删除底层文件：
 
 ```
-adb install -r Appendo/build/outputs/apk/debug/appendo-debug.apk
-# 覆盖安装后冷启 → 多选移入 → 断言：toast「移入失败：自定义目录授权可能已失效，请打开 appendo 重选文件」；
-# 主列表条目不变（UI 判据）＋ run-as cat …/files/topics/ 目标文件前后一致（干净失败零副作用）
+adb shell rm /sdcard/<自定义目录>/Appendo.md
+# probe（配方可达性前取证）：先验证 SafMarkdownFile.readAllWithStatus 对已删文档返回 failed——
+#   logcat 断言失败分类 SourceReadFailed（事务源读失败通道，与 §10.2 ⑧ 同语义）
+# → 立即多选移入 → 断言：失败反馈（静默回退/失效提示对话框，以实际 UI 为准）；
+#   主列表条目不变（UI 判据）＋目标文件前后一致（干净失败零副作用——topics/ 私有目录 run-as cat 可达）
 ```
+
+**降级口径（T-1）**：会话中失效法在个别 ROM 上不触发（SAF DocumentsProvider 缓存已删文件）时，降级取证＝JVM §10.2 ⑧（源读失败 → `SourceReadFailed` 零副作用）＋真机以**静默回退/失效对话框**为取证对象（不硬拧 toast 字面）。**specs 94(f)「URI 失效场景可真机构造」措辞随本配方校正为会话中失效法（编排方已登记 specs 微调）。**
 
 **89(d) 软中间态**——§10.1 run-as 手工追加配方**原样沿用**（不执行移入、直接向 `topics/<T>.md` 追加该批条目块 → App 内移入同批 → N=0 直陈句式收敛；等效 In-App 构造＝89(o) 同款连做；`am crash` 仍为加分尝试）。
 
@@ -928,12 +940,33 @@ adb install -r Appendo/build/outputs/apk/debug/appendo-debug.apk
 ```
 # 前提：主文件＝SAF 自定义目录（清空走 SAF，不受私有目录 chmod 影响）
 adb shell run-as com.yiyue31.android.appendo chmod 500 /storage/emulated/0/Android/data/com.yiyue31.android.appendo/files
+adb shell run-as com.yiyue31.android.appendo touch /storage/emulated/0/Android/data/com.yiyue31.android.appendo/files/probe
+# 预检（T-2）：probe 应 Permission denied——chmod 生效的先行取证（个别 ROM run-as chmod 静默失效的门闸）
 # 归档副本创建于该目录（files/ 根）→ writeAll 失败；网格「归档」→ 归档并清空 →
 # 断言：toast「归档失败，未清空」；SAF 主文件内容不变（若未先备份即清空，此处已空）
 adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Android/data/com.yiyue31.android.appendo/files
 ```
 
+**降级口径（T-2）**：probe 未 Permission denied（`run-as chmod` 静默失效）时，顺序证明降级三轨——① JVM 决策测试（§17.1 M1：`Failed` → 不 clear）；② 代码评审取证「`Failed` 分支先于 `clear()` 返回」（§15.3 两路径表顺序语义）；③ logcat 归档失败日志（`Archive failed` 异常栈）为真机第二证据。
+
 **不加生产钩子**（重申 §10.1 裁定）：DEBUG 钩子/注入参数入口不新增；JVM 层既有 `MoveFaults` 注入（§10.2 ①~⑬）即 89(c)(d) 单测主证据，真机受控复现为第二轨。
+
+### 17.4 执行顺序与状态前置（T-8）
+
+**模式分场**（两场互斥，按用例切换）：
+
+| 场 | 主文件模式 | 服务用例 | 备注 |
+|---|---|---|---|
+| SAF 场 | 自定义目录（`use_saf=true`，沿 T-10 真机先例） | §17.3 TD-017（前提＝清空走 SAF 不受私有目录 chmod 影响）、URI 失效配方（前提＝SAF 主文件） | 89(i)(m)(p) 若在本场执行，证据命令按 §17.2(f) 行替换 |
+| 默认场 | 私有目录 `Appendo.md` | 94(a)~(d) 及 89 常规项 | `run-as` 证据全量可达，文件取证最简 |
+
+**顺序链**（状态前置依赖，乱序会破坏断言）：
+
+1. **94(e) 首次指路须排在任何移入用例之前**——须单独造 `first_move_guide_shown=false` 初始态（全新安装/清数据天然满足；若顺序不可保：默认场 `run-as` 编辑 `appendo_topics.xml` 删该键、SAF 场删 SP 文件后重启重置）。否则先行移入用例置位旗标，指路后缀断言失效。
+2. **94(a) 0 条冷启与 89(m) 全移入连做**：先清主文件至 0 条冷启验入口常驻 → 造条目 → 全选移入 → 主文件恰 `# Appendo\n`＋空态（89(m) 断言），一场两用。
+3. 89(i)(m)(p) 与 94 各项无状态耦合，可插空执行（沿计划 §4.2 行序，T-7）。
+
+**真机前置备份清单（沿 T-10 先例补齐，T-8）**：主文件（SAF 路径 `adb shell cat` 拉取／默认场 `run-as cat`）＋既有 SP（`appendo.xml`：use_saf/file_uri/theme_mode 等）＋**`files/topics/` 目录整体（逐文件拉取）＋`appendo_topics.xml`（created_* 键与指路旗标）**——主题域两条新持久化面（文档目录＋元数据 SP）首次纳入验收基线，验收后按份还原。
 
 ---
 
@@ -941,12 +974,12 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 
 | # | 项 | 口径与处置 |
 |---|---|---|
-| R12 | MainScreen 回归面（本批第四度触碰：顶栏/网格/菜单/清空路径/移入 toast 五点联动） | 缓解：`archiveFile` 重构保写盘逻辑逐字节等价；既有单测全绿门＋94(c)(d)(e) 真机清单；网格其余三格与输入/编辑/提醒路径零触碰 |
+| R12 | MainScreen 回归面（本批第四度触碰：顶栏/网格/菜单/清空路径/移入 toast 五点联动） | 缓解：`archiveFile` 重构保 **writeAll 写盘段**逐字节等价（空内容分支行为变更为 A-3/T-3 定稿改进）＋git diff 逐行核对清单（T-10，§17.1）；既有单测全绿门＋94(c)(d)(e) 真机清单；网格其余三格与输入/编辑/提醒路径零触碰 |
 | R13 | BreakIterator 老 ICU：API 26/27 上 ZWJ emoji 序列可能拆分（UAX #29 GB11 需较新 ICU） | 观感降级（首字标取序列首段，仍为合法字符、不崩溃；色板/散列不受影响）；已知边界不作缺陷上报；JVM 测试断言 host JDK（新 ICU）行为，老 ROM 降级可接受 |
 | R14 | 生僻字/CJK 扩展区字符在部分 ROM 系统字体缺字 → 首字标 tofu 方框 | 渲染依赖系统字体（同主列表正文约束）；已知边界不作缺陷；主题名在卡片正文完整显示 |
 | R15 | toast 时序：归并后每路径单条；首次指路为后缀拼接而非第二条（无 ToastUtils 队列堆积）；0 条守卫消除旧「暂无内容可归档＋已清空」双条冗余 | 设计消除（§15.3/§15.4）；残留双 toast 仅存于 0 条守卫后 entryCount 陈旧的 ≤2s 轮询窗口内，自愈 |
 | R16 | SwipeCard 抽取重构：两页卡片＋禁删钳制分支的回归风险 | 94(c) 真机抽查归档右删/左恢复＋主题空主题删/非空钳 0；机械重构不改阈值/指示色语义 |
-| R17 | 首字标色板与 P7「零写死色」的字面张力 | 受控例外：色板运行时自 colorScheme.primary 派生（零写死色值、深浅自动）、文字黑白自适应有 4.585:1 数学下界、§17.1 测试钉死——派生逻辑属主题基础设施（与双色板同域），非组件内写死 |
+| R17 | 首字标色板与 P7「零写死色」的字面张力；**主题模式切换时 8 色整体跳变**（明暗两套明度带——A-7/E-6/T-5 披露）：「同名同色」在**同主题模式内**成立，跨模式切换色板整体换带（有意为之：随双色板自动适配，非漂移） | 受控例外：色板运行时自 colorScheme (primary, surface) 派生（零写死色值、深浅自动）、文字黑白自适应有 **4.583:1** 数学下界、§17.1 测试钉死——派生逻辑属主题基础设施（与双色板同域），非组件内写死；跳变可接受性由 94(e) 深色走查覆盖 |
 | R18 | 「外观」更名＋菜单「归档」项移除的既有用户习惯迁移 | 可感知显式变更，README/CHANGELOG 注明（92/48/80(b) 义务，§16.4）；数据与行为语义零变化 |
 
 ---
@@ -957,15 +990,15 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 |---|---|
 | 90 主题独立页与首页入口 | §14.1/§14.2（路由）、§15.1（入口/多选显隐 P3-13/卡片/空态 C8/新建含 C5 同名分支/首字标 U6＋52）、§16.1/§16.2、§17.2(a)(b) |
 | 91 归档与主题分家 | §15.2、§16.3（退役常量 C8）、§16.4（80(b) 改写）、§17.2(c) |
-| 92 移入去向文案与指路 | §15.4（去向行/首次指路 U1/「外观」更名）、§16.2/§16.4、§17.2(e) |
-| 93 归档与清空合并（X） | §15.3（A6 第四格/触发/C6 形态焦点取消/两路径/双 toast 归并/TD-017/菜单移除）、§16.1/§16.3、§17.2(d) |
-| 94(a)~(f) 验收 | §17.1（JVM 义务）、§17.2（逐项）、§17.3（89(c)(d) 收口＝A4） |
+| 92 移入去向文案与指路 | §15.4（去向行/首次指路 U1——A-1 改道后经 `TopicRepository.consumeFirstMoveGuide`／「外观」更名）、§16.2/§16.4、§17.1（旗标 JVM 测试）、§17.2(e)、§17.4（首次指路顺序前置） |
+| 93 归档与清空合并（X） | §15.3（A6 第四格/触发/C6 形态焦点取消/两路径＋onComplete 等价动作 A-2/双 toast 归并/TD-017/菜单移除/E-1 异常兜底）、§16.1/§16.3、§17.1（M1 决策映射）、§17.2(d) |
+| 94(a)~(f) 验收 | §17.1（JVM 义务）、§17.2（逐项）、§17.3（89(c)(d) 收口＝A4）、§17.4（执行顺序与状态前置 T-8） |
 | 需求 12 注（只归档保留列表） | §15.3 两路径表·只归档行 |
 | 需求 13 注（先备份后清空） | §15.3 两路径表·归档并清空行＋§17.3 TD-017 配方 |
 | 需求 16 注（第四格改「归档」） | §15.3 第四格段 |
 | 需求 17 注（菜单列表项） | §15.2 回名行 |
 | 需求 48 注（「外观」更名） | §15.4 更名联动、§16.4 |
 | 需求 80(b) 注（README 义务） | §16.4 义务① |
-| 数据层零改动 | §14.3 |
+| 数据层零改动（口径更正 A-1：data 目录＋一个与协议无关的旗标方法，事务与协议语义零改动） | §14.3 |
 
-> **修订二状态**：设计定稿建议（2026-11-04 Generator 起稿，三视角评审待设计项已逐项收敛如上）；经用户确认后生效并进入阶段3 计划。
+> **修订二状态**：设计定稿建议（2026-11-04 Generator 起稿；同日三视角评审修订落实——必修 A-1/E-1/T-1/T-2＋应补/后置项全落如上）；经用户确认后生效并进入阶段3 计划。
