@@ -130,16 +130,11 @@ fun AppendoNavHost(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onFileClick = { file, kind ->
+                onArchiveClick = { file ->
                     // Encode file path for safe navigation
                     val encodedPath = Uri.encode(file.absolutePath)
-                    // §8.5：主题详情经可选 kind 查询参数区分（归档不带，路由匹配向后兼容）
-                    val route = if (kind == ArchiveEntryKind.TOPIC) {
-                        "archive_detail/$encodedPath?kind=${ArchiveEntryKind.TOPIC.routeValue}"
-                    } else {
-                        "archive_detail/$encodedPath"
-                    }
-                    navController.navigate(route)
+                    // 修订二 §15.2：kind 恒归档（不带 kind 查询参数，路由匹配向后兼容，§8.5）
+                    navController.navigate("archive_detail/$encodedPath")
                 }
             )
         }

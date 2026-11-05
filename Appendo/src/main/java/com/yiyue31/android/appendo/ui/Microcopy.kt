@@ -166,15 +166,8 @@ internal object Microcopy {
     /** 创建文档失败（新建路径，§8.1：toast 后流程中止）。 */
     fun toastMoveFailedCreateTopic(): String = "移入失败（创建主题文档失败）"
 
-    // ---- 「移入主题」分区列表（topic-move 设计 §8.3/§9.2；T-07 增量落盘，T-08 全套核对收口）----
-
-    /** 分区标题（§9.2）：主题分区在前（高频取用）、归档分区在后。 */
-    const val SECTION_TOPICS = "主题文档"
-    const val SECTION_ARCHIVES = "归档"
-
-    /** 整页空态两行（§8.3 结构行：两区皆空）。 */
-    const val ARCHIVE_TOPIC_EMPTY_TITLE = "暂无归档与主题"
-    const val ARCHIVE_TOPIC_EMPTY_BODY = "归档与主题文件会显示在这里"
+    // ---- 主题卡片与空主题删除/恢复（topic-move 设计 §8.3/§9.2→修订二 §15.1 主题页消费；
+    //      T-07 落盘，T-16 分家收口：分区标题与合并页空态常量随 §15.2 退役）----
 
     /** 空主题删除（§9.2）：标题（error 红，78(a) 破坏性=红）/ 正文；按钮「删除」（红）/「取消」沿既有字面。 */
     const val DLG_TOPIC_DELETE_TITLE = "删除空主题"
@@ -192,6 +185,12 @@ internal object Microcopy {
 
     /** 空主题副文案（§8.3：可发现性——右滑删除手势不可见，副文案「空」补位提示可删状态）。 */
     const val TOPIC_EMPTY_SUBTITLE = "空"
+
+    // ---- 归档页空态（topic-move 设计修订二 §15.2/§16.1；T-16 落盘，分家后归档单态，C8）----
+
+    /** 归档页整页空态两行（§15.2：沿合并前旧文案口径；合并页两区空态常量随分家退役）。 */
+    const val ARCHIVE_EMPTY_TITLE = "暂无归档"
+    const val ARCHIVE_EMPTY_BODY = "归档文件会显示在这里"
 
     // ---- 主题独立页（topic-move 设计修订二 §16.1；T-14 增量落盘，T-16 全套核对收口）----
 

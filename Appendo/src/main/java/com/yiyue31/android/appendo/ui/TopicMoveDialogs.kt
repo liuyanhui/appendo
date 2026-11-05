@@ -105,7 +105,7 @@ internal fun TopicSelectDialog(
                         Text(topic.displayName, style = MaterialTheme.typography.titleSmall)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "${archiveRepository.formatTimestamp(Date(topic.createdAt))} · ${topic.entryCount} 条",
+                            "${topic.entryCount} 条 · ${archiveRepository.formatTimestamp(Date(topic.createdAt))}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
