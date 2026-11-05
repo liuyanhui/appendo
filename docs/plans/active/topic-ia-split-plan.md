@@ -166,8 +166,8 @@
   - [ ] archiveFile git diff 逐行核对清单完成：写盘段逐字节等价逐项打勾（对照 T-15 前后版本），行为变更项（空内容分支）单列确认与 A-3/T-3 定稿一致
   - [ ] §17.2(a)~(e) 代码级可核项逐项结论（(a) 排列与显隐／(b) 同名分支无指路按钮与手势槽／(c) 菜单结构与回名／(d) 决策映射＋TD-017「Failed 分支先于 clear() 返回」顺序代码评审／(e) 拼接序与去向行字面）
 - **评估方法**: 命令输出留档＋三张核对表逐项勾选。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-05，编排方执行）**——内存预检 1.98GB≥600MB；`testDebugUnitTest --max-workers=1 --rerun` 实跑 **213/0/0/0**（206 基线＋T-12 六＋T-15 七）；`assembleDebug` BUILD SUCCESSFUL。**§17.1 三表**：TopicBadgeTest ①~④（T-12 Planner 核）／TopicRepositoryTest 扩展（含 N=0 门控 KDoc，断言落 T-15 决策映射）／ArchiveOutcomeMappingTest ①~⑤（T-15 Planner 核）全在案且绿；UI 组件（TopicCard/SwipeCard/二选一框）无 JVM 单测→T-18 真机。**archiveFile git diff 逐行核对**＝T-15 Planner 机械 diff 硬证据（写盘段逐字节等价）＋本门注记：resyncArchiveState 对全 outcome 执行（纯状态重读无副作用，T-15 建议 1 收口）。**§17.2(a)~(e) 代码级**：(a) 排列显隐＝T-14 Planner✓ (b) 同名分支/手势槽＝T-14/T-13 Planner✓ (c) 菜单回名＝T-15/T-16✓ (d) 决策映射＋TD-017 clear 不可达＝T-15 Planner 代码评审✓ (e) 拼接序/去向行＝T-15 Planner✓。注：T-16 Planner 核验并行中，如出必修项则本门复核受影响面。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-18 真机合并验收（94(a)~(f)＋89(c)(d)(i)(m)(p)，用户执行）
 
@@ -348,3 +348,4 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 - 2026-11-04：**T-13 完成**（提交 `91fdaaa`，Planner 核验 6 条全 PASS——六件套 token 级逐字一致硬证据，零必修；1 建议＝EntryListScreen 死包装/常量重复→T-19 登记）。**T-14 完成**（提交 `e84aea9`，206 零修改全绿待核验；偏离 2＝AutoMirrored.List 图标（弃用警告规避）/448 行 KDoc 密度）。T-14 Planner 与 T-15 Generator 并行中。
 - 2026-11-04：**T-14 核验闭环**（Planner 7 条全 PASS 零必修；两偏离接受；建议 2＝注释措辞 T-15 顺手修＋indexOf 优化非阻断）。T-15 Generator 进行中。
 - 2026-11-04~05：**T-15 完成**（提交 `749bddd`）——Generator 撞 API 限流中断，**编排方接管补全**（MainScreen 七点＋决策测试）；T-15/T-16 双 agent 同限流窗口中断后于 11-05 续跑。**T-15 核验闭环**（Planner 从紧 7 条全 PASS 零必修；写盘段逐字节等价硬证据；2 建议归 T-17 注记/T-19 校准）。T-16 Generator 续跑中。
+- 2026-11-05：**T-16 完成**（提交 `1a64999`：分家回退＋:108 换序＋Microcopy 收口；213 零修改全绿、ArchiveRestoreDeduplicationTest 9/9 等价性铁门）→ Planner 核验并行。**T-17 质量门通过**（编排方执行：--rerun 实跑 213/0/0/0＋assembleDebug 成功＋三表/逐行核对/diff 清单汇编各任务 Planner 硬证据）。**编码链闭环（T-12~T-17）→ 待 T-16 Planner 收尾后进 T-18 真机合并验收（用户执行）**。
