@@ -150,8 +150,8 @@
   - [ ] grep 防线零直写：`grep -rn "归档并清空\|只归档\|暂无归档\|暂无主题\|知道了\|可在顶栏" Appendo/src/main/java --include="*.kt" | grep -v Microcopy.kt` → 仅 KDoc/注释命中
   - [ ] `ArchiveRestoreDeduplicationTest` **零修改**全绿；全量单测 `--max-workers=1` 全绿（既有 200 零修改）
 - **评估方法**: 编译＋单测＋grep＋§16 逐行对照表。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-05）**——Planner 独立核验 6 条全 PASS（评审对象＝提交 `1a64999`，本轮实跑复核）：分家零残留（grep 严于计划口径全文件零命中——KDoc 用大写 TopicListScreen 避开词根）、退役彻底（含 BTN_CLEAR 交叉复核零残留）、:108 恰 1 行换序、Microcopy **19/19 逐字一致**（全角标点全中）＋§16.2 三项落实、防线 7 命中全注释、213/0/0/0＋ArchiveRestoreDeduplicationTest 9/9 本轮实跑。恢复链归档路径逐语义等价（ArchiveRestore.kt 零改动铁证＋onDismiss/onConfirmed 逐字同）；MainActivity 归档路由与父提交 else 分支完全相同、kind 解析零改动。三偏离全接受。**建议 3 条归 T-19**：ArchiveCard `swipeToDeleteEnabled` 死参登 debt-tracker（新发现）／:75 KDoc 旧序失真顺手修／A8 措辞校准。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-17 质量门（全量单测＋编译＋代码级核对）
 
@@ -349,3 +349,4 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 - 2026-11-04：**T-14 核验闭环**（Planner 7 条全 PASS 零必修；两偏离接受；建议 2＝注释措辞 T-15 顺手修＋indexOf 优化非阻断）。T-15 Generator 进行中。
 - 2026-11-04~05：**T-15 完成**（提交 `749bddd`）——Generator 撞 API 限流中断，**编排方接管补全**（MainScreen 七点＋决策测试）；T-15/T-16 双 agent 同限流窗口中断后于 11-05 续跑。**T-15 核验闭环**（Planner 从紧 7 条全 PASS 零必修；写盘段逐字节等价硬证据；2 建议归 T-17 注记/T-19 校准）。T-16 Generator 续跑中。
 - 2026-11-05：**T-16 完成**（提交 `1a64999`：分家回退＋:108 换序＋Microcopy 收口；213 零修改全绿、ArchiveRestoreDeduplicationTest 9/9 等价性铁门）→ Planner 核验并行。**T-17 质量门通过**（编排方执行：--rerun 实跑 213/0/0/0＋assembleDebug 成功＋三表/逐行核对/diff 清单汇编各任务 Planner 硬证据）。**编码链闭环（T-12~T-17）→ 待 T-16 Planner 收尾后进 T-18 真机合并验收（用户执行）**。
+- 2026-11-05：**T-16 核验闭环**（Planner 6 条全 PASS 零必修；19/19 逐字；3 建议归 T-19 含 ArchiveCard 死参登债）。**编码链 T-12~T-17 全闭环（六任务全部一次通过零返工）**。T-18 真机合并验收启动：装包＋备份（含 topics/ 与 appendo_topics.xml）→ 引导式逐项执行。
