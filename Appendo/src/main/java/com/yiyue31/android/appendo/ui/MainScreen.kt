@@ -778,9 +778,11 @@ fun MainScreen(
                             .weight(1f)
                             .height(56.dp),
                         shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        // 2026-11-05 用户裁定：颜色回 error 红（沿旧「清空」格视觉；78 语义上红＝注意，
+                        // 与二选一含清空路径相符——设计修订二 A6 中性色裁定反转）
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.7f)),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.primary
+                            contentColor = MaterialTheme.colorScheme.error
                         )
                     ) {
                         Text(Microcopy.BTN_CELL_ARCHIVE, fontWeight = FontWeight.Medium)
