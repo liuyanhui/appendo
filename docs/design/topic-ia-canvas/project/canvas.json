@@ -1,0 +1,45 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-11-04T09:00:00Z" },
+  "title": "Appendo 主题 IA 分家·方案甲画布",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 400, "w": 390, "h": 844, "title": "A1 主界面·现状·菜单展开" },
+    "a1-dark.dc.html": { "x": 470, "y": 400, "w": 390, "h": 844, "title": "A1d 主界面·现状·深色" },
+    "a2-merged.dc.html": { "x": 940, "y": 400, "w": 390, "h": 844, "title": "A2 归档与主题合并页·现状" },
+    "a2-dark.dc.html": { "x": 1410, "y": 400, "w": 390, "h": 844, "title": "A2d 合并页·现状·深色" },
+    "b1-main-topic-entry.dc.html": { "x": 0, "y": 1600, "w": 390, "h": 844, "title": "B1 主界面·顶栏新增主题入口" },
+    "b2-color-new.dc.html": { "x": 470, "y": 1600, "w": 390, "h": 844, "title": "B2 主题页·彩色首字卡·有新建" },
+    "b2-dark.dc.html": { "x": 940, "y": 1600, "w": 390, "h": 844, "title": "B2d 主题页·彩色首字卡·深色" },
+    "b3-color-nonew.dc.html": { "x": 1410, "y": 1600, "w": 390, "h": 844, "title": "B3 主题页·彩色首字卡·无新建" },
+    "c1-minimal-new.dc.html": { "x": 0, "y": 2800, "w": 390, "h": 844, "title": "C1 主题页·极简文字卡·有新建" },
+    "c2-minimal-nonew.dc.html": { "x": 470, "y": 2800, "w": 390, "h": 844, "title": "C2 主题页·极简文字卡·无新建" },
+    "d1-archive-only.dc.html": { "x": 0, "y": 4000, "w": 390, "h": 844, "title": "D1 归档管理·纯归档列表" },
+    "e1-confirm-dialog.dc.html": { "x": 470, "y": 4000, "w": 390, "h": 844, "title": "E1 移入确认框·新去向文案" }
+  },
+  "order": [
+    "Main.dc.html",
+    "a1-dark.dc.html",
+    "a2-merged.dc.html",
+    "a2-dark.dc.html",
+    "b1-main-topic-entry.dc.html",
+    "b2-color-new.dc.html",
+    "b2-dark.dc.html",
+    "b3-color-nonew.dc.html",
+    "c1-minimal-new.dc.html",
+    "c2-minimal-nonew.dc.html",
+    "d1-archive-only.dc.html",
+    "e1-confirm-dialog.dc.html"
+  ],
+  "notes": {
+    "n-title": { "x": 0, "y": 20, "text": "Appendo 主题 IA 分家（方案甲）— 现状 vs 变体对比", "kind": "title1", "maxW": 1800 },
+    "n-a": { "x": 0, "y": 100, "text": "A · 现状基线（对照）", "kind": "title1", "maxW": 1800 },
+    "n-b": { "x": 0, "y": 1300, "text": "B · 方案甲·方向 1：彩色首字标签卡（顶栏新增主题入口）", "kind": "title1", "maxW": 1880 },
+    "n-c": { "x": 0, "y": 2500, "text": "C · 方案甲·方向 2：极简文字卡", "kind": "title1", "maxW": 940 },
+    "n-de": { "x": 0, "y": 3700, "text": "D · 归档回归 ＋ E · 移入确认文案变体", "kind": "title1", "maxW": 940 },
+    "n-b-choice": { "x": 1890, "y": 1600, "w": 300, "text": "B2/B3 二选一：差别仅「新建主题」入口有无。B2 右上直达新建；B3 新建仍只在「移入主题」流程里。", "fill": "teal" },
+    "n-c-choice": { "x": 950, "y": 2800, "w": 300, "text": "C1/C2 二选一：同为极简文字卡（无图标无彩色、大量留白），差别仅新建入口有无。与 B 组相比去图标去彩色。", "fill": "teal" }
+  },
+  "designSystems": []
+}

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "threads": [
+    {
+      "id": "c_d9bd8cbbcc",
+      "anchor": "#dc-root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(3) > button:nth-of-type(2) > dcfx0izjpte:nth-of-type(1) > dct:nth-of-type(28) > dcee4353556f3b195261428:nth-of-type(1)",
+      "label": "A1d 主界面·现状·深色 › text \"清空\"",
+      "detail": "a1-dark.dc.html: #27:1/1/2/1 text \"清空\"",
+      "location": {
+        "file": "project/a1-dark.dc.html",
+        "board": "a1-dark.dc.html"
+      },
+      "status": "open",
+      "createdAt": "2026-11-04T01:41:00.715Z",
+      "updatedAt": "2026-11-04T01:41:00.715Z",
+      "messages": [
+        {
+          "id": "m_f64b675168",
+          "author": {
+            "kind": "user",
+            "name": "liuya"
+          },
+          "text": "清空和归档是否可以合并为一个?",
+          "at": "2026-11-04T01:41:00.715Z"
+        }
+      ]
+    },
+    {
+      "id": "c_851c3e6678",
+      "anchor": "#dc-root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(3) > button:nth-of-type(2) > dcfx0izjpte:nth-of-type(1) > dct:nth-of-type(28) > dcee4353556f3b150725951:nth-of-type(1)",
+      "label": "A1d 主界面·现状·深色 › text \"清空\"",
+      "detail": "a1-dark.dc.html: #27:1/1/2/1 text \"清空\"",
+      "location": {
+        "file": "project/a1-dark.dc.html",
+        "board": "a1-dark.dc.html"
+      },
+      "status": "open",
+      "createdAt": "2026-11-04T01:41:36.930Z",
+      "updatedAt": "2026-11-04T01:41:36.930Z",
+      "messages": [
+        {
+          "id": "m_14cfd2271d",
+          "author": {
+            "kind": "user",
+            "name": "liuya"
+          },
+          "text": "清空和归档按钮是否可以合并为一个？",
+          "at": "2026-11-04T01:41:36.930Z"
+        }
+      ]
+    }
+  ]
+}

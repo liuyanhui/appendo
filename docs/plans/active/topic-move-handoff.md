@@ -21,6 +21,7 @@
 > | 2026-11-03 | Yiyue + Claude | **T-10 快捷验收通过**（用户判定；含 SAF 源移入实测；(c)(d)(i)(m)(p) 5 缺口并入合并验收）。真机记录：platform-tools 补装、RMX3560、数据备份 `D:/tmp/appendo-t10-backup/`。**用户裁定「甲」＝主题一等公民 IA 分家**（85 分区裁定反转，移动式数据模型不变）——回阶段1；**另发现**：本机 adb 曾缺失（platform-tools 空壳，杀软嫌疑）、主文件 SAF 模式（`personal/Appendo.md`） |
 > | 2026-11-04 | Yiyue + Claude | 设计画布 agent 派出（baoyu-design claude-design 技能，现状＋甲变体画板，`docs/design/topic-ia-canvas/`）。链路：挑方案→specs 追加→设计追加→甲批次→合并验收→T-11 |
 > | 2026-11-04 | Yiyue + Claude | **甲批次阶段1~3 全闭环**：specs 16.A 三视角评审定稿（合并方案 X/「外观」消歧/N 条在前）→设计修订二（§14~§18）三视角评审 20 项全落定稿→执行计划 `topic-ia-split-plan.md`（T-12~T-19）Evaluator 核验＋用户确认定稿。**阶段4 编码启动（T-12）**——后续进度记入该计划 §7，本快照以 `topic-ia-split-plan.md` 为甲批次权威进度源 |
+> | 2026-11-05 | Yiyue + Claude | **甲批次编码链 T-12~T-17 全闭环（六任务零返工，213 测试全绿）**——含 T-15 API 限流中断由编排方接管补全（从紧核验过）；T-18 真机合并验收进行中（备份 `D:/tmp/appendo-t18-backup/` 含 topics/＋SP；第 1 轮 94(e) 首次指路＋用户自由走查 PASS，受控项进行中）。**验收中裁定序列**：网格「归档」格回红（`1a62d8d` 已装机）／「清理不归档」不采纳／**戊＝主题工作区化立项**（决策全景三视角评审收敛 C1~C7：L1 提醒解耦＋移出、L2 主题内编辑＋删除、L3 新增缓、乙设置页排后；反转面 84(c)/85(d)；**版本节奏 A：v1.4.0＝甲现在收尾，戊＝v1.5.0**；89(i) 照测）。本批为交接打包推送 |
 
 ---
 
@@ -31,23 +32,26 @@
 **恢复方法（新会话首条提示词模板）**：
 
 ```
-读取 docs/plans/active/topic-move-handoff.md 与 docs/plans/active/topic-move-plan.md（11 任务执行计划），
-按交接文档「下一步」章节继续：请用户一句话确认计划定稿 → 阶段4 编码自 T-01（EntryParser 同源重构）开始，严格串行。
+读取 docs/plans/active/topic-move-handoff.md 与 docs/plans/active/topic-ia-split-plan.md（甲批次执行计划），
+按交接文档「下一步」章节继续：T-18 真机合并验收进行中（真机在手、受控项自 94(d) 起继续，
+注入配方照抄 topic-ia-split-plan.md §4.1）→ T-19 文档收尾（v1.4.0/versionCode 11）→ 发布
+→ 戊批次（主题工作区化）自 specs 16.B 起走完整流程（用户已裁定编组与版本节奏 A）。
 ```
 
 **权威文件优先级**（冲突时以先者为准）：
-1. `docs/specs.md` 第 16 章（需求 82~89 含评审修订注，2026-10-30 用户已确认）
-2. `docs/design/topic-move-design.md`（特性设计，**定稿 2026-11-01**）
-3. `docs/plans/active/topic-move-plan.md`（执行计划 11 任务＋裁定，待用户确认后生效）
+1. `docs/specs.md` 第 16 章（82~89＋**16.A 修订二 90~94**，均已用户确认；戊立项裁定见设计修订记录 2026-11-05 行，16.B 待起草）
+2. `docs/design/topic-move-design.md`（§1~§13 原批定稿＋**§14~§18 修订二定稿 2026-11-04**；修订记录含戊裁定行）
+3. `docs/plans/active/topic-ia-split-plan.md`（**甲批次权威进度源**：T-12~T-17 闭环记录＋T-18 验收表＋T-19 义务）；`topic-move-plan.md`（原批 T-01~T-11 历史快照，其 T-10 缺口/T-11 义务已由 T-18/T-19 吸收）
 4. 本文（状态快照与裁定记录）
 
 ---
 
-## 1. 状态快照（2026-10-30）
+## 1. 状态快照（2026-11-05）
 
-- **流程位置（CLAUDE.md 六阶段）**：阶段1 需求 ✅ → 阶段2 设计 ✅ → 阶段3 计划 ✅ → 阶段4 编码 ✅（T-01~T-09 零返工，200 测试）→ 阶段5 真机验收 **⚠️ 快捷通过＋5 缺口** → **当前：方向修订「甲」（主题 IA 分家）——回阶段1 做 specs 追加**（设计画布制作中，用户看图挑方案后一次确认 specs＋设计）→ 甲实现批次 → 合并验收 → T-11 收尾。每阶段完成需用户确认方可进入下一阶段。
-- **git 状态**：计划批次（执行计划 362 行＋本文档换机交接更新）于 2026-11-02 提交推送；此前 `9fb4b57`（设计定稿）→ `d29452e`（设计草案）→ `d2e7ff0`（specs 评审修订）→ `1c8dd1e`（v1.3.1 基线）。
-- **另一未完流**：v1.3.x 微文案批次的真机走查仍开放（见 `v1.3.x-microcopy-handoff.md`），与本流无关，勿混淆。
+- **流程位置**：原批（移入主题 T-01~T-11）✅ 编码闭环＋快捷验收（5 缺口并入 T-18）→ **甲批次（IA 分家 T-12~T-19）：阶段1~4 ✅（T-12~T-17 六任务零返工，213 测试＋assembleDebug）→ 当前＝T-18 真机合并验收进行中**（第 1 轮 94(e)＋用户自由走查 PASS；受控项自 94(d) 起：两路径/TD-017/89(c)(d)(i)(m)(p)/深色）→ T-19 文档收尾 v1.4.0 发布 → **戊批次（主题工作区化＝v1.5.0）已立项待启动**（编组 L1/L2/L3＋版本节奏 A 均已用户裁定，自 specs 16.B 起走完整流程）。
+- **git 状态**：2026-11-05 交接打包推送（提交链自 `0878ee2` 起：specs 16.A→设计修订二→甲计划→T-12~T-17→裁定序列→本文档）；甲批次权威进度源＝`topic-ia-split-plan.md` §7。
+- **真机状态**：RMX3560 已连、装最新 debug 包（1.3.1/10，升位在 T-19）；SAF 模式主文件 `/sdcard/personal/Appendo.md`；**验收备份 `D:/tmp/appendo-t18-backup/`（主文件＋3 SP＋topics/）**；adb 需全路径 `C:/Users/liuya/AppData/Local/Android/Sdk/platform-tools/adb.exe`（PATH 无；platform-tools 曾空壳已于 11-03 补装）。
+- **另一未完流**：v1.3.x 微文案批次真机走查仍开放（见 `v1.3.x-microcopy-handoff.md`），与本流无关，勿混淆。
 
 ### 需求要点（详见 specs 第 16 章，此处仅冷启动导航用）
 
@@ -78,12 +82,10 @@
 
 ## 2. 下一步（新会话按序执行）
 
-1. **多角色评审**：✅ 已完成（2026-10-30，修订已落盘 specs 第 16 章）。
-2. **阶段2 设计**：✅ 已完成——**定稿 2026-11-01**（`docs/design/topic-move-design.md`，707 行）。
-3. **阶段3 计划**：✅ 已完成——`docs/plans/active/topic-move-plan.md`（362 行，11 任务 T-01~T-11 串行链）：Generator 草案 → Q1/Q2 用户裁定（**v1.4.0/versionCode 11；允许 SP 构造器注入**）→ Evaluator 第 1 轮（13 项检查单 11 PASS/2 FAIL，3 必修）→ Generator 修订（必修＋清理全落）→ Planner 抽查通过。计划状态「草案（待用户确认）」——**新会话开工前请用户一句话确认计划定稿**。
-4. **阶段4 编码（当前，待启动）**：确认计划后按计划**严格串行**执行，自 **T-01**（EntryParser 同源重构＋countEntries 公开；验收＝既有 142 测试零修改全绿）起。执行模式：每任务派 Generator（含单测，一律 `--max-workers=1`）→ Planner 核验 → 更新计划 §7 进度区与本文档快照 → 下一任务。注意：T-09 内存判据（`free -m` available <600MB 停）；T-10 真机验收需真机在场（realme，人工为准 TD-024）；T-11 文档同步（v1.4.0）。
-5. **阶段5 真机验收**：89(a)~(p)＋§10.4 人工回归（按计划 §4 验收表，§10.1 注入配方照抄勿凭记忆改写）。
-6. 每任务/阶段完成更新本文档的快照与下一步。
+1. **T-18 真机合并验收（当前）**：受控项继续——94(d) 只归档→TD-017（chmod 注入配方照抄 `topic-ia-split-plan.md` §4.1）→归档并清空＋提醒全消＋94(a) 0 条冷启→89(m)＋89(i) 合并轮→89(c)(d) 注入轮→89(p) 批量→深色走查；TD-024 人工为准、证据命令按存储模式替换（SAF 主文件用 `adb shell cat`，私有目录用 run-as 绝对路径——`files/topics/` 外部目录 run-as 被拒时用 `adb shell ls/cat` 直读）。
+2. **T-19 文档收尾**：README（原 §12 处置列＋甲新增五项）／CHANGELOG v1.4.0（两批合并单条目，**按甲口径**——戊为 v1.5.0）／architecture.md 五处＋甲增／debt-tracker（原批 12 条＋甲批新债：EntryListScreen 死包装/常量重复、ArchiveCard 死参、:75 KDoc、T-15 建议 2）／版本 versionCode 11/versionName "1.4.0"。
+3. **发布 v1.4.0** 后开启**戊批次（主题工作区化＝v1.5.0）**：specs 16.B 起草（含 84(c)/85(d) 反转牵连清单、主题页「恢复」去留裁定）→ 多角色评审（用户既定流程）→ 设计修订三（多角色评审）→ 计划 → L1（提醒解耦原子单元＋移出）→ L2（编辑＋删除）→ L3/乙视观察。
+4. 每任务/阶段完成更新 `topic-ia-split-plan.md` §7 与本文档快照。
 
 ---
 
@@ -115,10 +117,13 @@
 
 | 文件 | 内容 |
 |---|---|
-| `docs/specs.md` 第 16 章（82~89） | 已确认需求（本流唯一权威需求源） |
-| `docs/design/topic-move-design.md` | 特性设计（**定稿 2026-11-01**：存储方案、组合事务、同源删除规约、微文案、验收映射、回归清单） |
-| `docs/plans/active/topic-move-plan.md` | 执行计划（T-01~T-11 任务定义＋Evaluator 检查单＋真机验收表；Q1/Q2 已裁定） |
-| `docs/specs.md` 第 15 章 / `Appendo/src/main/java/com/yiyue31/android/appendo/ui/Microcopy.kt` | 术语表体系——「移入」为第四类动作，文案须入常量源 |
-| `Appendo/src/main/java/com/yiyue31/android/appendo/util/MarkdownFileOperations.kt`（+两实现） | 写入接口层——原子写入/条目定位/去重设计的主战场 |
+| `docs/specs.md` 第 16 章 | 需求权威源：82~89（原批）＋**16.A 修订二 90~94（甲批次定稿）**＋六处就地注 |
+| `docs/design/topic-move-design.md` | 设计权威源：§1~§13（原批）＋**§14~§18 修订二（甲）**；修订记录含戊立项裁定（2026-11-05） |
+| `docs/plans/active/topic-ia-split-plan.md` | **甲批次权威进度源**（T-12~T-19 任务定义＋§4 真机验收表＋注入配方＋§17.4 顺序链/备份清单） |
+| `docs/plans/active/topic-move-plan.md` | 原批 T-01~T-11 历史快照（含 §8 质量门核对记录；T-10/T-11 义务已转移） |
+| `docs/design/topic-ia-canvas/` | 甲设计画布（12 画板＋用户评论；编辑器自生文件已 gitignore） |
+| `docs/plans/debt-tracker.md` | 技术债登记（TD-027~029＋T-19 待登清单见计划） |
+| `docs/specs.md` 第 15 章 / `ui/Microcopy.kt` | 术语表体系——「移入」第四类动作＋甲批次 §16 增量 |
+| `D:/tmp/appendo-t18-backup/`（不入库） | T-18 验收前备份：主文件＋appendo/appendo_reminders/appendo_topics 三 SP＋topics/ |
 | `docs/plans/active/v1.3.x-microcopy-handoff.md` | 另一未完流（真机走查），勿混淆 |
 | raw-pile `grill-me/appendo-inbox-sync/`（samples/ specs.md decisions.md） | 样例与管线论证，独立项目 |
