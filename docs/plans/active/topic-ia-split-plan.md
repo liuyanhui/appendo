@@ -131,8 +131,8 @@
   - [ ] 首次指路：拼接序三元（基础→K>0 提醒→首次指路）可指认；`moved == 0` 分支无 consume 调用（代码评审）；单 toast（无第二条指路 toast 路径）
   - [ ] 本任务 12 项新增＋2 项修改入 Microcopy 字面与 §16.1/§16.2 定稿**逐字一致**（评估时逐条对照打勾）；全量单测 `--max-workers=1` 全绿（既有 200 零修改）
 - **评估方法**: 编译＋单测＋grep＋代码走查（对照 §15.3 表/§15.4/§16.1§16.2 逐字）。
-- **评估结果**: （待评估）
-- **当前轮次**: 0　**最大轮次**: 2　**状态**: 待执行
+- **评估结果**: ✅ **通过（2026-11-05）**——Planner 从紧核验（编排方接管补全部分）7 条全 PASS（评审对象＝提交 `749bddd`）：**写盘段机械 diff 逐字节等价硬证据**（父子提交 archiveFile 全函数体 diff——签名与返回通道外零差异）、决策测试 ①~⑤ 实质断言、§15.3 表逐行落点（TD-017 代码评审＝clear 调用门不可达确认/替换口径注释在/两段 runCatching）、对话框形态与 0 条守卫、退役菜单全过、指路 moved>0 门控单 toast、213 绿经提交时 XML 时间戳核实（复跑被在途 T-16 阻断已注明）。**Microcopy 12 逐字比对全中**（Generator 遗产从紧核过）。**执行备注**：Generator 因 API 限流中断，Microcopy 为其遗产、MainScreen/测试为编排方接管补全（提交信息已注明）。**建议 2 条**：resyncArchiveState 全 outcome 执行（纯状态重读无副作用，T-17 diff 清单注记）／设计 §15.4 行号漂移（T-19 校准）。
+- **当前轮次**: 1　**最大轮次**: 2　**状态**: ✅ 已完成
 
 ### T-16 分家与微文案收口（91＋§16 全量）
 
@@ -347,3 +347,4 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 - 2026-11-04：**T-12 完成**（提交 `bb2786f`，Planner 核验 6 条全 PASS，206/0/0/0 `--rerun` 实测）：TopicBadge 四函数＋consumeFirstMoveGuide 落盘；流水线首对启动（T-12 Planner 与 T-13 Generator 并行）。T-13 已提交 `91fdaaa` 待核验，T-14 进行中。
 - 2026-11-04：**T-13 完成**（提交 `91fdaaa`，Planner 核验 6 条全 PASS——六件套 token 级逐字一致硬证据，零必修；1 建议＝EntryListScreen 死包装/常量重复→T-19 登记）。**T-14 完成**（提交 `e84aea9`，206 零修改全绿待核验；偏离 2＝AutoMirrored.List 图标（弃用警告规避）/448 行 KDoc 密度）。T-14 Planner 与 T-15 Generator 并行中。
 - 2026-11-04：**T-14 核验闭环**（Planner 7 条全 PASS 零必修；两偏离接受；建议 2＝注释措辞 T-15 顺手修＋indexOf 优化非阻断）。T-15 Generator 进行中。
+- 2026-11-04~05：**T-15 完成**（提交 `749bddd`）——Generator 撞 API 限流中断，**编排方接管补全**（MainScreen 七点＋决策测试）；T-15/T-16 双 agent 同限流窗口中断后于 11-05 续跑。**T-15 核验闭环**（Planner 从紧 7 条全 PASS 零必修；写盘段逐字节等价硬证据；2 建议归 T-17 注记/T-19 校准）。T-16 Generator 续跑中。
