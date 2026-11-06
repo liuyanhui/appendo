@@ -11,7 +11,7 @@ import android.widget.Toast
 fun showToast(context: Context, message: String) {
     // T-18 验收仪表（2026-11-06）：toast 字面落 logcat（tag=APPENDO_TOAST），
     // 真机验收以日志为事实源（TD-024）；仅 debug 观测，无行为影响
-    android.util.Log.d("APPENDO_TOAST", message)
+    android.util.Log.i("APPENDO_TOAST", message)
 
     val toast = Toast.makeText(context, "", Toast.LENGTH_SHORT)
 
