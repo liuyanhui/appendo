@@ -13,8 +13,8 @@ android {
         applicationId = "com.yiyue31.android.appendo"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.3.1"
+        versionCode = 11
+        versionName = "1.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

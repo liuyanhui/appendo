@@ -20,6 +20,7 @@
 | 2026-09-02 | Yiyue + Claude | v1.2.2 收尾：K10/K11 修复落地；真机定向验收五项通过并更新 §12 状态列；真机发现并修复 K12（SAF 授权失效静默，TD-021 受控复现+活体验收对话框自愈）与 K13（归档详情徽标）；重启提醒延迟登记 TD-022 待决策 |
 | 2026-09-02 | Yiyue + Claude | TD-022 决策（用户拍板）：**维持现状**（解锁后重注册/补发），成本/风险评估与理由入 §5.3 注记、§9 ADR 与 debt-tracker |
 | 2026-09-17 | Yiyue + Claude | v1.3 主题功能（需求 48~56）同步：§2 模块地图加 `ui/theme`、§3.6 SP 清单加 `theme_mode`；浅色强调色对比度取舍登记 TD-023（D1 方案 A：浅色不动） |
+| 2026-11-06 | Claude（Generator，T-19） | v1.4「移入主题＋主题 IA 分家＋归档清空合并」两批次同步：§1.2/§2 补 `topics` 路由与新文件（TopicListScreen/SwipeCard/TopicBadge/MultiSelect/TopicMoveDialogs/ArchiveRestore/Microcopy/TopicRepository/ThemePreferences/EntryKey/TopicMoveTransaction）与 `ArchiveOutcome`；§3.3 出口表增主题长按复制全文；§3.5 补主题文档协议（`topics/` 目录＋createdAt SP＋移入组合事务＋指路旗标）；§3.6 增 `appendo_topics`；§4.2 归档清空边界更新（TD-017 语义重构为 `ArchiveOutcome` 决策映射）；§5.4/§6.1/§6.3 提醒联动与写盘点更新；§11 SP 键清单核对 |
 
 ---
 
@@ -67,7 +68,7 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 
 | Activity | 职责 | 要点 |
 |---|---|---|
-| `MainActivity` | Compose 导航宿主（main → archive_list → archive_detail） | 提醒通知点按经 `onNewIntent`/`onCreate` 读 extra 传入深链时间戳 |
+| `MainActivity` | Compose 导航宿主（main → topics → archive_list → archive_detail；`archive_detail/{filePath}?kind=topic` 服务主题详情，kind 缺省＝归档） | 提醒通知点按经 `onNewIntent`/`onCreate` 读 extra 传入深链时间戳 |
 | `ShareReceiverActivity` | 接收 `ACTION_SEND`（text/plain），IO 协程里写入后 Toast + `finish()` | `noHistory` + `excludeFromRecents` + 空 taskAffinity，用户无感 |
 
 两 Activity 同进程（manifest 无 `android:process`），这是 `FileOperationLock` 进程内锁有效的前提。
@@ -77,12 +78,12 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 | 位置 | 职责 | 关键文件 |
 |---|---|---|
 | 根包 | 入口 | `MainActivity`（导航）、`ShareReceiverActivity`、`AppendoApplication`（建遗留通知渠道） |
-| `util/` | **条目与文件的协议层** | `EntryParser`（含 v1.3 出口格式化 `formatForExport`）、`MarkdownFileOperations`（接口+锁）、`MarkdownFileFactory`、`FileBasedMarkdownFile`、`SafMarkdownFile`、`MarkdownFormatter`（仅常量：文件头/归档文件名/分隔形态）、`ParsedEntry`/`ReadResult`（含 `failed` 标志） |
+| `util/` | **条目与文件的协议层** | `EntryParser`（含 v1.3 出口格式化 `formatForExport`；v1.4 公开 `countEntries` 计数与批量删除行算法 `buildContentWithoutEntries`——与 `parse` 共享扫描，无平行边界逻辑）、`MarkdownFileOperations`（接口+锁；v1.4 增 `deleteEntries` 批量删除原语，按 `timestamp|content` 寻址、失败返 null ⟺ 操作未发生）、`MarkdownFileFactory`、`FileBasedMarkdownFile`、`SafMarkdownFile`、`MarkdownFormatter`（仅常量：文件头/归档文件名/分隔形态）、`ParsedEntry`/`ReadResult`（含 `failed` 标志）、`EntryKey`（v1.4：`timestamp|content` 条目唯一标识，寻址/去重/勾选三处共用）、`TopicMoveTransaction`（v1.4：移入组合事务——单次持锁先写目标后删源，`MoveResult` 五分类） |
 | `util/`（提醒纯逻辑） | 提醒的纯函数 | `ReminderMeta`/`Recurrence`、`ReminderMetaCodec`、`ReminderLogic`、`ReminderText` |
 | `util/`（其他） | 独立小工具 | `CalendarEntryMapper`+`CalendarLauncher`（添加到日历）、`DuplicateHintThrottle`（重复内容提示：追加内容与已有条目相同时 Toast「已有相同内容 N 条」；仅手动输入路径经 5 秒节流，分享路径不节流、每次报数） |
-| `data/` | 存储偏好与归档管理 | `FileRepository`（SP 偏好 + URI 权限）、`ArchiveRepository`+`ArchiveFile` |
+| `data/` | 存储偏好与归档/主题管理 | `FileRepository`（SP 偏好 + URI 权限）、`ArchiveRepository`+`ArchiveFile`、`TopicRepository`（v1.4：`topics/` 主题文档管理＋`appendo_topics` 元数据＋`consumeFirstMoveGuide` 首次指路旗标——数据层唯一与存储协议无关的旗标方法，事务与协议语义零改动）、`ThemePreferences`（v1.3：外观三态偏好，`commit()` 落盘） |
 | `reminder/` | 提醒的 Android 侧 | `ReminderStore`（sidecar 单例）、`AlarmScheduler`、`NotificationHelper`、`ReminderAlarmReceiver`、`ReminderBootReceiver`、`ReminderIntents` |
-| `ui/` | Compose 界面 | `MainScreen`（主界面+全部对话框，含主题三选）、`EntryListScreen`（可复用列表）、`ArchiveListScreen`、`ArchiveDetailScreen`、`ReminderTimePickerDialog`、`LinkEntry`、`ToastUtils` |
+| `ui/` | Compose 界面 | `MainScreen`（主界面+全部对话框，含多选与移入主题、归档二选一、外观三选；顶层 sealed `ArchiveOutcome`＋归档决策映射 internal 纯函数 `archiveActionFor`）、`EntryListScreen`（可复用列表）、`ArchiveListScreen`（归档管理，v1.4 分家后仅整文件归档）、`ArchiveDetailScreen`（归档/主题详情，kind 区分标题）、`TopicListScreen`（v1.4：主题独立页）、`SwipeCard`（v1.4：滑动手势骨架共用，右删/左恢复/禁删钳 0；`ArchiveCard`/`TopicCard` 薄包装；`performVibration` internal 共享）、`TopicBadge`（v1.4：首字标色板派生纯函数——`deriveBadgePalette(primary, surface)` 8 色＋黑白自适应文字，对比度 ≥4.5:1 数学下界 4.583）、`MultiSelect`（多选选中集 `retainedSelection` 纯函数＋contextual 顶栏）、`TopicMoveDialogs`（移入流程对话框）、`ArchiveRestore`（恢复对话框＋去重追加，归档/主题两路共用）、`Microcopy`（微文案常量源）、`ReminderTimePickerDialog`、`LinkEntry`、`ToastUtils` |
 | `ui/theme/` | 主题（v1.3） | `Theme.kt`：`ThemeMode` 三态（跟随系统/浅色/深色，默认跟随系统）、`AppendoTheme` 双 ColorScheme（浅色=历史延续、深色=M3 亮容器+深 onXxx，AA ≥4.5:1）、success 扩展色（CompositionLocal）、状态栏图标同步。**全 UI 经 `MaterialTheme.colorScheme`/`successColor` 取色**（原 `AppColors` 已删除）；XML 侧（`values(-night)/themes.xml` 双变体 + Activity 冷启动 `setTheme`）只管窗口背景/状态栏，手动切换 = MainActivity 的 Compose State 纯重组（无重建），跟随系统 = uiMode 重建 + saveable 恢复 |
 
 **`EntryParser` 的地位**：所有"什么是一条条目"的知识（判定/解析/格式化/边界/时间戳单调/隔离标记/SAF 恢复判定）都收敛在这一个 object 里，纯函数。写侧（`format`）和读侧（`parse`）对称，两个存储实现共享同一套算法——v1.1 之前这套逻辑在两个实现里各复制一份，曾因此产生行为分叉。
@@ -156,7 +157,8 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 | 添加到日历（`CalendarEntryMapper.map`） | 显式 `stripIsolationMarkers` |
 | 提醒通知标题/正文（`ReminderText.title`） | 显式 `stripIsolationMarkers` |
 | 归档列表长按复制归档（`ArchiveListScreen`） | **v1.3 起同上：`parse` + `formatForExport`**（全文复制出口统一格式） |
-| **长按复制单条**（主列表 / 归档详情页） | **经 `parse` 产物天然干净**——`parse` 收集内容时已用 `restoreLine` 还原（与 `stripIsolationMarkers` 内部同一函数），无需再剥 |
+| **主题页长按复制主题全文**（`TopicListScreen`，v1.4） | **同上：`parse` + `formatForExport`**（与归档长按复制同款——主题内容出口统一格式，出口铁律同 §3.3 两条不变量） |
+| **长按复制单条**（主列表 / 归档与主题详情页 / 多选预览「复制」） | **经 `parse` 产物天然干净**——`parse` 收集内容时已用 `restoreLine` 还原（与 `stripIsolationMarkers` 内部同一函数），无需再剥 |
 | 打开文件（`MainScreen#openFile` → 外部查看器） | **有意不剥离**（原文含 ZWSP 直出）——外部编辑器/查看器场景按已知约束不受支持（§8.2）；新增出口勿仿效，除非同样声明为不支持场景 |
 
 **内部读取用 `readAll()`（保留标记）**，不要拿 `readAllForExternal` 的结果去做解析。
@@ -177,12 +179,25 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 
 设计取舍：sidecar 与文件必然出现不一致（条目被外部改掉、换 SAF 文件），所以子系统内置**对账**（§5.4）而非追求强一致。
 
-### 3.5 归档文件
+### 3.5 归档文件与主题文档
+
+**归档文件**：
 
 - 命名 `Appendo_yyyyMMdd_HHmmss.md`；**永远存应用私有外部目录** `getExternalFilesDir`（即使当前活动文件是 SAF 模式）。
 - 识别规则：同目录下文件名以 `Appendo_` 开头、`.md` 结尾（`ArchiveRepository`）。
-- 创建：走 `FileBasedMarkdownFile.writeAll`（享原子写+锁，与活动文件同格式，含 ZWSP）。
+- 创建：走 `FileBasedMarkdownFile.writeAll`（享原子写+锁，与活动文件同格式，含 ZWSP）。v1.4 起入口＝主界面网格「归档」二选一（「归档并清空」／「只归档，保留列表」；原菜单「归档」项与长按清空退役）。
 - 恢复（归档管理页左滑）：解析归档与当前文件，按 `timestamp|content` 组合键去重，对新增条目 `appendEntry(原时间戳, 内容)`——保留原时间是去重真正生效的前提。
+
+**主题文档**（v1.4「移入主题」，`topics/` 子目录）——与归档同级的第二种衍生文档：
+
+- 存储位置：`getExternalFilesDir/topics/<用户命名>.md`，**与主文件存储模式无关**（SAF 主文件时主题仍在私有目录）；正向标识＝`topics/` 目录成员关系（非命名排除式判据）。`topicsDir()` 对 `getExternalFilesDir` 为 null 的兜底与双候选目录合并扫描自愈见 `TopicRepository`。
+- 文件格式：**完全沿用 §3.1 协议**（`# Appendo` 文件头＋同一条目模板＋ZWSP 隔离不变量）——`parse`/`formatForExport` 直接可用；移入条目**原时间戳原样**、按时间戳字符串升序追加到目标末尾。
+- 创建时间元数据：SP `appendo_topics` 的 `created_<文件名含.md>`（epoch millis，一律 `commit()`）；key 丢失时首见以 `file.lastModified()` 回写一次后冻结；移入只改文件不动 SP——列表排序＝createdAt 倒序，稳定不漂移；条数不入 SP，加载时实时 `EntryParser.countEntries`。
+- 命名规则（`TopicNameRules` 纯函数，校验顺序固定）：空名 → 保留字（`Appendo` 全等/`Appendo_` 前缀，大小写不敏感）→ 非法字符（`/ \ : * ? " < > |` ∪ C0 控制）→ 长度 ≤50 → 同名（displayName 大小写不敏感比对，阻止并确认）。
+- 删除：仅空主题（0 条）可删（先删文件成功后删 SP key）；非空主题右滑钳 0 零响应。
+- **移入组合事务**（`util/TopicMoveTransaction`）：单次持 `FileOperationLock`，先写目标（恒 `FileBasedMarkdownFile` 真原子）后删源（`deleteEntries` 按 `EntryKey` 寻址、行算法与 `parse` 共享扫描）；`MoveResult` 五分类（`Success`/`SourceReadFailed`/`TargetReadFailed`/`TargetWriteFailed`/`SourceDeleteFailed`），任一失败态不出现"两边都没有"，重试幂等收敛；源读失败＝干净失败零副作用。
+- 恢复：复用归档恢复交互（`ui/ArchiveRestore`），复制语义（主题文档保留原条目）。
+- 指路旗标：`TopicRepository.consumeFirstMoveGuide()`——首次有效移入（moved>0 成功）toast 附指路后缀，读后置位一次完成（§3.6 键清单）；数据层仅此一个与协议无关的旗标方法。
 
 ### 3.6 SharedPreferences 清单
 
@@ -190,6 +205,7 @@ appendo 是一个极简 Android 速记应用：通过系统分享或手动输入
 |---|---|---|
 | `appendo` | `use_saf` / `file_uri` / `file_last_modified` / `theme_mode` | 存储模式、SAF URI、**逻辑 mtime**（§6.3）、主题三态（v1.3，缺省=system 不写入） |
 | `appendo_reminders` | `reminder_<ts>` | 提醒 sidecar（§3.4） |
+| `appendo_topics`（v1.4） | `created_<文件名含.md>` / `first_move_guide_shown` | 主题创建时间元数据（§3.5，一律 `commit()`——TD-024 纪律）＋首次移入指路旗标（`TopicRepository.consumeFirstMoveGuide`，纯 UI 引导元数据） |
 
 > `appendo` 这个名字是历史沿革（更早叫 `link_appending`）；老设计文档里写的 `link_appending` 已过时。
 
@@ -226,7 +242,7 @@ SAF 模式回退：由两个入口各自检查 `isFileUriValid()`，失效即 `c
 >
 > ⚠️ 曾有两个现实缺口（K8，**v1.2.1 已修复其一**）：写路径原先直读主文件、不先恢复，且把可能脏的内容写进 `.bak`（崩溃后若下一个操作是写入，脏状态被固化、好备份被污染）——现已改为写路径统一走 `readMainForWrite`（先 `ensureConsistent` 再读）。保留现状：恢复动作本身失败时删 `.pending` 防反复尝试，既未恢复也无提示（罕见退化分支）。
 
-`clear()` 两种模式都**不走** .bak——直接写文件头。数据安全由"清空前自动归档"兜底（specs：清空必先备份），避免崩溃回滚把清空前的内容又还回来。两个如实记录的边界：**归档兜底目前不设防**——`archiveFile` 忽略 `writeAll` 的失败返回值，归档失败仍会清空并提示"已归档"（TD-017 待决策）；`clear()` 本身不消费残留 `.pending`——若 clear 与上次崩溃残留之间无任何读操作，下次读会用 `.bak` 回滚掉清空（当前 UI 流程启动必先读、实际不可达，记为已知时序边界）。
+`clear()` 两种模式都**不走** .bak——直接写文件头。数据安全由"清空前自动归档"兜底（specs：清空必先备份；v1.4 起该路径＝网格「归档」二选一的「归档并清空」），避免崩溃回滚把清空前的内容又还回来。两个如实记录的边界：**归档失败绝不清空**（TD-017：v1.2.2 设防——归档失败阻止清空；v1.4 重构为 `archiveFile → sealed ArchiveOutcome`（`Archived(file)`/`NothingToArchive`/`Failed` 三分类，MainScreen.kt 顶层），MainScreen 顶层决策映射纯函数 `archiveActionFor(outcome, path, name)` 按「归档并清空／只归档」两路径给出 toast 字面与是否 clear/取消提醒——`Failed` 不清空并提示「归档失败，未清空」，清空段失败提示「清空失败（归档已保存）」，空内容分支 `NothingToArchive` 不清空；写盘段与重构前逐字节等价，决策映射由 `ArchiveOutcomeMappingTest` 全组合钉死）；`clear()` 本身不消费残留 `.pending`——若 clear 与上次崩溃残留之间无任何读操作，下次读会用 `.bak` 回滚掉清空（当前 UI 流程启动必先读、实际不可达，记为已知时序边界）。
 
 ### 4.3 并发：FileOperationLock
 
@@ -306,7 +322,7 @@ orphans = sidecarKeys − 当前解析出的条目时间戳集
 orphans → AlarmScheduler.cancel + store.remove
 ```
 
-同时这些路径**显式联动**：删除条目 → cancel+remove 该条；清空（先自动归档）→ cancel 全部 + removeAll。归档操作不动提醒（条目仍在文件里）。
+同时这些路径**显式联动**：删除条目 → cancel+remove 该条；清空（先自动归档，v1.4 起＝「归档并清空」路径）→ cancel 全部 + removeAll。归档操作不动提醒（条目仍在文件里——「只归档」同理）；**移入主题成功（含 N=0）→ 按 ts 取消所选条目的提醒**（K 在成功回调内重算；同 ts 存在未移走条目时不取消该提醒——连坐防护，一条提醒覆盖同 ts 全部条目）；一切失败态（含"两边都有"的 `SourceDeleteFailed`）不取消，由孤儿对账兜底。
 
 ### 5.5 自检（诚实边界）
 
@@ -324,7 +340,7 @@ orphans → AlarmScheduler.cancel + store.remove
 
 - `ShareReceiverActivity`：全部文件 I/O 在 `lifecycleScope + Dispatchers.IO`。
 - `MainScreen.refreshEntryCount`：读文件+解析在 `Dispatchers.IO`；随后的孤儿对账（AlarmManager cancel + SP 写，轻量）在协程主线程调度上执行。
-- 仍在主线程同步 I/O 的用户操作：追加/删除/更新/清空/归档/复制/分享，以及**最重的归档恢复**（归档全文读取+解析+逐条 `appendEntry`，每条都是全文件原子写）——个人笔记体量下可容忍，属已知债务（TD-008，随 ViewModel 重构一并下放）。
+- 仍在主线程同步 I/O 的用户操作：追加/删除/更新/复制/分享，以及**最重的归档恢复**（归档/主题恢复全文读取+解析+逐条 `appendEntry`，每条都是全文件原子写）——个人笔记体量下可容忍，属已知债务（TD-008，随 ViewModel 重构一并下放）。v1.4 起归档二选一两路径（`runArchiveAction`：归档段与清空段均在 `Dispatchers.IO`）与移入主题事务（`executeMove`）已下放 IO；主题页列表加载与操作后重载亦走 `Dispatchers.IO`。
 - 归档列表加载、归档详情加载在 `withContext(Dispatchers.IO)`。
 - **Broadcast Receiver 侧的主线程文件 I/O**：`rescheduleAll`（开机/更新/启动兜底）对每条已错过提醒调 `findEntryContent`（全文件读+解析，持锁），`ReminderAlarmReceiver.handleFire` 同样在主线程读——提醒多 + 文件大时与 UI 抢锁、逼近广播 10 秒限制（可后置 `goAsync` 或下放 IO）。
 - 锁是 JVM 内置 `synchronized`，跨这些线程互斥有效。
@@ -335,7 +351,7 @@ orphans → AlarmScheduler.cancel + store.remove
 
 ### 6.3 列表刷新：2 秒轮询 + 逻辑 mtime
 
-`MainScreen` 每 2 秒比对 `FileRepository.getFileLastModified()`——注意这是**存在 SP 里的逻辑时间戳**（应用每次写完调 `setFileLastModified(now)`），不是文件系统 mtime。效果：本应用各入口（分享接收、手动输入）的写入都会被轮询捕获；**外部编辑不会触发刷新**（与"不支持外部编辑"的立场一致）。该 mtime 由**各写点手工调用**维护（MainScreen 六处、ShareReceiverActivity、ArchiveListScreen 恢复各一处）——**新增写入路径必须补调**，否则列表不刷新。
+`MainScreen` 每 2 秒比对 `FileRepository.getFileLastModified()`——注意这是**存在 SP 里的逻辑时间戳**（应用每次写完调 `setFileLastModified(now)`），不是文件系统 mtime。效果：本应用各入口（分享接收、手动输入）的写入都会被轮询捕获；**外部编辑不会触发刷新**（与"不支持外部编辑"的立场一致）。该 mtime 由**各写点手工调用**维护（主列表写点在 `MainScreen`——手动输入/编辑/删除、移入事务成功与 `SourceDeleteFailed`（后者源可能已部分移除，立即主动刷新）；分享写入在 `ShareReceiverActivity`；恢复路径在 `ui/ArchiveRestore`，v1.4 起归档/主题两路共用各计一处）——**新增写入路径必须补调**，否则列表不刷新。v1.4 新写盘点口径：**主题文档（`topics/`）写入不触发主文件 mtime**（不同文件，主题页自身导航加载）；「归档并清空」清空成功后改调 `clearFileLastModified()`（清键驱动下轮轮询重读——文件已空、清键语义更准）＋`refreshEntryCount()`，「只归档」主文件未动不调。
 
 ## 7. 测试策略
 
@@ -439,6 +455,7 @@ orphans → AlarmScheduler.cancel + store.remove
 - 写侧隔离（不变量 1）与出口剥离（不变量 2）保持对称；新增出口已登记进 §3.3 出口表
 - 单调性只约束 `append()` now 路径；`appendEntry` 仍允许插入旧时间戳
 - 旧文件仍可解析：秒级条目、无 ZWSP 的历史归档、混合格式
+- 批量删除/移入事务与 `parse` 共享扫描（`buildContentWithoutEntries` 消费同一行区间产物，无平行边界逻辑）；移入事务单次持锁先写后删（§3.5）
 - 有纯 JVM 单测；`architecture.md` §3 已同步修订
 
 **动了存储层（`FileBasedMarkdownFile` / `SafMarkdownFile` / 工厂）**
@@ -464,7 +481,7 @@ orphans → AlarmScheduler.cancel + store.remove
 
 **动了 Intent 常量 / SP 键（事实上的持久化协议）**
 - `ReminderIntents` 的 action / extra / requestCode：改 action 串会孤儿化已注册的 PendingIntent 与存量通知按钮
-- SP 文件名与键（`appendo`、`appendo_reminders`、`reminder_` 前缀，§3.6）：改名即丢用户提醒/偏好
+- SP 文件名与键（`appendo`、`appendo_reminders`、`appendo_topics`、`reminder_`/`created_` 前缀与 `first_move_guide_shown`，§3.6）：改名即丢用户提醒/偏好/主题元数据
 
 **任何改动（通用）**
 - 按根 CLAUDE.md「任务完成检查」逐项过文档清单，**"改动面 → 本文回改小节"的映射显式过一遍**——§4.3/§8.3 曾因漏做此步而与代码脱节（四角色评审教训）
@@ -475,7 +492,7 @@ orphans → AlarmScheduler.cancel + store.remove
 
 | 验收对象 | 手段 | 状态 |
 |---|---|---|
-| 单元回归 | `./gradlew testDebugUnitTest` 全绿（改协议/提醒必跑） | ✅ 2026-09-17（133 用例，含 v1.3 主题 8 个） |
+| 单元回归 | `./gradlew testDebugUnitTest` 全绿（改协议/提醒必跑） | ✅ 2026-11-06（213 用例，含 v1.4 移入主题＋甲批次新增 71 个；最近全量实跑 2026-11-05，`--max-workers=1` 0 失败 0 跳过） |
 | 构建 | `./gradlew assembleDebug` 成功 | ✅ 2026-08-31 |
 | 默认模式数据完整性（真机） | 追加/删除/编辑后核对文件：debug 构建用 `adb shell run-as com.yiyue31.android.appendo cat /storage/emulated/0/Android/data/com.yiyue31.android.appendo/files/Appendo.md`（Android 11+ 文件管理器**无法**访问该目录，勿用"文件管理器查看"）；核对内容完整、无半写、无 BOM | ✅ 2026-08-31（写入+run-as 抽查） |
 | SAF 模式（真机） | 切换外部文件 → 写入 → 读回一致。崩溃恢复需**在写入窗口内中断**才触发（"限制后台后杀进程"发生在后台化时、造不出窗口，勿用）；可在写入瞬间 `adb shell am crash com.yiyue31.android.appendo` 模拟 | 部分 ✅ 2026-09-02：授权丢失场景已活体复现并验证 TD-021 修复对话框；`am crash` 写入窗口崩溃恢复仍未做（TD-006 关联） |

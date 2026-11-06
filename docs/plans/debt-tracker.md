@@ -128,3 +128,31 @@ TD-010 ~ TD-015 全部修复并随 v1.2.1 发布（详见 CHANGELOG 1.2.1、`tas
 - **TD-027 主题文档重命名**：本期不支持（specs 需求 85 修订 a 登记，用户裁定配套）。影响：自由命名后无法改名，误命名只能删空重建。优先级：低。
 - **TD-028 主题内单条移出/条目管理**：主题文档只读、无法删除或移出单条（需求 85 修订 d 已知限制，README 声明）；且"恢复→主列表编辑→再移入"会产生同时间戳新旧两版并存（去重键 timestamp|content 判不等，无法清理）。后续批次评估主题文档条目级管理。优先级：中。
 - **TD-029 多选全选与按时间/关键词筛选**：多选无全选/筛选，大批量分拣（如数十条）逐条勾选成本高（用户视角评审 F12）。优先级：低。
+
+---
+
+## 「移入主题」两批次收尾 — 集中登记（2026-11-06，甲计划 T-19 文档收尾；原批次 T-11 义务由 T-19 全量吸收）
+
+### 原批次遗留（12 条，TD-030~041）
+
+- **TD-030 `count()` 与 `countEntries` 表达式重复**（来源：原批次 T-01 评估建议）：`FileBasedMarkdownFile`/`SafMarkdownFile` 的 `count()` 与 `EntryParser.countEntries` 逐字同式，可收敛改调（当时按 R11「不扩大改动面」未动）。优先级：低。
+- **TD-031 「全删 × 空内容区域」组合边界无专门用例**（来源：T-02 建议、T-09 缺口三宗之一）：行为与设计 §6.3 归一化条款一致（非缺陷），缺专门钉死用例。优先级：低。
+- **TD-032 并发终态用例区分度变体**（来源：T-03 建议、T-09 缺口）：`TopicMoveTransactionTest` ⑦ 可加「并发 `updateEntry` 所选键」变体增强互斥证明的区分度。优先级：低。
+- **TD-033 设计文档行号漂移（§6.4）**（来源：T-03 建议「T-11 顺手更正」→按 T-19 口径改登记）：design §6.4 引用 `FileBasedMarkdownFile.kt:143`（createTempFile 未捕获分支）实际已漂移至 :161；**design/specs 已定稿不改动**，登备查——引用行号一律以源码为准。优先级：低（文档备查）。
+- **TD-034 `nextTimestamp` 亚毫秒重复 ts flake**（来源：T-04 发现）：既有 flake `appendReturningTimestamp_consecutiveCalls_uniqueTimestamps`——根因＝`EntryParser.nextTimestamp` 全精度比较 vs 毫秒截断显示，同毫秒连续 append 可能重复 ts（T-01~T-04 零触碰确证既有缺陷；本机 0/4 复现，负载相关）。修法方向＝按截断串比较＋`now` 参数注入做确定性钉死用例。执行口径（T-09 定）：遇此类 flake 复跑确认，仅确定性失败阻断。优先级：低。
+- **TD-035 `concurrentAppend` flake 补列**（来源：T-06 建议④）：`concurrentAppend_allEntriesPreserved_noInterleaving` 与 TD-034 同属既有负载相关 flake 家族（T-06 当轮定向＋全量复跑均绿）。优先级：低。
+- **TD-036 ui/CLAUDE.md 导航清单陈旧**（来源：T-07 建议①）：**已自解**——原登记时菜单/页标题已更名「归档与主题」，甲批次 T-16 回名「归档管理」后与现状一致；T-19 ⑤ 已同步清理其余陈旧项（补 `topics` 路由、移除菜单「归档」行、「外观」更名、新文件清单、归档二选一交互）。状态：✅ 关闭（2026-11-06）。
+- **TD-037 空主题详情「此归档为空」文案**（来源：T-07 建议②）：主题详情页（复用归档详情）空态文案沿用「此归档为空」，名词与主题语境不符；涉 `ArchiveDetailScreen` 空态字面。优先级：低（观感）。
+- **TD-038 空源 toast「归档为空」名词偏**（来源：T-07 建议③）：恢复空主题时共用路径的空源 toast 沿用「归档为空」（`ArchiveRestore` 按原样迁移红线未动字面，需动归档侧字面才能收敛）。优先级：低。
+- **TD-039 legacy「已删除/复制失败」内联直写家族**（来源：T-07 建议④）：`ArchiveListScreen`/`ArchiveRestore` 链路的「已删除」「已删除·复制失败」等内联字面未入 `Microcopy`（v1.3.x 收敛范围之外）。优先级：低。
+- **TD-040 `TopicMoveDialogs:108` 副文案内联收敛**（来源：T-08 建议）：:108 副文案「N 条 · 时间」仍内联直写（CODINGRULES:28 轻微偏离，含现成改法）。**E-2 后重估**：甲批次已按内联形态换序为「N 条 · 创建时间」（与 `topicCardSubtitle` 同序同形），收敛为常量的收益缩小，可缓。优先级：低。
+- **TD-041 test 目录 CLAUDE.md 清单滞后**（来源：T-09 缺口）：`src/test/` 各级 CLAUDE.md/README 未收录移入主题与甲批次新增测试文件（两批新增 71 个用例所在的 8 个测试文件）。优先级：低（文档）。
+
+### 甲批次新债（6 条，TD-042~047）
+
+- **TD-042 `EntryListScreen` 恒真 AnimatedVisibility 死包装＋阈值常量重复**（来源：T-13 评估建议）：`EntryListScreen.kt:254` 仍有恒真 `AnimatedVisibility(visible = true)` 死包装（与 ArchiveCard 旧包装同款，T-13 抽取时该文件不在边界）；其私有 `SWIPE_THRESHOLD_DP = 120f`（:65）与 `SwipeCard.kt:45` 同值重复——待 `EntryCard` 未来收敛进 SwipeCard 时一并清理。优先级：低。
+- **TD-043 `ArchiveCard` `swipeToDeleteEnabled` 死参**（来源：T-16 评估建议，新发现）：`ArchiveListScreen.kt:299` 的 `ArchiveCard.swipeToDeleteEnabled` 参数仅以默认值 true 透传 `SwipeCard`，无调用方传 false（归档卡恒可删；钳 0 语义现仅 `TopicListScreen` 按空主题条件传入）——接口面可收窄。优先级：低。
+- **TD-044 设计文档行号漂移（§15.4）**（来源：T-15 评估建议）：design §15.4 引用 MainScreen `topicRepository`（:193）实际现位于 :185；与 TD-033 同政策——**design/specs 已定稿不改动**，登备查。优先级：低（文档备查）。
+- **TD-045 `TopicMoveDialogs:75` KDoc 旧序失真**（来源：T-16 评估建议②「:75 KDoc 旧序失真顺手修」）：:72~75 KDoc 仍写「yyyy-MM-dd HH:mm · N 条」（时间在前），实际 :108 已按 E-2 换序为「N 条 · 创建时间」；源码注释不在 T-19 文件边界，未动。优先级：低（注释失真）。
+- **TD-046 A8 相关注释措辞校准**（来源：T-16 评估建议③）：`SwipeCard.kt:48`/`ArchiveListScreen.kt:291`/`TopicListScreen.kt:384` 引用「A8 裁定」的 KDoc 措辞可再校准（裁定表述为「抽公共骨架共用＋薄包装」的取舍记录，注释引用可更自包含）；源码注释不在 T-19 边界，未动。优先级：低（注释）。
+- **TD-047 主包 CLAUDE.md 路由清单陈旧**（T-19 收尾新发现）：`Appendo/src/main/java/com/yiyue31/android/appendo/CLAUDE.md` 仍写「三个页面路由」且路由树缺 `topics` 与 `archive_detail?kind`（不在 T-19 文件边界——"其他 CLAUDE.md"红线，未动）。优先级：低（文档）。
