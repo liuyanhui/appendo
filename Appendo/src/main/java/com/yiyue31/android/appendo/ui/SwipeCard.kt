@@ -5,9 +5,6 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -48,9 +45,10 @@ private const val SWIPE_THRESHOLD_DP = 120f
  * 滑动手势骨架（T-13，设计修订二 §14.1/§15.1 A8 裁定）：自 ArchiveCard 下沉的共用组件——
  * offset 状态、120dp 阈值（SWIPE_THRESHOLD_DP）、方向背景指示（右滑「删除」error 红／
  * 左滑「追加」successColor 绿＋onError/onSuccessColor 文字色）、禁删钳 0
- * （[swipeToDeleteEnabled] = false 时正向位移钳 0，85(a) 零响应）、首卡 elevation 动画
- * （index == 0 → 8dp）、行为回调注入。
+ * （[swipeToDeleteEnabled] = false 时正向位移钳 0，85(a) 零响应）、行为回调注入。
  *
+ * 卡片平面化（v1.4 换机验证视觉裁定，参考 iOS 分组列表）：elevation 恒 0、无首卡特例——
+ * 层级由页面底色（colorScheme.background）与卡片 surface 的色调差呈现，全应用列表统一。
  * 指示字面「删除/追加」与配色随骨架下沉、**不参数化**（两页语义同构：删除红/恢复绿，设计裁定）。
  * 既有恒真 `AnimatedVisibility(visible = true)` 包装随重构丢弃（A-6 后置项：恒真包装无动画语义）。
  * 消费方：ArchiveListScreen.ArchiveCard（薄包装）；T-14 TopicListScreen.TopicCard（薄包装）。
@@ -58,7 +56,6 @@ private const val SWIPE_THRESHOLD_DP = 120f
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SwipeCard(
-    index: Int,
     swipeToDeleteEnabled: Boolean = true,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -67,14 +64,6 @@ internal fun SwipeCard(
     content: @Composable () -> Unit
 ) {
     var offsetX by remember { mutableStateOf(0f) }
-    val cardElevation by animateDpAsState(
-        targetValue = if (index == 0) 8.dp else 2.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "elevation"
-    )
 
     // Calculate swipe action text and background
     val swipeActionText = when {
@@ -153,7 +142,8 @@ internal fun SwipeCard(
                     )
                 },
             shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = cardElevation),
+            // 平面卡（v1.4 视觉裁定）：elevation 恒 0，靠底色分层
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface
             )

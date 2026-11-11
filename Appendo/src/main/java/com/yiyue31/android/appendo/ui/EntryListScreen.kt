@@ -3,7 +3,6 @@ package com.yiyue31.android.appendo.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
@@ -83,7 +82,6 @@ fun EntryListScreen(
     entries: List<LinkEntry>,
     entryCount: Int,
     listState: LazyListState? = null,
-    sourceFileName: String? = null,
     readOnly: Boolean = false,
     onEntryLongClick: (String) -> Unit = { },
     onEntrySwipeToDelete: (String) -> Unit = { },
@@ -97,17 +95,8 @@ fun EntryListScreen(
     val reminderMap = ReminderStore.get(context).reminders.value
     val listStateResolved = listState ?: rememberLazyListState()
 
-    // Header
+    // Header（sourceFileName 参数随 2026-11-11 主题名并入顶栏标题裁定退役）
     Column {
-        if (sourceFileName != null) {
-            Text(
-                text = sourceFileName,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-        }
-
         Text(
             "已收集 $entryCount 条",
             style = MaterialTheme.typography.titleMedium,
@@ -120,17 +109,16 @@ fun EntryListScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             itemsIndexed(
                 // 按时间戳降序（决策 i）：恢复的旧时间戳条目回到历史位置，而非顶部。
                 // 时间戳格式零填充 ISO 风格，字符串降序 == 时间降序。
                 items = entries.sortedByDescending { it.timestamp },
                 key = { index, entry -> "${entry.timestamp}_$index" }
-            ) { index, entry ->
+            ) { _, entry ->
                 EntryCard(
                     entry = entry,
-                    index = index,
                     // 归档详情（readOnly）不显示提醒徽标：归档是历史快照，提醒属于活动文件的同时间戳条目（缺陷① 2026-09-02）
                     reminderLabel = if (readOnly) null else reminderMap[entry.timestamp]?.let { m ->
                         if (!m.fired) ReminderText.fullLabel(m) else null
@@ -167,7 +155,6 @@ fun EntryListScreen(
 @Composable
 private fun EntryCard(
     entry: LinkEntry,
-    index: Int,
     reminderLabel: String? = null,
     readOnly: Boolean = false,
     onLongClick: () -> Unit,
@@ -180,14 +167,6 @@ private fun EntryCard(
 ) {
     val context = LocalContext.current
     var offsetX by remember { mutableStateOf(0f) }
-    val cardElevation by animateDpAsState(
-        targetValue = if (index == 0) 8.dp else 2.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "elevation"
-    )
 
     // Calculate swipe action text and background
     val swipeActionText = when {
@@ -288,9 +267,8 @@ private fun EntryCard(
             Card(
                 modifier = cardModifier,
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = cardElevation
-                ),
+                // 平面卡（v1.4 视觉裁定）：elevation 恒 0，靠底色分层
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = containerColor
                 )

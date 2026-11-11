@@ -135,16 +135,17 @@ fun TopicListScreen(
                     }
                 },
                 actions = {
-                    // 新建主题（§15.1 顶栏行）：常驻含空态（B2 裁定「有」）；全新命名清输入
+                    // 新建主题（§15.1 顶栏行）：常驻含空态（B2 裁定「有」）；
+                    // 关窗不丢字（2026-11-11）：打开不再清输入——未命名草稿保留，创建成功才清空
                     IconButton(onClick = {
-                        newTopicInput = ""
                         createStep = TopicCreateStep.NAMING
                     }) {
                         Icon(Icons.Default.AddCircle, contentDescription = "新建主题")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    // v1.4 视觉裁定：顶栏随页面底色（colorScheme.background），与内容区无缝
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -186,16 +187,14 @@ fun TopicListScreen(
                 }
             } else {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(
                         items = topics,
                         key = { "topic_" + it.file.absolutePath }
                     ) { topic ->
-                        val index = topics.indexOf(topic)
                         TopicCard(
                             topic = topic,
-                            index = index,
                             badgePalette = badgePalette,
                             // 空主题副文案「空」（可发现性：滑动手势不可见，副文案补位提示可删状态）
                             subtitle = if (topic.entryCount == 0) {
@@ -363,19 +362,15 @@ fun TopicListScreen(
         )
     }
 
-    // 页内新建·同名提示（§15.1 C5 定稿：独立提示对话框——标题与移入流程同常量（默认色，提示类
-    // 非破坏）；「知道了」/点外/系统返回均回命名框（输入保留，可改名）；无「移入该主题」按钮
+    // 页内新建·同名提示（§15.1 C5 定稿；2026-11-11 换机验证裁定：去单「知道了」按钮——点外/系统返回
+    // 均回命名框（输入保留，可改名），沿 TopicSelectDialog 无按钮先例；无「移入该主题」按钮
     //（主题页语境无移入可言，94(b) 断言）
     if (createStep == TopicCreateStep.SAME_NAME_PROMPT) {
         AlertDialog(
             onDismissRequest = { createStep = TopicCreateStep.NAMING },
             title = { Text(Microcopy.DLG_SAME_NAME_TITLE, fontWeight = FontWeight.SemiBold) },
             text = { Text(Microcopy.dlgTopicPageSameNameBody(sameNameExistingName)) },
-            confirmButton = {
-                TextButton(onClick = { createStep = TopicCreateStep.NAMING }) {
-                    Text(Microcopy.BTN_GOT_IT, color = MaterialTheme.colorScheme.primary)
-                }
-            }
+            confirmButton = {}
         )
     }
 }
@@ -389,7 +384,6 @@ fun TopicListScreen(
 @Composable
 private fun TopicCard(
     topic: TopicDocument,
-    index: Int,
     badgePalette: List<Color>,
     subtitle: String,
     onClick: () -> Unit,
@@ -400,7 +394,6 @@ private fun TopicCard(
     // 取色链（§15.1 首字标规则）：deriveBadgePalette(primary, surface)[badgeIndex(displayName)]
     val badgeColor = badgePalette[badgeIndex(topic.displayName)]
     SwipeCard(
-        index = index,
         // 85(a)：非空主题右滑删除钳 0 零响应（swipeToDeleteEnabled=false）；仅空主题（0 条）可右滑删除
         swipeToDeleteEnabled = topic.entryCount == 0,
         onClick = onClick,

@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#1565C0</color>
-    <!-- v1.3 主题：窗口/状态栏（与 ui/theme/Theme.kt 的 Palette 同值同步） -->
-    <color name="window_bg_dark">#1C1B1F</color>
-    <color name="status_bar_light">#FFFFFF</color>
-    <color name="status_bar_dark">#1C1B1F</color>
+    <!-- v1.3 主题：窗口/状态栏（与 ui/theme/Theme.kt 的 Palette 同值同步）；
+         v1.4 视觉裁定（三轮）：底色分层——浅 #E8EDF4（蓝调）/ 深 #000000，卡片 surface 靠色调差呈现层级 -->
+    <color name="window_bg_light">#E8EDF4</color>
+    <color name="window_bg_dark">#000000</color>
+    <color name="status_bar_light">#E8EDF4</color>
+    <color name="status_bar_dark">#000000</color>
 </resources>

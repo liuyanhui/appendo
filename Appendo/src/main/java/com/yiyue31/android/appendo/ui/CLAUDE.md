@@ -13,7 +13,7 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 | `ArchiveListScreen.kt` | 归档管理页：归档卡片、滑动删除/追加恢复（去重）——v1.4 分家后仅整文件归档（主题移至 `TopicListScreen`）；`ArchiveEntryKind` 枚举定义留驻本文件 | 中 |
 | `ArchiveDetailScreen.kt` | 归档/主题详情页：复用 EntryListScreen（只读模式），`kind=topic` 传「主题详情」标题与来源文件名 | 低 |
 | `TopicListScreen.kt` | 主题独立页（v1.4，`topics` 路由）：主题卡片（彩色首字标）、页内新建（同名提示）、空主题右滑删除、左滑恢复 | 中 |
-| `SwipeCard.kt` | 滑动手势骨架共用组件（v1.4）：offset/120dp 阈值/方向背景指示（右删红/左恢复绿）/禁删钳 0/首卡 elevation；`ArchiveCard`/`TopicCard` 为薄包装；`performVibration` internal 共享 | 中 |
+| `SwipeCard.kt` | 滑动手势骨架共用组件（v1.4）：offset/120dp 阈值/方向背景指示（右删红/左恢复绿）/禁删钳 0；平面卡（elevation 恒 0，v1.4 换机验证视觉裁定，层级靠页面底色分层）；`ArchiveCard`/`TopicCard` 为薄包装；`performVibration` internal 共享 | 中 |
 | `TopicBadge.kt` | 主题首字标色板派生纯函数（v1.4）：`deriveBadgePalette`/`contentColorFor`/`badgeIndex`/`firstGrapheme`，全 JVM 可测 | 低 |
 | `MultiSelect.kt` | 多选选中集维护纯函数（`retainedSelection`）＋多选态 contextual 顶栏 | 低 |
 | `TopicMoveDialogs.kt` | 移入主题流程对话框：目标选择/新建命名/同名确认/确认（含失败重试态）/多选长按预览 | 中 |
@@ -22,7 +22,7 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 | `LinkEntry.kt` | UI 层条目模型：timestamp（完整时间戳串作 key）+ content + 派生 timestampDisplay | 低 |
 | `ReminderTimePickerDialog.kt` | 提醒时间选择：预设 chips + 自定义日期时间 + 每天/每周重复 | 中 |
 | `AppColors.kt` | ~~全局颜色常量~~ **已删除（v1.3）**：迁移为 `ui/theme/Theme.kt` 语义色（`MaterialTheme.colorScheme.primary`/`.error` + `successColor` 扩展），详见 `theme/CLAUDE.md` | — |
-| `ToastUtils.kt` | 自定义 Toast：圆角半透明黑色背景，兼容旧版 Android；两种主题下均可读，不随主题变色 | 低 |
+| `ToastUtils.kt` | 自定义 Toast：反色药丸（v1.4 视觉裁定——随应用主题反转：浅色深底白字/深色浅底深字，近不透明；ThemePreferences 偏好＋系统夜间同 Compose 解析规则），兼容旧版 Android | 低 |
 | `theme/`（子包） | 主题基础设施（v1.3）：`AppendoTheme` 双色板、success 扩展色、`ThemeMode` 三态、状态栏同步——见 `theme/CLAUDE.md` | 中 |
 
 ## 导航流程
@@ -30,7 +30,7 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 ```
 MainScreen ("main")
   ├── 点击顶栏"主题"图标（浏览态常驻含 0 条；多选态随 contextual bar 隐藏）→ TopicListScreen ("topics")
-  │                          └── 点击主题卡片 → ArchiveDetailScreen ("archive_detail/{filePath}?kind=topic"，主题详情)
+  │                          └── 点击主题卡片 → ArchiveDetailScreen ("archive_detail/{filePath}?kind=topic"，标题＝主题名)
   ├── 点击菜单"归档管理" → ArchiveListScreen ("archive_list")
   │                          └── 点击归档卡片 → ArchiveDetailScreen ("archive_detail/{filePath}"，kind 缺省＝归档)
   ├── 点击网格"归档"按钮（第四格）→ 弹出二选一对话框：「归档并清空」／「只归档，保留列表」（不导航；v1.4 起菜单"归档"项已移除，入口唯一化到网格）
@@ -77,8 +77,7 @@ data class LinkEntry(
 `EntryListScreen` 是跨场景复用的列表组件，通过参数控制行为：
 
 - **MainScreen 使用**：传入 `readOnly = false`，启用滑动删除与点击编辑；`listState` 参数由 MainScreen 传入（提醒通知深链滚动用）
-- **ArchiveDetailScreen 使用**：传入 `readOnly = true`，禁用滑动删除
-- `sourceFileName` 参数：可选，归档详情页显示来源文件名
+- **ArchiveDetailScreen 使用**：传入 `readOnly = true`，禁用滑动删除（标题＝主题名本身，「详情」二字冗余删除，2026-11-11 裁定；原 `sourceFileName` 列表头小字参数已退役）
 - 卡片显示提醒徽标：订阅 `ReminderStore`（Compose State），提醒触发即刻刷新，**不走**文件轮询
 
 ## 文件刷新机制

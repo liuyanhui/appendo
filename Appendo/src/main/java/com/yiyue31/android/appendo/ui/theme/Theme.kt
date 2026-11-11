@@ -64,19 +64,31 @@ private object Palette {
     val darkOnError = Color(0xFF4A0C10)
     val darkSuccess = Color(0xFFA5D6A7)
     val darkOnSuccess = Color(0xFF1B3D1F)
+
+    // 页面底色与卡片色（v1.4 换机验证视觉裁定三轮：卡片平面化——零投影＋底色分层，参考 iOS 分组列表；
+    // 二轮：间距 12→8dp、卡/底色差加大；三轮：浅底改蓝调——同明度对比度下中性灰显脏，微蓝贴品牌蓝观感清透；
+    // surface 显式覆盖＝卡片/容器色（含 MultiSelect 顶栏、外观预览），与 res/values/colors.xml 同值同步）
+    val lightBackground = Color(0xFFE8EDF4) // 蓝调底（非中性灰，贴 primary #2196F3；明度对齐二轮 #E8E8ED，白卡对比不变）
+    val darkBackground = Color(0xFF000000)
+    val lightSurface = Color(0xFFFFFFFF) // 纯白卡（弃 M3 默认 #FFFBFE 微紫底，拉大与底色色差）
+    val darkSurface = Color(0xFF26252B)  // 提亮一档（M3 默认 #1C1B1F 在纯黑底上色差不足）
 }
 
 /** 双配色（v1.3 起对主题选择对话框的"预览按钮"开放引用——颜色唯一定义处仍是本文件）。 */
 internal val AppendoLightScheme: ColorScheme = lightColorScheme(
     primary = Palette.lightPrimary,
-    error = Palette.lightError
+    error = Palette.lightError,
+    background = Palette.lightBackground,
+    surface = Palette.lightSurface
 )
 
 internal val AppendoDarkScheme: ColorScheme = darkColorScheme(
     primary = Palette.darkPrimary,
     onPrimary = Palette.darkOnPrimary,
     error = Palette.darkError,
-    onError = Palette.darkOnError
+    onError = Palette.darkOnError,
+    background = Palette.darkBackground,
+    surface = Palette.darkSurface
 )
 
 private val LightSuccess = SuccessColors(Palette.lightSuccess, Color.White)
@@ -100,9 +112,9 @@ fun AppendoTheme(mode: ThemeMode, content: @Composable () -> Unit) {
     }
 }
 
-/** 状态栏底色（与 res/values/colors.xml 同值；targetSdk 34 下 statusBarColor 尚可用）。 */
-private val LightStatusBar = Color(0xFFFFFFFF)
-private val DarkStatusBar = Color(0xFF1C1B1F)
+/** 状态栏底色（与 res/values/colors.xml 同值；targetSdk 34 下 statusBarColor 尚可用）——v1.4 起随页面底色（顶栏同色无缝）。 */
+private val LightStatusBar = Palette.lightBackground
+private val DarkStatusBar = Palette.darkBackground
 
 /**
  * 状态栏图标外观随主题同步（需求 51：浅色主题深色图标、深色主题浅色图标）。

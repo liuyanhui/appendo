@@ -42,10 +42,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 归档 / 主题详情页共用（T-07，§8.5）：[kind] = [ArchiveEntryKind.TOPIC] 时标题用 [screenTitle]
- * （调用方传「主题详情」）＋列表头部经 [EntryListScreen] 既有 `sourceFileName` 参数展示文件名小字
- * （displayName，不含 .md）；归档默认路径（[screenTitle] 缺省「归档详情」＋TopAppBar 文件名小字）
- * 显示行为零变化（89(h)）。
+ * 归档 / 主题详情页共用（T-07，§8.5；2026-11-11 换机验证裁定）：[kind] = [ArchiveEntryKind.TOPIC] 时
+ * 标题＝主题名本身（「详情」二字多余；原 sourceFileName 列表头小字退役——字号过小难认）；归档默认路径
+ * （[screenTitle] 缺省「归档详情」＋TopAppBar 文件名小字）显示行为零变化（89(h)）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,13 +83,20 @@ fun ArchiveDetailScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    // 文件名紧跟标题同一行弱化展示（小号灰字），不占正文空间
-                    // （主题路径不在顶栏重复展示——文件名小字经 EntryListScreen.sourceFileName 落列表头部，§8.5）
+                    // 主题路径（2026-11-11 换机验证裁定两步）：标题＝主题名本身（「详情」二字多余——
+                    // 返回箭头＋语境已表意；原名仅列表头部小字、字号过小难认）；归档路径维持原状——
+                    // 文件名小号灰字跟在「归档详情」后
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            screenTitle,
+                            if (kind == ArchiveEntryKind.TOPIC) {
+                                archive.name.removeSuffix(".md")
+                            } else {
+                                screenTitle
+                            },
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         if (kind == ArchiveEntryKind.ARCHIVE) {
                             Spacer(modifier = Modifier.width(8.dp))
@@ -113,7 +119,8 @@ fun ArchiveDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    // v1.4 视觉裁定：顶栏随页面底色（colorScheme.background），与内容区无缝
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -148,12 +155,7 @@ fun ArchiveDetailScreen(
                     entries = entries,
                     entryCount = entryCount,
                     readOnly = true,
-                    // §8.5：主题传 displayName（不含 .md）作文件名小字；归档不传、行为零变化
-                    sourceFileName = if (kind == ArchiveEntryKind.TOPIC) {
-                        archive.name.removeSuffix(".md")
-                    } else {
-                        null
-                    },
+                    // 主题名已并入顶栏标题（2026-11-11 裁定），sourceFileName 列表头小字退役
                     onEntryLongClick = { content ->
                         // Vibration is handled by EntryListScreen
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

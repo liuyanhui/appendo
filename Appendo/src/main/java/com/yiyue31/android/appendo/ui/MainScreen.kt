@@ -158,6 +158,8 @@ fun MainScreen(
     var showDetailDialog by remember { mutableStateOf(false) }
     var selectedEntry by remember { mutableStateOf<LinkEntry?>(null) }
     var editContent by remember { mutableStateOf("") }
+    /** 编辑草稿归属条目（关窗不丢字：同条目重开沿用草稿、换条目重置为原文；保存成功两者皆清） */
+    var lastEditedTs by remember { mutableStateOf<String?>(null) }
 
     // 「移入主题」多选态（topic-move 设计 §7.2）：选中集按 EntryKey 维护（§7.3，与复合 key 解耦）
     var selectionMode by remember { mutableStateOf(false) }
@@ -192,7 +194,7 @@ fun MainScreen(
         moveFlowStep = null
         moveTarget = null
         sameNameExisting = null
-        newTopicInput = ""
+        // newTopicInput 不清（关窗不丢字，2026-11-11）：命名草稿保留，创建成功才清空
         moveExecuting = false
         moveFailed = false
     }
@@ -605,7 +607,8 @@ fun MainScreen(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
+                        // v1.4 视觉裁定：顶栏随页面底色（colorScheme.background），与内容区无缝
+                        containerColor = MaterialTheme.colorScheme.background
                     ),
                     actions = {
                         // 主题页入口（修订二 §15.1，90）：浏览态常驻（主文件 0 条仍显示，此时排列退化为
@@ -851,8 +854,12 @@ fun MainScreen(
                         showDeleteDialog = true
                     },
                     onEntryClick = { entry ->
+                        // 关窗不丢字（2026-11-11）：同一条目重开沿用未保存草稿（仅换条目时重置为原文）
+                        if (lastEditedTs != entry.timestamp) {
+                            editContent = entry.content
+                        }
+                        lastEditedTs = entry.timestamp
                         selectedEntry = entry
-                        editContent = entry.content
                         showDetailDialog = true
                     }
                 )
@@ -1043,11 +1050,9 @@ fun MainScreen(
                     )
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showAboutDialog = false }) {
-                    Text("关闭")
-                }
-            }
+            // 2026-11-11 换机验证裁定：纯信息弹窗去单「关闭」按钮——点框外/系统返回双通道可关
+            //（沿 TopicSelectDialog 无按钮先例）；confirmButton 为必填槽传空
+            confirmButton = {}
         )
     }
 
@@ -1115,9 +1120,9 @@ fun MainScreen(
 
         AlertDialog(
             onDismissRequest = {
+                // 关窗不丢字（2026-11-11）：点外/返回仅关窗，编辑中内容保留（再次点开同条目可见）
                 showDetailDialog = false
                 selectedEntry = null
-                editContent = ""
             },
             title = {
                 Text(
@@ -1179,6 +1184,7 @@ fun MainScreen(
                             showDetailDialog = false
                             selectedEntry = null
                             editContent = ""
+                            lastEditedTs = null
                             keyboardController?.hide()
                             if (ReminderStore.get(context).hasUnfired(ts)) {
                                 showOverwriteReminder = true
@@ -1223,6 +1229,7 @@ fun MainScreen(
                             showDetailDialog = false
                             selectedEntry = null
                             editContent = ""
+                            lastEditedTs = null
                             keyboardController?.hide()
                             if (!CalendarLauncher.launch(context, entry)) {
                                 showToast(context, Microcopy.TOAST_NO_CALENDAR)
@@ -1253,6 +1260,7 @@ fun MainScreen(
                             showDetailDialog = false
                             selectedEntry = null
                             editContent = ""
+                            lastEditedTs = null
                             return@TextButton
                         }
                         try {
@@ -1273,17 +1281,18 @@ fun MainScreen(
                         showDetailDialog = false
                         selectedEntry = null
                         editContent = ""
+                        lastEditedTs = null
                     }
                 ) {
                     Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
                 }
             },
             dismissButton = {
+                // 「取消」＝仅关窗，编辑中内容保留（关窗不丢字，与点外/返回同语义）
                 TextButton(
                     onClick = {
                         showDetailDialog = false
                         selectedEntry = null
-                        editContent = ""
                     }
                 ) {
                     Text("取消")
@@ -1456,8 +1465,9 @@ fun MainScreen(
 
         AlertDialog(
             onDismissRequest = {
+                // 关窗不丢字（2026-11-11 换机验证裁定）：点外/返回仅关窗，草稿保留至下次打开
+                //（沿 C5 命名框输入保留先例）；保存成功才清空——消除误触点外的整段丢失
                 showInputDialog = false
-                inputContent = ""
                 // Hide keyboard when dialog closes
                 keyboardController?.hide()
             },
@@ -1585,8 +1595,8 @@ fun MainScreen(
                 }
             },
             dismissButton = {
+                // 「取消」＝仅关窗，草稿保留（与点外/返回同语义，关窗不丢字）
                 TextButton(onClick = {
-                    inputContent = ""
                     showInputDialog = false
                     keyboardController?.hide()
                 }) {
@@ -1630,6 +1640,7 @@ fun MainScreen(
                                 entryCount = 0
                             )
                             moveFailed = false
+                            newTopicInput = "" // 名称已消费进 moveTarget（关窗不丢字口径：此处清）
                             moveFlowStep = MoveFlowStep.CONFIRM
                         }
                         is TopicCreateResult.NameExists -> {

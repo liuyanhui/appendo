@@ -81,7 +81,6 @@ fun ArchiveListScreen(
     var isLoading by remember { mutableStateOf(true) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var archiveToDelete by remember { mutableStateOf<ArchiveFile?>(null) }
-    var archiveToDeleteIndex by remember { mutableIntStateOf(-1) }
     var showRestoreDialog by remember { mutableStateOf(false) }
     var restoreFile by remember { mutableStateOf<File?>(null) }
     var restoreName by remember { mutableStateOf("") }
@@ -120,7 +119,8 @@ fun ArchiveListScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    // v1.4 视觉裁定：顶栏随页面底色（colorScheme.background），与内容区无缝
+                    containerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -163,17 +163,15 @@ fun ArchiveListScreen(
             } else {
                 // 单 LazyColumn 归档单区（修订二 §15.2 分家：无分区标题，主题已独立成页）
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(
                         items = archives,
                         key = { it.file.absolutePath }
                     ) { archive ->
-                        val index = archives.indexOf(archive)
                         ArchiveCard(
                             title = archive.name.removeSuffix(".md"),
                             subtitle = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
-                            index = index,
                             onClick = { onArchiveClick(archive.file) },
                             onLongClick = {
                                 performVibration(context, VIBRATION_DURATION_SHORT_MS)
@@ -196,7 +194,6 @@ fun ArchiveListScreen(
                             onSwipeToDelete = {
                                 performVibration(context, VIBRATION_DURATION_LONG_MS)
                                 archiveToDelete = archive
-                                archiveToDeleteIndex = index
                                 showDeleteDialog = true
                             },
                             onSwipeLeftRestore = {
@@ -219,7 +216,6 @@ fun ArchiveListScreen(
             onDismissRequest = {
                 showDeleteDialog = false
                 archiveToDelete = null
-                archiveToDeleteIndex = -1
             },
             title = {
                 Text(
@@ -243,7 +239,6 @@ fun ArchiveListScreen(
                         }
                         showDeleteDialog = false
                         archiveToDelete = null
-                        archiveToDeleteIndex = -1
                     }
                 ) {
                     Text("删除", color = MaterialTheme.colorScheme.error)
@@ -254,7 +249,6 @@ fun ArchiveListScreen(
                     onClick = {
                         showDeleteDialog = false
                         archiveToDelete = null
-                        archiveToDeleteIndex = -1
                     }
                 ) {
                     Text("取消")
@@ -295,7 +289,6 @@ fun ArchiveListScreen(
 private fun ArchiveCard(
     title: String,
     subtitle: String,
-    index: Int,
     swipeToDeleteEnabled: Boolean = true,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -303,7 +296,6 @@ private fun ArchiveCard(
     onSwipeLeftRestore: () -> Unit
 ) {
     SwipeCard(
-        index = index,
         swipeToDeleteEnabled = swipeToDeleteEnabled,
         onClick = onClick,
         onLongClick = onLongClick,
