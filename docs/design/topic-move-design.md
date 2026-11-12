@@ -19,16 +19,26 @@
 > | 2026-11-11 | Yiyue + Claude | **换机验证弹窗精炼（第 6 轮，用户建议经分析采纳）**：纯信息单按钮弹窗去按钮——「关于」去「关闭」、主题页同名提示去「知道了」（点外/系统返回双通道可关，回调同路径、输入保留语义不变；沿 TopicSelectDialog `confirmButton = {}` 无按钮先例）。C5 三通道口径随改两通道（specs 修订注 ④）。多按钮弹窗（预览「复制/关闭」等）不动——「关闭」与真动作并列时有视觉平衡作用，如需进一步精简留 16.B 裁定。213 测试全绿＋装机 |
 > | 2026-11-11 | Yiyue + Claude | **换机验证输入框草稿保全（第 7 轮）**：用户反馈「新建/修改点外不能关」——核实：点外关闭本就启用（无 DialogProperties 禁用），键盘开启时首 tap 被输入法吃掉属 Android 常态（两次 tap：先收键盘再关框）；**顺藤查出真缺陷——dismiss/取消四处清空已输入内容**（手动输入 onDismissRequest/取消＋编辑框 onDismissRequest/取消），误触点外＝整段丢失。修复＝关窗不丢字：四处去清空赋值，草稿保留至再次打开、保存成功才清空（沿 C5 命名框输入保留先例）。specs 修订注 ⑤。213 测试全绿＋装机 |
 > | 2026-11-11 | Yiyue + Claude | **换机验证草稿保全补全（第 8 轮，用户实测「新建主题/编辑条目未生效」）**：第 7 轮只堵了「关窗清空」，漏了「打开重置」同族三处——①主题页「＋」打开即清 `newTopicInput`；②移入流程 `closeMoveFlow()` 清 `newTopicInput`；③**编辑条目打开即 `editContent = entry.content` 重置为原文**（同条目重开草稿被覆盖）。修复：①②去清空（创建成功/名称消费进 moveTarget 时才清）；③新增 `lastEditedTs` 草稿归属标记——同条目重开沿用草稿、换条目重置为原文、四处保存成功路径清标记。213 测试全绿（装机待设备重连） |
+> | 2026-11-12 | Yiyue + Claude | **修订三草案落盘（戊批次＝主题工作区化 v1.5.0，§19~§26）**：权威输入＝specs 16.B 修订三定稿（95~101，2026-11-12 用户确认，范围冻结线生效）。设计落点：全库条目定位 `EntryLocator`（通知/补发/深链三路同源）＋孤儿对账扩全库（单锁扫描＋主题 ts 缓存＋读失败跳过）＋事务通用化（SameDocument 护栏＋SAF 目标 exists 分离）＋主题工作区屏 `TopicWorkspaceScreen`（新建，archive_detail 主题路径退役）＋对话框抽取（编辑/输入自 MainScreen 下沉共享）＋`TopicRepository.renameTopic`（顺序钉死：先写新键→rename→删旧键）＋主题卡左滑改改名（恢复退役）。**状态＝草案（待三视角设计评审与用户确认）** |
+> | 2026-11-12 | Yiyue + Claude | **修订三·三视角评审修订落盘（草案修订二）**：评审（架构师/资深工程师/资深测试工程师，并行）36 项发现全采纳＋三项用户裁定（全部采纳／specs 101(b) 措辞微调／交付切分方案②）。修订要点：对账缓存升级 **mtime 自愈**＋统一失效规则（move 成功→源目标双失效）；EntryLocator **整体单锁**＋buildIndex 携带内容（ts→内容映射）；接口级 `existsCheckDefinitive` 判别（JVM 假实现可测）；深链解析移 **AppendoNavHost 组合域**＋门控＋scrollTs 清空口径；对话框抽取契约重写（**草稿提升宿主**/次级动作回调化/**ReminderFlowHost** 共享件）；**MoveFlow** 共享 holder＋MoveOutcomeMapping 纯函数；rename 补强（同目录落点/commit 检查/自身排除/锁内）；转移 N=0 专用文案变体＋BTN_RETRY 去重＋SAF 变体句式对齐；改动面补登 SwipeCard/MultiSelect/ArchiveListScreen；§25.1~§25.3 可测性修订（手工构造中间态/输出判据/配方 A·B·C/94(b) 重基线/(t)(c)(f) 造数脚本）；新增 §25.4 交付切分（方案②：工作区骨架前移 L1 尾）＋R26。**状态＝草案修订二（待用户确认定稿）** |
+> | 2026-11-12 | Yiyue + Claude | **修订三·定稿前复核轮闭环＋微修落盘（草案修订三）**：三角色复核（架构/工程/测试，用户指示启动）——34 项核销 32 PASS＋2 PARTIAL（根因均入新发现，零返工）；E8 否决经工程师再评估＝**同意维持**（撕裂复发论证成立）。新发现 15 项全采纳：唯一必修级**三方收敛**项＝**MoveFlow 编排两步走**（L1 新建供工作区单消费、MainScreen 暂持旧 executeMove、L2 抽取提交统一迁入）；其余＝mtime 缓存专项用例行（setLastModified 钉造法）/L1 门槛补 (l)/(n) ①②划界/97(e) 归 L2/空态 L1 中性句＋常量族名 TOPIC_WORKSPACE_EMPTY_*/MainScreen 改动面对账（−400±/编排两步走）/ReminderFlowHost 各屏实例形态/specs.md 补行/SAF 变体冒号句式/写侧无落点注/mtime 边界注/等价解释措辞核正/转移新建子流程注。三方判定一致：**修完可直接定稿、无需再评** |
+> | 2026-11-12 | Yiyue + Claude | **可学习性轮（用户指示：架构师/工程师第一次接触项目视角）＋修复落盘**：双新人评审（无会话上下文的干净 sub-agent）高度收敛——总评「评审史编年体而非实施手册」。修复七处：**新增 §19.0 新人导读**（一句话概述/现状 5 分钟版/L1·L2·L3 前置定义＋方案①②对照/评审编号免责/效力链与行号漂移指引/微术语表（含 K13 释义）/specs 95~101 一行摘要/阅读路线）；**文档头部状态行按批次分列**（原「定稿 2026-11-01」致新人误读全文定稿）；**§1.1 加历史快照注**（原一句话概述为 2026-10-31 形态，分区列表/左滑恢复已被后批推翻）；**§5.6 断链修正**（→architecture.md §5.6）；**EntryLocator 与 ts 缓存分工裁定**（locate/buildIndex 锁内实读全量、缓存专属对账——两节各说半边的接口口径闭合）；条目 E 引入句；K13 内联释义。§25.2 逐条断言摘要与 §25.4 任务清单化＝**留阶段3 计划文档承载**（新人建议：不增厚设计本体）。**仍待用户确认定稿** |
+> | 2026-11-12 | Yiyue + Claude | **修订三定稿（用户确认「1」）——戊批次阶段2 闭环**。下一步＝阶段3 执行计划起草（以 §25.4 交付切分为骨架；新人评审建议的任务清单化＋101 断言摘要在计划文档落实）→ Evaluator 核验 → 用户确认 → 编码 T-01 起（L1：提醒解耦＋移出/转移＋工作区骨架） |
 >
-> **状态：定稿（2026-11-01 用户确认）**（六阶段流程之阶段2 完成；阶段3 计划以本文为主要输入，执行时以本文为主要参考）
+> **状态（按批次分列，2026-11-12 新人评审后修正——后批覆盖前批，读哪章看哪行）**：
+> - §1~§13 原批（移入主题）：**定稿（2026-11-01 用户确认）**
+> - §14~§18 修订二（甲批次＝主题 IA 分家，v1.4.0 已发布）：**定稿（2026-11-04 用户确认）**
+> - §19~§26 修订三（戊批次＝主题工作区化，v1.5.0 进行中）：**定稿（2026-11-12 用户确认；历经三视角评审 36 项＋定稿前复核轮 15 项微修＋双新人可学习性轮 7 项修复）**
 >
-> 需求权威源：`docs/specs.md` 第 16 章（需求 82~89）。本文不重复需求条文，只做技术翻译；与需求冲突处以需求为准。
+> 需求权威源：`docs/specs.md` 第 16 章。本文不重复需求条文，只做技术翻译；与需求冲突处以需求为准。原批对应需求 82~89；修订二对应 90~94；修订三对应 95~101（specs 16.B）。
 
 ---
 
 ## 1. 概述与需求映射
 
 ### 1.1 一句话概述
+
+> **历史快照注（2026-11-12 新人评审后加）**：本节描述 2026-10-31 原批形态；其中「『归档与主题』分区列表」「左滑恢复」已先后被修订二（§15.2 分家）与本批修订三（§23.2 恢复退役）推翻。**现状以 §19 章头与 §19.0 导读为准**，本节留作历史。
 
 主列表进入多选模式，勾选若干条目后「移入主题」：在一个**单次持 `FileOperationLock` 的组合事务**里，把所选条目（按 `timestamp|content` 寻址、原时间戳原样）先写入手机本地主题文档、后从当前文件移除；目标可选已有主题或自由命名新建。主题文档与整文件归档在「归档与主题」列表分区展示，支持只读查看、长按复制全文、左滑恢复（复制语义）。
 
@@ -1012,3 +1022,352 @@ adb shell run-as com.yiyue31.android.appendo chmod 700 /storage/emulated/0/Andro
 | 数据层零改动（口径更正 A-1：data 目录＋一个与协议无关的旗标方法，事务与协议语义零改动） | §14.3 |
 
 > **修订二状态**：**定稿（2026-11-04 用户确认「按建议执行＋Roger that」）**——三视角评审修订全落（必修 A-1/E-1/T-1/T-2＋收敛/应补/后置共 20 项）；specs 94(f)「URI 失效」措辞随本定稿校正为会话中失效构造（见 §17.3）；阶段3 计划以 §14~§18 为直接输入。
+
+---
+
+## 19. 修订三·总览与文件改动面（戊批次：主题工作区化，v1.5.0）
+
+> 权威输入：specs 16.B 修订三**定稿**（条文 95~101＋就地注义务，2026-11-12 用户确认；**范围冻结线生效**——执行中新能力需求不就地扩批）。冲突以 specs 为准。§1~§18 为历史定稿（原批＋甲批次），与本章冲突处以本章为准。读码基线＝v1.4.0（`5796b32`）。**2026-11-12 三视角设计评审（架构师/资深工程师/资深测试工程师，并行，36 项发现全采纳＋三项用户裁定：全部采纳／specs 101(b) 措辞微调／交付切分方案②）修订已逐条落实于本章**；行号引用经评审抽查校正（编辑对话框实际 :1117-1302、输入对话框 :1456-1607）。
+
+### 19.0 新人导读（首次接触本项目者先读本节；2026-11-12 架构/工程双新人评审后增设）
+
+**本批一句话**：戊批次「主题工作区化」（v1.5.0）——主题从只读归类容器升级为**与主列表同权的可编辑工作区**（条目级操作＋复制/分享出口全对齐）；本地提醒随之**与存储位置解耦**：随条目全库走（移入不再取消提醒），通知/补发/深链按「先主列表后主题」定位条目。
+
+**现状 5 分钟版**（v1.4.0 基线，详见 `docs/architecture.md` §1~§5）：路由 main（主列表）/topics（主题页）/archive_list（归档页）/archive_detail（归档与主题共用的只读详情）；「移入主题」＝单锁「先写目标后删源」组合事务（§6）；提醒＝sidecar SP 按时间戳键控，孤儿对账只看主文件；主题卡左滑＝恢复（复制回主列表，本批退役）。
+
+**交付分层（详细定义见 §25.4，此处前置）**：**L1**＝提醒解耦＋移出/转移＋工作区屏骨架（含深链、移出/转移两钮）→ **L1 真机验证门槛全过** → **L2**＝抽取四件套（对话框/提醒流程/移动编排迁共享件）＋编辑/删除/批量删除/出口 → **L3**＝新增；**改名** L1 后并行；乙（设置页）不属本批。切分方案对照：方案①＝工作区屏整体随 L2 交付（L1 验不了徽标/深链）；**方案②＝骨架前移 L1 尾（本批采用，用户裁定）**。
+
+**评审编号免责**：正文中「评审 Xn／复核 X n／T-n」系历轮评审发现的过程编号，**无独立档案，除正文同时复述其内容外可忽略**，一切以正文为准。
+
+**效力链与行号**：§1~§13 ⊂ §14~§18（甲批次）⊂ §19~§26（本批），后批覆盖前批；文档头部修订记录是裁定史权威来源。源码行号引用均基于 v1.4.0（`5796b32`），本批自身改动会使行号漂移——漂移时按相邻符号名（函数/属性）搜索定位。
+
+**微术语表**：甲/戊/乙/丙＝批次代号（甲＝IA 分家 v1.4.0；戊＝本批；乙＝设置页，后置；丙＝条目级操作，已被戊吸收）｜B 档＝主题功能全面对齐主页（用户裁定）｜TD-xxx＝`docs/plans/debt-tracker.md` 登记项｜sidecar＝提醒元数据独立存储（SP，按时间戳键控）｜SAF＝Storage Access Framework 外部文件模式｜FileOperationLock＝全局文件锁（可重入）｜EntryKey＝条目唯一标识 `timestamp|content`｜MoveResult＝移动事务结果枚举（§6.4）｜逻辑 mtime＝应用自维护 SP 时间戳（非文件系统 mtime）｜MoveFlow＝本批新建的移动操作共享编排（§19.2）｜K13＝v1.4 评审定例「只读页不显提醒徽标」。
+
+**specs 95~101 一行摘要**（断言本体见 specs 16.B；101 验收 (a)~(w) 逐条在 specs，本档 §25.2 只给执行序与配方）：95 提醒解耦（孤儿判定扩全库/通知先主后主题/深链跳所在处/保留告知/清空切换跟随全库）｜96 移出与转移（事务镜像 84/去重透明/按钮与去向句分场景/源=目标拒绝）｜97 主题内编辑/删除/新增/多选/出口/对齐补遗｜98 改名（校验链复用/落盘顺序钉死）｜99 主题页恢复退役｜100 微文案（第五类动词「移出」）｜101 验收场景 (a)~(w)。
+
+**阅读路线**：架构/数据视角 §19→§21→§20→§23→§26；UI 视角 §19→§22；§24/§25 供计划与测试阶段；全程建议左手开 specs 16.B 对照。
+
+### 19.1 设计支柱（与 specs 95~101 的映射）
+
+| 支柱 | specs | 落点 |
+|---|---|---|
+| 提醒随条目走 | 95 | §20（EntryLocator＋对账扩全库＋联动退役＋深链＋保留告知） |
+| 事务通用化 | 96 | §21（SameDocument 护栏＋exists 按模式分离＋三动词一事务） |
+| 主题详情工作区化 | 97 | §22（TopicWorkspaceScreen 新建＋对话框抽取＋EntryListScreen 参数化） |
+| 改名＋恢复退役 | 98/99 | §23（renameTopic 顺序钉死＋左滑位改改名） |
+| 微文案 | 100 | §24 |
+| 验收 | 101 | §25 |
+
+### 19.2 文件改动面
+
+新增（`Appendo/src/main/java/com/yiyue31/android/appendo/`）：
+
+| 文件 | 层 | 职责与量级 |
+|---|---|---|
+| `reminder/EntryLocator.kt` | reminder | 全库条目定位（95(b)(c) 三路同源，**整体单锁**）：`EntryLocation`（MainFile/Topic(file)）sealed；核心编排纯函数（参数注入 `MarkdownFileOperations`＋主题 ts 快照——JVM 可测，评审 T2）＋生产便捷入口（Context 派生）；主文件优先、多主题命中取 `listTopics()` 序（createdAt 倒序）首个＝确定性次序；`buildIndex` 产出 **ts→(位置, 内容)**（specs 95(b)「ts→内容映射」字面满足，评审 C2） |
+| `reminder/OrphanReconciler.kt` | reminder | 对账扩全库编排（95(a)；**放 reminder 包**——util 不得依赖 data，评审 A5）：`reconcile(mainFile, topicRepo, reminderKeys): Set<String>?`——参数注入（JVM 可测，T2）；单次 FileOperationLock 内「读主文件＋主题 ts 并集」→ `ReminderLogic.findOrphans`（既有纯函数复用）；任一读失败返 null（本轮跳过）；孤儿集返调用方，cancel/remove 在**锁外**执行 |
+| `ui/TopicWorkspaceScreen.kt` | ui | 主题工作区屏（97 全量，~450 行）：顶栏（主题名＋「N 条」计数小字＋返回＋新增/复制/分享 actions）＋EntryListScreen 工作区模式＋多选 contextual bar＋移出/转移/批量删除动作＋空态＋读失败如实呈现；MoveFlow 共享 holder 与 MoveOutcomeMapping 消费方（§22.6） |
+| `ui/EntryEditDialog.kt` | ui | 编辑对话框自 MainScreen（**:1117-1302**）抽取共享（97(a)；**无状态渲染组件**——草稿状态提升宿主、次级动作回调化，契约见 §22.6） |
+| `ui/EntryInputDialog.kt` | ui | 手动输入对话框自 MainScreen（**:1456-1607**）抽取共享（97(c)；同款契约，onAppend(content): String? 返回新 ts） |
+| `ui/ReminderFlowHost.kt` | ui | 提醒设置流程宿主共享件（评审 E3③：权限 launcher＋pendingSchedule＋时间选择器接线＋「替换已有提醒」确认——此链路必须留组合域宿主，对话框组件仅回调触发）；MainScreen 与工作区屏两消费方（95(d) 61 镜像）；**组合形态：两消费屏各持一份组件实例**（权限 launcher 只能存在于当前屏组合内，顶层单例不可实现），pendingSchedule 等状态组件实例内自持、跨屏不共享（复核工程师 3） |
+| `ui/MoveFlow.kt` | ui | 移出/移入/转移共享状态 holder（评审 E7：moveFlowStep/moveTarget/moveExecuting/moveFailed＋执行编排，源文件＋动词参数化）＋`MoveOutcomeMapping` internal 纯函数（MoveResult 全态×动词×useSAF→toast/重试保持/失效目标/刷新动作，沿 M1 决策映射先例，评审 T8） |
+| 测试（§25.1 清单） | test | EntryLocator/OrphanReconciler/事务通用化/rename 中间态/MoveOutcomeMapping/微文案模板等 JVM 用例 |
+
+修改：
+
+| 文件 | 改动与量级 |
+|---|---|
+| `util/MarkdownFileOperations.kt` | +1 接口属性：`val existsCheckDefinitive: Boolean`（FileBased=true——exists()==false 可信「不存在」；SAF=false——exists() 吞 SecurityException 不可信；**事务步骤 3 分派依据，接口级判别使 JVM 假实现可测**，评审 T3）＋KDoc |
+| `util/TopicMoveTransaction.kt` | ~+25 行：① 入口 SameDocument 护栏（新 `MoveResult.SameDocument`）；② 步骤 3 按 `existsCheckDefinitive` 分派——SAF 目标**不查 exists、直接 readAllWithStatus**（读失败/授权失效→TargetReadFailed；SAF 目标＝当前主文件必已存在，「不存在」分支不可达），FileBased 目标维持 exists() 分支（懒创建起步，:121-128）；③ KDoc「目标恒私有目录」句清理 |
+| `data/TopicRepository.kt` | ~+80 行：① `renameTopic`（§23.1：同目录 rename＋自身排除＋锁内三步＋commit 检查）；② ts 缓存升级——条目＝`(mtime, Set<ts>)`，`allTopicTimestampsLocked(): Map<File, Set<String>>?` 锁内 stat 自愈校验（§20.2 评审 A2②）＋`invalidateTopic`/`invalidateAllTopics`（第一道防线保留）；③ `listTopics`/`deleteTopic` 读路径（:177/:236 不持锁 readText）改持锁包装 |
+| `ui/MainScreen.kt` | −400±/+80（迁出面＝对话框 ~338＋提醒权限链路 ~50＋L2 时编排 ~150，总量以 §22.6 抽取面为准——复核架构 2 量级对齐）：① 对账段（:297-306）改调 `OrphanReconciler.reconcile`；② executeMove 取消段（:347-369）删除＋`removedRemindersSuffix`（:386）退役＋确认框 K 行改保留告知；③ 清空分支（:452-455）改全库判定；④ 编辑/输入对话框（~338 行）＋提醒权限链路（:227-245）迁出至共享件——**编排两步走**：L1 期 MainScreen 暂持旧 executeMove（MoveFlow 随 L1 新建供工作区单消费），L2 抽取提交时统一迁入（§25.4，复核三方收敛）；`copyContent`/`shareContent` **提权 internal**（工作区复用，评审 E11）；⑤ `remindersToCancel` 退役 |
+| `reminder/ReminderAlarmReceiver.kt` | `findEntryContent`（:77-83）退役改 `EntryLocator.locateEntryContent`；handleFire 自愈（:36-40）语义不变 |
+| `reminder/ReminderBootReceiver.kt` | `rescheduleAll`（:17-35）改单遍 `buildIndex`（含内容）查表（95(b)） |
+| `MainActivity.kt` | ~+30：`AppendoNavHost` 组合域深链解析＋门控导航（§20.4 重写方案，评审 C1）；topics 路由 `onTopicClick` 改导航新路由 |
+| `ui/TopicListScreen.kt` | 主题卡左滑「恢复」改「改名」（RenameTopicDialog 预填变体）；主题侧恢复消费移除（99） |
+| `ui/SwipeCard.kt` | ~+8：左向指示字**参数化**（label 参数，默认「追加」保归档侧零改动）——**§14.1「指示字面不参数化」裁定随本条收窄推翻**（两页语义不再同构：恢复绿→改名，评审 E1/A11 显式注记） |
+| `ui/MultiSelect.kt` | ~+10：`MultiSelectTopBar` 增 action 槽参数（默认单钮保 MainScreen 零改动；工作区传三钮，评审 E2） |
+| `ui/ArchiveListScreen.kt` | `ArchiveEntryKind` 枚举定义（:59-66）随 kind 退役删除（牵连补登，评审 E11；退役时点＝L2，§25.4） |
+| `ui/ArchiveDetailScreen.kt` | 回归归档专用：kind 参数/主题分支退役（~−30 行）；**读路径换 `FileBasedMarkdownFile.readAllWithStatus`＋读失败如实呈现（TOPIC_READ_FAILED＋BTN_RETRY）**——specs 97 技术前提落实（评审 C3：不得维持「读失败呈空」旧例；该屏只读、前提中「读写路径」之**写侧无落点**——等价解释随 §24.4 义务登记，复核架构 3） |
+| `ui/EntryListScreen.kt` | ~+15：`headerText: String?` 参数（默认现状字面；工作区传 null——计数已入顶栏）；徽标/多选/`listState` 既有参数正向复用 |
+| `ui/TopicMoveDialogs.kt` | ~+80：移出/转移确认变体（去向句分场景＋保留告知行）、批量删除确认、RenameTopicDialog、目标选择「排除集合」参数 |
+| `ui/Microcopy.kt` | §24 定稿表 |
+| `docs/specs.md`/`README.md`/`CHANGELOG.md`/`docs/architecture.md` | specs 16.B 就地注义务全量（specs 就地注＋architecture 五节＋README 三段＋可感知变更清单——复核工程师 2 补 specs 本体行） |
+
+### 19.3 路由图
+
+```
+main ──顶栏「主题」──▶ topics ──点卡片──▶ topic_workspace/{filePath}?scrollTs={ts}（新）
+  │                                    └──深链命中主题──┘（AppendoNavHost 组合域解析后导航，§20.4）
+  └──菜单「归档管理」──▶ archive_list ──点卡片──▶ archive_detail/{filePath}（kind 退役，归档专用；退役时点＝L2，§25.4）
+```
+
+### 19.4 数据层改动面声明
+
+`topics/` 目录协议、条目模板、`created_*` 键语义、`first_move_guide_shown` 均**零改动**；新增＝renameTopic＋ts 缓存（mtime 自愈）与持锁读原语（对账/定位专用，不改变既有方法语义）。SP 仍单文件 `appendo_topics`，写纪律仍 `commit()`（TD-024）。
+
+---
+
+## 20. 修订三·提醒解耦（需求 95）
+
+### 20.1 全库条目定位 `EntryLocator`（95(b)(c) 同一解析函数族）
+
+现状：`findEntryContent`（ReminderAlarmReceiver.kt:77-83）只读主文件——fire（:35）与补发（ReminderBootReceiver.kt:24）已共用它，同函数前提成立（读码核实）。扩展为三路同源：
+
+- `EntryLocation`：`MainFile` / `Topic(file: File)`；
+- **整体单锁**（评审 A3）：`locateEntry`/`locateEntryContent`/`buildIndex` 全程 `synchronized(FileOperationLock)`——锁内完成「主文件读＋各主题读」，消除「主读与主题读之间夹入移出事务」的双 miss 误杀面（synchronized 可重入，锁内逐文件读成本与现状相同；fire/boot 无轮询级频次顾虑）；
+- 定位次序：主文件命中→MainFile；否则 `listTopics()` 序（createdAt 倒序）首个含该 ts 的主题→Topic；全库无→null（**多主题确定性次序**，95(b)）；同 ts 两处并存取主文件（specs 95(b)）；
+- `buildIndex` 产出 `Map<ts, (EntryLocation, content)>`——**一遍读全库时顺手留内容**（specs 95(b)「ts→内容映射」字面满足，评审 C2/A6/E9；boot 路径一次性内存换 I/O，条目为短文本、体量可控）；`rescheduleAll` 单遍查表发补发；
+- **与 ts 缓存的分工（新人评审 N5 裁定）**：locate/buildIndex 走**锁内实读全量**（本就需要条目内容，且 fire/boot/深链为低频路径）；§20.2 的 ts 缓存**专属对账**（2 秒高频、只需 ts 集无内容）——两路各取所需，EntryLocator 不消费缓存、缓存不存内容；
+- 可测性（评审 T2）：核心编排为参数注入纯函数（`locateEntryLocked(mainFileOps, topicTsSnapshots, ts)` 等），生产入口仅做 Context→参数装配——ReminderStore 私有单例与真实 SP 不进被测面。
+
+自愈语义保持：fire/补发定位失败＝全库不存在＝真孤儿→cancel+remove（架构 §5.2 不变，判定域扩为全库）。
+
+### 20.2 孤儿对账扩全库（95(a)：单锁／缓存自愈／读失败跳过）
+
+**正确性前提落法**（specs 定稿不可越；评审 A1/A2 修订后）：
+
+1. **单锁扫描**：`OrphanReconciler.reconcile` 在单次 `synchronized(FileOperationLock)` 内完成「读主文件＋取主题 ts 并集」→ `ReminderLogic.findOrphans`（既有纯函数）；cancel/remove 锁外执行。**reconcile 自读主文件、不接受调用方传入的 mainTs**——调用方（轮询）的展示读在锁外，若复用其结果则「调用方读与锁内主题读」之间仍可夹入事务，撕裂面复发（评审 E8 的省读建议据此否决：多读一个主文件为 ms 级，正确性优先）。
+2. **主题 ts 缓存＋mtime 自愈**（评审 A2 三案取②）：缓存条目＝`(mtime, Set<ts>)`；`allTopicTimestampsLocked()` 对每主题**锁内 stat**——mtime 与缓存一致→用缓存；不一致→锁内重读该文件并更新缓存。**自愈式兜底**：不依赖调用方失效纪律，未来新增写点忘失效亦兜住；顺带覆盖 USB 直改主题文件的陈旧边界（改文件必变 mtime）。第一道防线保留：**统一失效规则＝`move(source, target)` 成功 → invalidate(source)＋invalidate(target)**（移入＝目标、移出＝源、转移＝双侧——一条规则封死枚举遗漏，评审 A1）；主题内编辑/删除/新增/批量删除→该主题；改名→invalidateAll；空主题删除→该主题。缓存访问一律在 FileOperationLock 内（HashMap 非线程安全，评审 E10）。**边界注（复核架构 4）**：自愈为兜底而非强一致保证——粗粒度 mtime 文件系统上「同窗两次写且第二次漏失效」理论窗口存在；topics/ 恒在应用私有目录（非 FAT 2s 场景）且 atomicWrite temp+rename 恒产新 mtime，实际风险面闭合。
+3. **读失败跳过**：stat 后需重读的任一主题文件读失败（I/O 异常）→ `allTopicTimestampsLocked()` 返 null → reconcile 返 null → 本轮对账整体跳过（读失败≠空集，沿 RefreshGuard/需求 39 纪律；`TopicRepository`「读失败按 0 条」先例（:176-180）不得被对账沿用）。
+
+`MainScreen.refreshEntryCount` 对账段（:297-306）替换为 reconcile 调用；`listTopics`/`deleteTopic` 读路径改持锁包装（撕裂防护顺手收敛）。每轮对账成本＝主文件读×2（展示＋reconcile 各一，单文件 ms 级）＋N 次 stat（微秒级）——满足「2 秒轮询不得显著变慢」（101(t) 门槛兜底）。
+
+### 20.3 联动退役与清空/切换收窄（95(e)：63 跟随全库判定）
+
+- **移入联动取消退役**：executeMove 成功分支取消段（MainScreen.kt:347-369）整体删除；`remindersToCancel` 退役（「连坐防护」由全库孤儿判定自然涵盖）；`removedRemindersSuffix` 拼接（:386）退役。
+- **「归档并清空」收窄**：清空分支 cancel 全部（:452-455）改为调 `OrphanReconciler.reconcile`（清空后主文件空集，孤儿集＝sidecar−主题集＝63 收窄条文语义）。
+- **切换/自定义主文件零代码跟随**（读码核实为真）：换文件回调即 `clearFileLastModified＋refreshEntryCount`（MainScreen.kt:477-481/:490-494），对账段替换后自动全库化——README 句随义务改写。
+- **删除联动（主列表/主题内）**：删除回调按 ts 调全库判定（reconcile 同款锁内查询）——全库再无该 ts 才 cancel+remove；同 ts 他处残留保留（101(i) 断言）。
+
+### 20.4 深链跳所在处（95(c) 落地；评审 C1 重写）
+
+现状：通知仅携 ts（NotificationHelper.kt:48-55）；`MainActivity.scrollTs`（:36/:46/:70）只被 MainScreen 消费。**navController 在 `AppendoNavHost` 组合内创建（:88），Activity 层不可达**——解析与导航整体落**组合域**：
+
+- `AppendoNavHost` 增 `LaunchedEffect(scrollTs.value)`：非空→`Dispatchers.IO` 调 `EntryLocator.locateEntry`（读文件不进主线程）；
+- **MainFile**→不动作（MainScreen 既有 LaunchedEffect 消费，:212-227 零改动）；**Topic**→门控「`navController.currentBackStackEntry` 目的地＝main」（冷启天然满足；不满足＝用户在其他页，丢弃不弹错——沿 architecture.md §5.6「条目已删自然不滚、不弹错」口径（新人评审 N4 修正：原裸写「§5.6」违反本文引用约定），specs 95(c) 竞态不作断言）→ `navigate("topic_workspace/{encodedPath}?scrollTs={ts}")`，导航后经回调清空 scrollTs State；**null**→清空 State、不跳不弹错；
+- **双通道一致性口径**：主题态消费后清空 State，防返回主列表时同 ts 二次消费；MainFile 态由 MainScreen `scrolledTs` 只滚一次护栏（:213-220）自守；
+- PendingIntent **零改动**（仅携 ts——98「不按主题名寻址」前提成立，改名不破坏深链）。
+
+### 20.5 保留告知与存量语义（95(f)）
+
+- 确认框 K 预览复用现状口径，行文案「K 条提醒将随条目保留。」（§24）；移入/移出/转移三确认框 K>0 时均附。
+- 存量语义零代码：v1.4 已取消提醒 sidecar 已删、无复活路径——「不复活/禁迁移重建」＝无迁移代码的显式声明；CHANGELOG 口径随义务清单（§24.4）；升级场景断言随 101(b) 配方 C 连做（§25.2）。
+
+---
+
+## 21. 修订三·事务通用化与移出/转移（需求 96）
+
+### 21.1 `TopicMoveTransaction` 通用化
+
+`move(source, target, keys)` 签名已通用（:103-107）——移入＝move(主, 主题)；移出＝move(主题, 主)；转移＝move(主题A, 主题B)。改动三点：
+
+1. **SameDocument 护栏**（评审 M1）：入口处 `source === target` 或（双 FileBased 且 `canonicalPath` 相同）→ 新 `MoveResult.SameDocument`，零副作用。正常 UI 不可达（目标列表排除当前主题），护栏纯防御——A→A 现状「全 skipped＋步骤 6 无条件删源」致条目删光却报成功（:130-159 读码实证）。
+2. **目标读按 `existsCheckDefinitive` 分派**（评审 A5＋T3）：接口级判别属性（§19.2），非 `is` 类型检查——JVM 假实现可控测试两分支。SAF 目标（definitive=false）不查 exists、直接 `readAllWithStatus`（读失败/授权失效→TargetReadFailed 干净失败；SAF 目标＝当前主文件必已存在）；FileBased 目标（definitive=true）维持 exists() 分支（懒创建起步，:126-128，防 FileNotFound 误判）。
+3. KDoc 清理：「目标恒为 FileBasedMarkdownFile」句（:11/:99）作废改写。
+
+失败语义（84 镜像，MoveResult 复用＋SameDocument 扩）：移出方向 TargetWriteFailed＝主文件可能部分写入（SAF 软恢复）、主题原样；SourceDeleteFailed＝主文件已写全、主题部分移除（「两边都有」，重试幂等收敛）；任一态无「两边都没有」。
+
+### 21.2 UI 流与三动词（96 剩余条文落点）
+
+- **按钮字面**：多选 contextual bar 三钮＝「移出到主列表」「移入其他主题」「删除」（§24；禁裸「移入主题」）；bar 经 `MultiSelectTopBar` action 槽参数注入（§19.2）。
+- **目标选择**：目标选择列表增「排除集合」参数——转移场景传当前主题（SameDocument 为事务层第二道防线）；是否含「新建主题」子流程（沿移入对话框 2/2b 复用）计划阶段定（复核工程师 6）。
+- **确认去向句分场景**：移出＝`dlgMoveOutConfirmBody(n)`；转移＝`dlgTransferConfirmBody(n, target, source)`；移入（主列表场景）维持现句＋保留告知行；三确认框 K>0 均附 `reminderKeepLine`。
+- **执行**：`Dispatchers.IO` 内 `move`（沿 executeMove 先例），经 **MoveFlow 共享 holder**（状态机＋编排参数化，两屏消费）；成功→`invalidate(source)＋invalidate(target)`（§20.2 统一规则）＋目标侧刷新（移出→`setFileLastModified`——工作区在栈顶时 MainScreen 已非组合态，主列表经**返回时轮询/初始加载**自动刷新，不直接调用其方法，评审 A12）＋本页重载＋toast 三态（MoveOutcomeMapping 映射，§19.2）；失败→对话框保持变「重试」＋保持勾选；移出目标读失败且 useSAF→SAF 变体 toast。
+- **升序追加**：事务 :144-147 升序拼接对主列表目标同样成立（83 镜像）——零额外代码，101(q) 断言。
+
+---
+
+## 22. 修订三·主题详情工作区化（需求 97）
+
+### 22.1 `TopicWorkspaceScreen` 骨架
+
+| 项 | 设计 |
+|---|---|
+| 路由 | `topic_workspace/{filePath}?scrollTs={ts}`（filePath 经 Uri.encode——沿既有调用点构造式） |
+| 顶栏 | 标题＝主题名（primary SemiBold，2026-11-11 裁定维持）＋同行小字「N 条」（97(f) 计数镜像，onSurfaceVariant）；返回箭头；actions＝新增（AddCircle 沿主题页先例）＋复制全部＋分享全部。**选型预警（评审 E）**：material-icons-core 无 ContentCopy 字形（Share/Add 有）——复制动作图标在核心集内选型或改文字动作，**计划阶段定，不引入 extended**（§15.1 纪律） |
+| 加载 | `LaunchedEffect(filePath)`＋`Dispatchers.IO` 经 `FileBasedMarkdownFile.readAllWithStatus`；**读失败如实呈现**「读取失败，请重试」＋重试按钮（TOPIC_READ_FAILED/BTN_RETRY） |
+| 列表 | `EntryListScreen(entries, count, readOnly=false, listState=…, headerText=null)`——徽标（readOnly=false 即启用提醒徽标——K13 定例「只读页不显徽标」的工作区反向；:122-125）、滑动删除、点击编辑、长按复制、多选参数正向复用；**specs 97「新增模式参数而非翻只读开关」的等价解释**：徽标由 readOnly 派生（readOnly=false 即正确启用）、滑动/多选为独立参数正向复用——工作区语境＝全部正确启用，无第三态需求故不新增冗余参数（措辞按复核工程师 E12 核正）；此解释在条文落点表登记，就地注义务同步注明（评审 E12） |
+| 空态 | 条目 0→「暂无条目」＋新增引导（§24；不复用「此归档为空」旧句） |
+| 轮询 | **不引入**（97(f)：写路径全应用内、操作后显式重载；滚动位置经 LazyListState 跨重载保持） |
+| 退出 | 返回主题页（列表重载反映条数变化——TopicListScreen LaunchedEffect(Unit) 返回重组重载，读码核实） |
+
+### 22.2 编辑与删除（97(a)(b)）
+
+- **编辑**：点击条目→`EntryEditDialog`（§22.6 契约）——onSave 宿主实现＝`updateEntry(ts, newContent)`（按 ts 命中首条，与主列表同语义；97(b) 有意差异仅限删除全删）；保存成功→`invalidateTopic`＋重载＋toast「已保存」；⏰/日历次级动作经 `onRequestReminder`/`onRequestCalendar` 回调→`ReminderFlowHost`（75 先落盘语义随流程宿主保留）。
+- **删除**：右滑→确认框（error 红＋振动，22/29/78）→`deleteEntries(setOf(EntryKey))`（同 key 全删，与 96 寻址一致）→95(e) 全库判定联动＋失效＋重载；全删→归一化纯文件头（既有保证）→空态。
+
+### 22.3 新增（97(c)）
+
+- 入口：顶栏新增图标→`EntryInputDialog`——onAppend 宿主实现＝`appendReturningTimestamp(content)`（毫秒 ts 主题内唯一由 nextTimestamp 既有语义保证）；重复内容非阻塞提示（parse 计数＋`DuplicateHintThrottle` 节流，42 镜像）；次级动作先落盘（追加成功→ReminderFlowHost/日历，75 复用）。
+- **目的地标识（硬要求）**：成功 toast＝`toastAppendedToTopic(name)`「已追加到「X」」（沿「已归档到 name」「已追加到默认文件」先例）；对话框标题带主题名语境（§24）。
+
+### 22.4 多选与批量动作（97(d)）
+
+- 进入/退出/勾选/contextual bar 形态沿 §7.2；选中集按 EntryKey＋重载保留（`retainedSelection` 复用）。
+- 长按＝预览（预览对话框复用——**内含复制动作**，读码核实 TopicMoveDialogs.kt:296-306；「长按复制不被占用」断言落点）。
+- 批量动作三钮（§21.2，`MultiSelectTopBar` action 槽）；批量删除＝确认框明示 N 条（`dlgBatchDeleteBody`）→`deleteEntries(keys)`→95(e) 逐 ts 联动＋失效＋重载。
+
+### 22.5 出口（97(e)）
+
+复制全部/分享全部＝顶栏两动作，复用 `copyContent`/`shareContent`（提权 internal 后共享，MainScreen.kt:1780-1820——parse＋formatForExport 出口铁律）；toast「已复制全部内容」（79）；主题卡长按复制全文维持。architecture.md §3.3 出口表增两行（义务清单）。
+
+### 22.6 抽取契约（97 技术前提落地；评审 E3/C4 重写）
+
+**抽取面**（行号经评审校正）：编辑对话框 MainScreen **:1117-1302**、输入对话框 **:1456-1607**，合计 ~338 行；MoveFlow 状态机（:174-208 状态＋executeMove 编排＋对话框栈接线）~150 行。三项抽取纪律：
+
+1. **对话框组件无状态化**（草稿保全结构性保持）：`EntryEditDialog`/`EntryInputDialog` 只渲染传入值＋回调；**草稿状态（inputDraft/editDraft＋lastEditedTs 归属标记）提升至各宿主**（v1.4 屏级状态原样上移——组件内 `remember` 关窗即卸载会丢草稿，直接破坏 2026-11-11 修订⑤「关窗不丢字」）。两宿主各自持草稿、互不相通（同 ts 主/题并存时各宿主独立草稿，天然无冲突）。
+2. **次级动作回调化**：`onRequestReminder(ts)`/`onRequestCalendar(content)`——权限 launcher 回调触发时对话框已离组合，链路必须留宿主层；抽 **`ReminderFlowHost`** 共享件（权限 launcher＋pendingSchedule＋时间选择器接线＋「替换已有提醒」确认），MainScreen 与工作区屏两消费方（95(d)）。
+3. **MoveFlow 共享 holder**：移出/移入/转移状态机与执行编排参数化（源文件＋动词），两屏消费；`MoveOutcomeMapping` internal 纯函数挂 `MoveFlow.kt`（决策映射全组合 JVM 钉死，沿 M1 先例）。
+
+抽取作为 **L2 首个独立提交**（先抽取＋MainScreen 接线＋81 系与修订④⑤行为回归全绿，再上新屏功能——§25.4）；git diff 逐行核对清单随提交。
+
+---
+
+## 23. 修订三·改名与恢复退役（需求 98/99）
+
+### 23.1 `TopicRepository.renameTopic`（顺序钉死；评审 A8/E10 补强）
+
+```kotlin
+fun renameTopic(topic: TopicDocument, rawName: String): TopicRenameResult =
+synchronized(FileOperationLock) { … }
+// TopicRenameResult：Renamed(newTopic) / 校验链五态（复用 TopicNameValidation→映射） / Failed
+```
+
+- **校验链**：`TopicNameRules.validate` 全量复用＋**自身排除**——`existing` 列表剔除本主题 displayName（否则 A→a 仅大小写变化、②后③前崩溃窗口的重试均被同名分支误拒，评审 E10）。
+- **落盘顺序（specs 98 钉死＋评审补强）**：① `putLong(created_<新名>, topic.createdAt).commit()`——**返回 false 即中止返 Failed**（不得带病执行②，评审 A8）→ ② `File(topic.file.parentFile, 新名+".md")` 同目录 renameTo（**同目录＝同文件系统，rename 原子性成立；跨目录在双卷设备上 renameTo 恒 false＝永久 Failed 不可重试**，评审 A8；失败→`remove(created_<新名>).commit()` 回滚→Failed 全旧态）→ ③ `remove(created_<旧名>).commit()`。
+- **崩溃窗口分析**（经架构师复核成立）：①后②前崩→孤儿新键＋旧名文件＝**旧态**；②后③前崩→新名文件＋新键（①已写）＝**终态**（旧键孤儿无害）；「文件新名而无 created_ 键」结构性不可达——首见回写冻结 mtime 缺陷（:188-195）不可触发。
+- **锁边界**：全程 `synchronized(FileOperationLock)`——与移入/移出事务（单锁写主题文件）互斥，防 renameTo 与事务 atomicWrite 按不同路径交错写回（评审 E10）。
+- 成功→`invalidateAllTopics()`（缓存键含路径）＋主题页重载（createdAt 不变→排序不漂移）；首字标按新名重算（纯函数零改动）；未触发提醒与深链零影响（§20.4 按 ts 动态解析）。
+
+### 23.2 入口定稿：主题卡左滑＝改名；恢复退役（98 入口二选一→左滑位；99）
+
+- **主题卡左滑「恢复」退役、左滑位改「改名」**：SwipeCard 左向指示（绿）＋指示字「改名」（label 参数注入——**§14.1「指示字面不参数化」裁定随本条收窄推翻**：两页语义不再同构，参数化为最小改动，归档侧默认值零改动，评审 E1）；松手→`RenameTopicDialog`（NewTopicNameDialog 预填变体）；右滑＝空主题删除（85(a)）、长按＝复制全文（90）——三手势各归其位。
+- 退役清单：TopicListScreen 左滑恢复接线、`RestoreConfirmDialog` 主题侧消费、`TOPIC_RESTORE_NOTE`（ArchiveRestore 与 ARCHIVE_RESTORE_* 归档侧保留——读码证实恢复只写主文件，对账「无需失效」判断正确）；85(a) 清理路径文案改写；README「滑动操作差异」段重写＋可感知变更醒目注明。
+
+---
+
+## 24. 修订三·微文案定稿表（需求 100；全部落 `Microcopy.kt`，字面按「精炼且准确表意」总原则，评审可改字面不改模板）
+
+### 24.1 新增（经评审工程核对去重修正）
+
+| 常量 / 函数 | 定稿字面 | 来源 |
+|---|---|---|
+| `BTN_MOVE_OUT` | 移出到主列表 | 96 按钮钉死 |
+| `BTN_MOVE_TO_OTHER` | 移入其他主题 | 96 按钮钉死 |
+| `dlgMoveOutConfirmBody(n)` | 将 $n 条移出到主列表。 | 96 去向句分场景 |
+| `dlgTransferConfirmBody(n, target, source)` | 将 $n 条移入「$target」，并从「$source」移除。 | 96 去向句分场景 |
+| `reminderKeepLine(k)` | $k 条提醒将随条目保留。 | 95(f) 三确认框共用行 |
+| `toastMovedOutCount(n)` | 移出到主列表 $n 条 | 100（M=0 简形） |
+| `toastMovedOutSkipped(n, m)` | 移出到主列表 $n 条（$m 条已存在） | 100 主模板 |
+| `toastMovedOutAllExisting(m)` | $m 条已在主列表中，已从主题移除 | 100 N=0 |
+| `toastMovedAllExistingTransfer(m, target, source)` | $m 条已在「$target」中，已从「$source」移除 | 100 转移 N=0 专用（**不得**复用 toastMovedAllExisting——其「已从列表移除」在源＝主题时为事实错误，specs 96 明文禁例，评审 E4） |
+| `TOAST_MOVE_OUT_FAILED` | 移出失败 | 100 |
+| `TOAST_MOVE_OUT_FAILED_SAF` | 移出失败：自定义目录授权可能已失效，请重新选择文件 | A10 变体（**冒号句式对齐既有移入 SAF 变体**（「移入失败：…」），复核 E5/工程师 4 二并一修；字面设计评审终定） |
+| `toastAppendedToTopic(name)` | 已追加到「$name」 | 97(c) 目的地标识 |
+| `TOPIC_WORKSPACE_EMPTY_TITLE` / `TOPIC_WORKSPACE_EMPTY_BODY` | 暂无条目 / 点右上角“＋”添加条目（**L1 期用中性句、L3 落地后切此句**——§25.4，复核架构 1/工程师 5） | 97(f)（命名沿 TOPIC_PAGE_EMPTY_* 空态族＋弯引号对齐惯例，复核工程师 5） |
+| `TOPIC_READ_FAILED` | 读取失败，请重试 | 22.1 读失败如实呈现（重试按钮复用既有 `BTN_RETRY`，评审 E5——见 §24.2） |
+| `DLG_TOPIC_RENAME_TITLE` | 重命名主题 | 98 |
+| `dlgTopicRenameBody(current)` | 当前名称：$current | 98（预填语境） |
+| `TOAST_TOPIC_RENAMED` / `TOAST_TOPIC_RENAME_FAILED` | 已重命名 / 重命名失败 | 98 |
+| `SWIPE_LABEL_RENAME` | 改名 | 23.2 左滑指示字 |
+| `dlgBatchDeleteBody(n)` | 将删除所选 $n 条条目。 | 97(d)（沿删除确认句式族） |
+| `TOAST_SAME_TOPIC_GUARD` | 已在当前主题中 | 96 SameDocument 防御（不可达路径兜底） |
+
+### 24.2 复用（零新字面；经评审核对）
+
+转移成功两态＝既有 `toastMovedCount`/`toastMovedCountSkipped`（N>0 场景「移入主题 N 条」动词族归属正确；N=0 用 §24.1 专用变体）；`BTN_RETRY`（既有）＝读失败重试按钮；删除确认/「已保存」/「已复制」/「已复制全部内容」/「内容不能为空」等既有常量直用。
+
+### 24.3 退役（删除断言降级为评审检查项——编译期残留引用已保证，评审 T10）
+
+`removedRemindersSuffix`、移入确认框提醒失效行、`TOPIC_RESTORE_NOTE`、ArchiveDetailScreen 主题路径全部文案、`MoveResult`/`TopicMoveTransaction` KDoc「目标恒私有目录」句。
+
+### 24.4 文档义务（specs 16.B 就地注义务落点）
+
+specs 就地注（84(c)/85(a)(d)/86/88/89(i)/58/62/63/64＋97 技术前提等价解释注）；README（两项限制改写＋清空切换句＋先主后主题注明＋三段重写＋可感知变更清单——恢复退役醒目注明）；CHANGELOG v1.5.0（含存量提醒不复活口径）；architecture.md §3.3（出口表＋2 行）/§3.5/§5.4/§6.1/§8.2。
+
+---
+
+## 25. 修订三·测试与验收映射（需求 101）
+
+### 25.1 JVM 单测义务（新增/扩展；经评审可测性修订）
+
+| 对象 | 用例要点 |
+|---|---|
+| `TopicMoveTransaction` 通用化 | SameDocument 两形态（源目标零改动）；SAF 目标分支（**假实现 `existsCheckDefinitive=false`＋readAllWithStatus 抛/返失败**→TargetReadFailed；接口级判别使假实现可达，评审 T3）；移出六态＋N/M 计数（MoveFaults 扩注入）；转移=同事务断言 |
+| `TopicRepository.renameTopic` | **崩溃窗口＝手工构造中间态**（评审 T5，零生产钩子）：①后②前＝putTopic(旧名)＋假 SP 直写 `created_<新名>` → 断言 listTopics 旧态/排序不变/createdAt 保留；②后③前＝手工 rename＋写新键 → 断言终态等价；自身排除（A→a 改名成功）；renameTo 失败回滚（Windows 句柄/占位法，沿 T-02 纪律）；锁内互斥冒烟 |
+| `TopicRepository` ts 缓存（mtime 自愈） | 三态＋**自愈支线**：缓存命中/失效重读/读失败返 null 传播；自愈支线＝绕过 invalidate 直接改文件＋`File.setLastModified` 钉 mtime → 断言锁内重读收编（**勿依赖写盘自然 mtime 差**——同粒度窗口两次写可同 mtime 致假阴性，沿该测试文件 Windows FS 特性注记纪律）；注入沿 TemporaryFolder＋InMemorySharedPreferences 先例（复核测试 1） |
+| `OrphanReconciler` | 扩全库判定（仅主题存活不杀/全库消失杀/主＋主题并存不杀）；任一主题读失败→null 跳过；**撕裂防护＝输出判据**（评审 T6，沿 ⑦ 先例弃时序断言）：并发 reconcile×双向 move（main↔T 往返）多轮，断言 reconcile 每次输出零误报（存活 ts 从不出现在孤儿集）＋终态一致 |
+| `EntryLocator` | 主优先/主题兜底/多主题确定性次序（createdAt 倒序首个）/全库 miss/buildIndex 与 locate 同源（参数注入纯函数直测，评审 T2） |
+| `MoveOutcomeMapping` | MoveResult 全态（含 SameDocument）×动词×useSAF 组合：toast 字面/重试保持/失效目标/刷新动作——**动词口径与交付同步**：L1 交付移出/转移组合、移入组合随 L2 编排迁入补全（沿 ArchiveOutcomeMapping 先例，评审 T8；复核测试 3/工程师 1 收敛） |
+| `EntryParser` 复用断言 | 主题内删除全删/新增 ts 唯一性/升序追加至主列表目标 |
+| 微文案模板 | §24 新常量字面钉死（退役常量走检查项不写测试，评审 T10） |
+
+### 25.2 真机验收映射（101 (a)~(w) → 执行序；配方经评审钉死）
+
+| 验收 | 落点/前置（配方） |
+|---|---|
+| (a)(b)(c)(d) 提醒解耦四项 | §20 全量。**(b) 前置三选（评审 T1，specs 101(b) 措辞已随批微调为「存量恢复副本数据或手工构造」）**：**配方 A（推荐主证据）**＝任取一条条目（下称 E）留主列表并设未触发提醒→`adb shell run-as … sh -c 'cat >> …/topics/T.md'` 追加 E 同 ts 同内容条目块（与 §10.1 89(d) run-as 手法同源）；**配方 B**＝chmod 软中间态（与 (f) 连做）；**配方 C**＝装 v1.4 APK→移入→左滑恢复造真实存量→覆盖安装 v1.5.0（**顺带连做存量不复活断言**：到点不响、sidecar 无 key，评审 T11）。同 ts 多主题＝配方 A 向第二主题追加＋直写 `appendo_topics.xml` created_* 钉 createdAt 次序 |
+| (e)(f)(g)(q)(u) 移出/转移五项 | §21；(e) SAF URI 会话中失效（复用 §17.3 T-1 法：`adb shell rm /sdcard/<dir>/Appendo.md`；ROM DocumentsProvider 缓存降级时由 JVM 假实现轨兜底——依赖 §25.1 T3 修复）；(f)＝`chmod 500 topics`→移出→SourceDeleteFailed 两边都有→`chmod 700`→重试收敛 |
+| (h)(i)(j)(k)(v)(w) 工作区六项 | §22；(w) 前置＝移出全部致空。**(k) 追加断言：新增成功后顶栏计数 N+1；(w) 追加断言：移出全部后顶栏归零＋空态（评审 T7——97(f) 计数镜像验收载体）** |
+| (l) 转移 | §21.2（列表排除当前主题断言） |
+| (m) 改名 | §23.1（崩溃窗口由 JVM 中间态构造覆盖，真机断言功能面） |
+| (n)(o)(p)(r)(s)(t) 其余 | §20.3/§22.5/§24.4；(r) 清空后主题提醒继续触发；(s) 主题内重复提醒贪睡锚点；**(t) 造数脚本＝run-as 直写 topics/*.md（created_ 缺失走首见回写可接受）＋89(p) 分享循环填充主列表，脚本入库为可重放资产（评审 T9）；(c) 真机轨＝`run-as chmod 000 topics/T.md`→刷新→断言提醒不被清＋日志佐证** |
+
+### 25.3 回归门槛（v1.5.0 发布门槛，specs 风险注；经评审修订）
+
+第 13 章提醒套件全量回归（57~67 逐条）＋89 反向断言（(i) 新断言＝101(a)）＋94(a)~(f) 复测（**94(b) 手势槽断言重基线：左滑＝改名（RenameTopicDialog 预填＋输入保留）；恢复断言仅归档侧保留**，评审 T4）＋213 既有测试全绿＋新增全绿；对话框抽取后 **81 系微文案＋2026-11-11 修订④⑤行为复测**（三通道关窗/两通道关闭/输入保留/草稿保全——抽取迁移面全覆盖，评审 T12）；**§24.4 文档义务清单逐项核对**（README/CHANGELOG/architecture 五节）。
+
+### 25.4 交付切分（方案②，2026-11-12 用户裁定；阶段3 计划直接消费）
+
+**L1（提醒解耦＋移出/转移，含工作区屏骨架前移）**：
+- 数据/事务层：`existsCheckDefinitive`＋事务通用化＋EntryLocator＋OrphanReconciler＋ts 缓存（mtime 自愈）；
+- MainScreen：对账替换/取消段删除/清空收窄/保留告知；
+- **工作区屏骨架前移（评审切分预研方案②）**：TopicWorkspaceScreen 只读列表＋多选＋「移出到主列表」「移入其他主题」两钮（移出/转移＝96＝L1 功能）＋路由＋深链接线（EntryListScreen headerText 参数＋MultiSelectTopBar action 槽随此落）——101(a) 徽标/主题深链在 L1 即可验；「删除」钮＝97(d)＝L2 挂；**MoveFlow.kt 随 L1 新建、供工作区单消费**（移出/转移编排＋Mapping 移出/转移组合；MainScreen 暂持旧 executeMove——两套编排并存过渡态，L2 统一迁入，复核三方收敛项）；**L1 期空态用中性句**（无新增钮可指，L3 切引导句，§24.1）；
+- SwipeCard label 参数化＝改名前置，独立小改宜 L1 初落；
+- **L1 真机验证门槛**（specs 风险注）：101(a)(b)(c)(d)(e)(f)(g)(l)(q)(u)＋(n) ①②子句（95(f) 保留告知两断言——③随改名批次、④随发布门槛）＋89(i) 反向＋(r) 全过方进 L2（(l) 转移为 L1 交付面，复核测试 2；(n) 划界＝复核测试 4）。
+
+**L2（编辑＋删除＋多选补全＋出口）**：**抽取四件套为 L2 首个独立提交**（EntryEditDialog/EntryInputDialog/ReminderFlowHost/MoveFlow——对话框与提醒链路迁出＋MainScreen executeMove 编排统一迁入 MoveFlow（两屏消费定型）＋Mapping 补移入组合＋回归全绿，后上工作区编辑/删除/批量删除/97(f) 补遗/**97(e) 出口（顶栏复制/分享全部，验收 (o)——复核测试 5 归层）**；ArchiveDetailScreen 读路径修复＋kind/ArchiveEntryKind 退役机械清理（L1 尾起已无消费方））。
+
+**L3（新增）**：EntryInputDialog 接线（抽取件已备，L3 只加工作区接线＋目的地标识）。
+
+**改名**：L1 后可与 L2/L3 并行（前置＝SwipeCard 参数化＋缓存基建 invalidateAll；深链不按名寻址前提由 EntryLocator 先行满足）。
+
+**乙（设置页）/TD-029**：不属本批（specs 编组落位）。
+
+---
+
+## 26. 修订三·风险（经评审更新）
+
+| # | 项 | 口径与处置 |
+|---|---|---|
+| R19 | MainScreen 抽取重构（对话框 ~338 行＋MoveFlow ~150 行迁出面，v1.4 刚定稿的草稿保全/先落盘时序在迁移面内） | §22.6 三项纪律（无状态组件/草稿提升宿主/回调化）＋抽取=L2 首提交＋81 系与修订④⑤行为复测（§25.3）＋git diff 逐行核对；MainScreen 第五度触碰——改动限于对话框迁出/MoveFlow 迁出/对账替换/取消段删除/清空收窄五块 |
+| R20 | 轮询对账锁内吞吐 | 缓存命中＝主文件读×2（展示＋reconcile）＋N 次 stat（微秒级）；mtime 自愈免「失效风暴全量重读」；101(t) 门槛兜底；锁外 cancel/remove |
+| R21 | 深链解析导航竞态 | 组合域解析＋门控「目的地＝main」＋导航后清空 scrollTs（§20.4）；竞态不作断言（specs 95(c)） |
+| R22 | 改名后路由残留 | 改名唯一入口＝主题页左滑；工作区屏只被 push 不 push 他人、深链仅门控通过时 push——改名可达时工作区必已出栈（读码＋评审双核实） |
+| R23 | EntryListScreen headerText 参数化＋SwipeCard label 参数化＋MultiSelectTopBar action 槽（三处既有组件触碰） | 参数默认值保既有消费方零改动；94(c) 归档只读回归抽查＋SwipeCard 归档侧默认值回归；工作区为既有参数正向复用（非新逻辑） |
+| R24 | 事务 SAF 目标分支新增（v1.4 未有 SAF 目标路径） | 接口级判别＋MoveFaults 扩注入＋101(e) 真机受控复现（94(f) 证据层级；ROM 降级由 JVM 假实现轨兜底） |
+| R25 | 范围冻结纪律（B 档体量＋执行期新信号） | specs 16.B 范围冻结线：新能力需求一律 debt-tracker/后续批次立项；交付序＝§25.4（L1→L2→L3＋改名并行；L1 真机验证后再进 L2） |
+| R26 | L1 骨架前移的中间态复杂度（工作区屏在 L1 期无编辑/删除/新增） | L1 期工作区＝「只读列表＋多选移动作」自洽子集（用户可验徽标/深链/移出/转移）；「删除」钮 L2 挂——多选 bar 在 L1 期两钮、L2 三钮（action 槽参数天然支持）；README 不发 L1 中间态（仅内部里程碑） |
+
+---
+
+### 条文落点对照表（specs 16.B 逐条自检）
+
+| 条文 | 落点 |
+|---|---|
+| 95(a) 孤儿对账扩主题 | §20.2（单锁/mtime 自愈缓存/读失败跳过＋统一失效规则）、§19.2（OrphanReconciler reminder 包＋参数注入）、§25.1 |
+| 95(b) 通知取内容先主后主题 | §20.1（EntryLocator 整体单锁＋buildIndex 含内容）、§19.2（BootReceiver 单遍） |
+| 95(c) 深链跳所在处 | §20.4（组合域解析＋门控＋清空口径） |
+| 95(d) 主题内提醒全套 | §22.2/§22.3（ReminderFlowHost 共享）、§22.1（徽标 readOnly=false 正向启用＋等价解释登记） |
+| 95(e) 删除与清空联动扩全库 | §20.3（四点） |
+| 95(f) 保留告知 | §20.5、§24.1（reminderKeepLine） |
+| 95 存量语义 | §20.5＋§25.2（配方 C 连做断言） |
+| 96 移出与转移 | §21 全（SameDocument/existsCheckDefinitive 分派/按钮/去向句/MoveFlow/SAF 变体） |
+| 97(a)~(f) 工作区 | §22.1~§22.6（技术前提四项落点＋抽取契约三项纪律＋等价解释登记） |
+| 98 改名 | §23.1（同目录/自身排除/锁内三步/崩溃窗口）、§23.2（左滑位＋label 参数化）、§24.1 |
+| 99 恢复退役 | §23.2（退役清单＋手势重分配＋清理路径改写＋§14.1 裁定推翻注记） |
+| 100 微文案 | §24 全（含转移 N=0 专用变体与工程去重） |
+| 101(a)~(w) | §25.1 JVM 义务＋§25.2 映射与配方＋§25.3 门槛（94(b) 重基线）＋§25.4 切分 |
+
+> **修订三状态**：**定稿（2026-11-12 用户确认）——阶段2 闭环**——历经三视角评审（36 项全采纳）＋定稿前复核轮（34 项核销近全 PASS＋15 项微修）＋双新人可学习性轮（7 处修复，含 §19.0 导读与 EntryLocator／ts 缓存分工裁定）；评审正向核实：切换零代码跟随为真、R22 论证闭合、PendingIntent 零冲突、strings/themes/manifest 零牵连；specs 101(b) 措辞随批微调（用户批准）。阶段3 计划以 §19~§26 为直接输入（§25.2 断言摘要与 §25.4 任务清单化由计划文档承载）。
