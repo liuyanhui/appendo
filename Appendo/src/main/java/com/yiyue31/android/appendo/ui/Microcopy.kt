@@ -211,6 +211,21 @@ internal object Microcopy {
     /** 页内新建·创建文档失败（框保持、输入保留可重试）。 */
     const val TOAST_TOPIC_CREATE_FAILED = "创建失败"
 
+    // ---- 主题工作区屏（戊批次 T-25，设计 §22.1/§24.1；L1 骨架字面）----
+
+    /** 顶栏同行计数小字（97(f) 计数镜像；labelSmall onSurfaceVariant）。 */
+    fun topicEntryCountLine(n: Int): String = "$n 条"
+
+    /** 读失败如实呈现（§22.1，评审 C3——禁「读失败呈空」旧例；重试按钮复用 [BTN_RETRY]）。 */
+    const val TOPIC_READ_FAILED = "读取失败，请重试"
+
+    /**
+     * 工作区空态两行（§24.1）。L1 中性句：无新增钮可指（新增＝L3 T-31），TITLE 单行、
+     * BODY 留空不渲染；T-31 落地后切「暂无条目／点右上角“＋”添加条目」终句（§25.4）。
+     */
+    const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
+    const val TOPIC_WORKSPACE_EMPTY_BODY = ""
+
     // ---- 归档清空合并（topic-move 设计修订二 §16.1；T-15 增量落盘，T-16 全套核对收口）----
 
     /** 网格第四格按钮（§15.3：与「复制全部/分享全部」同款形态，点击触发；旧长按清空退役）。 */

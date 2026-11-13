@@ -211,6 +211,13 @@
 - **评估标准自检**：归档侧「追加」/主屏单钮/「已收集 N 条」逐字不变 ✓（默认值即原字面，编译通过＝三消费方未触）；94(c) 归档只读真机抽查随 T-27 ✓；全量 237/0/0/2 ✓。
 - **偏离记录**：无（边界内——仅三组件文件，KDoc 同步更新「不参数化」旧句）。
 
+### T-25 工作区骨架屏＋路由＋深链（2026-11-13，代码完成；**本地 smoke 待真机**）
+
+- **落盘**：① 新 `ui/TopicWorkspaceScreen.kt`——顶栏（返回＋主题名 primary SemiBold＋`topicEntryCountLine`「N 条」labelSmall 小字，底色随页面）＋EntryListScreen（readOnly=false 徽标正向启用；L1 动作回调缺省空实现；headerText=""＝不渲染列表头——EntryListScreen 加 isNotBlank 守卫）；加载 LaunchedEffect＋IO 经 FileBasedMarkdownFile.readAllWithStatus；读失败如实呈现（TOPIC_READ_FAILED＋BTN_RETRY，reloadKey 重试）；空态 L1 中性句（TITLE 单行、BODY 留空）；深链 scrollToItem 定位（miss 不滚不弹错）；② MainActivity：`topic_workspace/{filePath}?scrollTs` 路由（ts 双侧 Uri.encode/decode——含空格点号）＋`AppendoNavHost` 组合域深链（LaunchedEffect(scrollTs)→IO locateEntry；MainFile 不动作（MainScreen 侧消费）；Topic→门控目的地＝main→navigate；null/Topic 态消费后清空 scrollTs——新增 onConsumeScrollTs 回调）＋topics onTopicClick 改道工作区（archive_detail kind=topic 路径 T-30 退役）；③ Microcopy：`topicEntryCountLine`/`TOPIC_READ_FAILED`/`TOPIC_WORKSPACE_EMPTY_TITLE`（BODY 留空 L1 中性——T-31 切终句）。
+- **评估标准自检**：101(a) 徽标结构面 ✓（readOnly=false 派生）；读失败不呈「空」✓（failed→专用态）；门控不过＝不跳不弹错 ✓；archive_detail 归档路径零变化 ✓（未触该路由）；全量 **237/0/0/2** ✓；debug 包构建通过 ✓。
+- **偏离记录**：① §22.1「headerText=null」落为空串＋isNotBlank 守卫（T-24 已定 String 非 null 参数形态）；② L1 空态 BODY 留空不渲染（设计只定终句，L1 中性句无字面——TITLE 单行即中性，登记 T-31 切句义务）；③ 顶栏「N 条」经 `topicEntryCountLine` 入 Microcopy（§24 表只画「N 条」字面，未定常量名）。
+- **待真机**：完成准则「本地 smoke 装包手点主题→进工作区→返回」——本机无 adb 设备，APK 已构建（Appendo-debug.apk 2026-11-13 13:48），**待装机补做**；101(a) 断言随 T-27 门槛。
+
 ## 8. 开放决策点（已全部裁定）
 
 | # | 决策点 | 裁定（2026-11-13 用户「两案均采」＋三视角一致支持） | 落点 |
