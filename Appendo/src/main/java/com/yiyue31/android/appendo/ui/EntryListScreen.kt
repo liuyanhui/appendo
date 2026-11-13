@@ -83,6 +83,7 @@ fun EntryListScreen(
     entryCount: Int,
     listState: LazyListState? = null,
     readOnly: Boolean = false,
+    headerText: String = "已收集 $entryCount 条",
     onEntryLongClick: (String) -> Unit = { },
     onEntrySwipeToDelete: (String) -> Unit = { },
     onEntryClick: (LinkEntry) -> Unit = { },
@@ -95,10 +96,11 @@ fun EntryListScreen(
     val reminderMap = ReminderStore.get(context).reminders.value
     val listStateResolved = listState ?: rememberLazyListState()
 
-    // Header（sourceFileName 参数随 2026-11-11 主题名并入顶栏标题裁定退役）
+    // Header（sourceFileName 参数随 2026-11-11 主题名并入顶栏标题裁定退役；
+    // headerText 参数化＝戊批次 T-24 工作区复用，默认字面＝现状「已收集 N 条」，消费方零改动）
     Column {
         Text(
-            "已收集 $entryCount 条",
+            headerText,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(bottom = 12.dp)

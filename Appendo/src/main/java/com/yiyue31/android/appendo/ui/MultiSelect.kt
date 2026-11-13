@@ -42,7 +42,9 @@ fun retainedSelection(selectedKeys: Set<EntryKey>, currentEntries: List<LinkEntr
  * 副标题由此自然隐藏。
  * - NavigationIcon：关闭 ×（[onExit] 退出并清空选中集）；
  * - 标题：「已选 N 条」（N=[selectedCount] 实时，§9.2）；
- * - actions：「移入」TextButton（N ≥ 1 启用，primary；[onMoveIn] 由 T-06 接移入流程）。
+ * - actions：[action] 槽（戊批次 T-24 参数化，工作区多选复用顶栏注入「移出」等动作）——
+ *   缺省＝「移入」TextButton（N ≥ 1 启用，primary；[onMoveIn] 由 T-06 接移入流程），
+ *   既有消费方（MainScreen）零改动。
  *
  * contentDescription「退出多选」直写：沿 MainScreen/ArchiveDetailScreen 既有 contentDescription
  * 直写惯例（「菜单」「返回」同款），字面为 §9.2 定稿。
@@ -52,7 +54,18 @@ fun retainedSelection(selectedKeys: Set<EntryKey>, currentEntries: List<LinkEntr
 internal fun MultiSelectTopBar(
     selectedCount: Int,
     onExit: () -> Unit,
-    onMoveIn: () -> Unit
+    onMoveIn: () -> Unit,
+    action: @Composable () -> Unit = {
+        TextButton(
+            onClick = onMoveIn,
+            enabled = selectedCount >= 1, // §7.2：N ≥ 1 启用
+            colors = ButtonDefaults.textButtonColors(
+                contentColor = MaterialTheme.colorScheme.primary
+            )
+        ) {
+            Text(Microcopy.BTN_MOVE_IN)
+        }
+    }
 ) {
     TopAppBar(
         navigationIcon = {
@@ -67,15 +80,7 @@ internal fun MultiSelectTopBar(
             )
         },
         actions = {
-            TextButton(
-                onClick = onMoveIn,
-                enabled = selectedCount >= 1, // §7.2：N ≥ 1 启用
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Text(Microcopy.BTN_MOVE_IN)
-            }
+            action()
         },
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surface

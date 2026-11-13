@@ -49,7 +49,9 @@ private const val SWIPE_THRESHOLD_DP = 120f
  *
  * 卡片平面化（v1.4 换机验证视觉裁定，参考 iOS 分组列表）：elevation 恒 0、无首卡特例——
  * 层级由页面底色（colorScheme.background）与卡片 surface 的色调差呈现，全应用列表统一。
- * 指示字面「删除/追加」与配色随骨架下沉、**不参数化**（两页语义同构：删除红/恢复绿，设计裁定）。
+ * 左向指示字面经 [swipeLeftLabel] 参数化（戊批次 T-24，工作区移出「移出」语义复用骨架；
+ * 默认「追加」＝归档/主题两页现状字面，消费方零改动）；「删除」与配色仍不参数化
+ * （右滑删除红全域同构，设计裁定）。
  * 既有恒真 `AnimatedVisibility(visible = true)` 包装随重构丢弃（A-6 后置项：恒真包装无动画语义）。
  * 消费方：ArchiveListScreen.ArchiveCard（薄包装）；T-14 TopicListScreen.TopicCard（薄包装）。
  */
@@ -57,6 +59,7 @@ private const val SWIPE_THRESHOLD_DP = 120f
 @Composable
 internal fun SwipeCard(
     swipeToDeleteEnabled: Boolean = true,
+    swipeLeftLabel: String = "追加",
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSwipeToDelete: () -> Unit,
@@ -68,7 +71,7 @@ internal fun SwipeCard(
     // Calculate swipe action text and background
     val swipeActionText = when {
         offsetX > SWIPE_THRESHOLD_DP / 2 -> "删除"
-        offsetX < -SWIPE_THRESHOLD_DP / 2 -> "追加"
+        offsetX < -SWIPE_THRESHOLD_DP / 2 -> swipeLeftLabel
         else -> null
     }
 
