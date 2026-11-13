@@ -17,11 +17,14 @@ import com.yiyue31.android.appendo.util.ReminderLogic
 fun rescheduleAll(context: Context) {
     val store = ReminderStore.get(context)
     val now = System.currentTimeMillis()
+    // 单遍 ts→(位置, 内容) 索引（T-22，需求 95(b) 性能前提）——替代逐条全量重读；
+    // Receiver 受广播限时，一遍读全库后查表分发
+    val index = EntryLocator.buildIndex(context)
     for ((ts, meta) in store.reminders.value) {
         val d = ReminderLogic.bootDecide(meta, now)
         if (d.newMeta != meta) store.set(ts, d.newMeta)
         if (d.fireMissed) {
-            val content = findEntryContent(context, ts)
+            val content = index[ts]?.second
             if (content != null) {
                 NotificationHelper.show(context, ts, content, missed = true)
             } else {

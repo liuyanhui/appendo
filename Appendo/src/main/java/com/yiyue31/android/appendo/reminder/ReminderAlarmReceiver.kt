@@ -3,9 +3,6 @@ package com.yiyue31.android.appendo.reminder
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.yiyue31.android.appendo.data.FileRepository
-import com.yiyue31.android.appendo.util.EntryParser
-import com.yiyue31.android.appendo.util.MarkdownFileFactory
 import com.yiyue31.android.appendo.util.Recurrence
 import com.yiyue31.android.appendo.util.ReminderLogic
 
@@ -32,7 +29,7 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
         val store = ReminderStore.get(context)
         val meta = store.get(ts)
-        val content = findEntryContent(context, ts)
+        val content = EntryLocator.locateEntryContent(context, ts)
         if (content == null) {
             AlarmScheduler.cancel(context, ts)
             store.remove(ts)
@@ -71,13 +68,4 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
         NotificationHelper.cancel(context, ts)
     }
-}
-
-/** 按 timestamp 从 Markdown 文件读回条目原文（供通知正文/补发用）。找不到返回 null。 */
-internal fun findEntryContent(context: Context, ts: String): String? = try {
-    val repo = FileRepository(context)
-    val mdFile = MarkdownFileFactory.create(context, repo.isUsingSAF(), repo.getFileUri(), repo.getDefaultFile())
-    EntryParser.parse(mdFile.readAll()).firstOrNull { it.rawTimestamp == ts }?.content
-} catch (e: Exception) {
-    null
 }
