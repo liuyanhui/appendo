@@ -44,6 +44,7 @@
 > | 2026-11-13 | Yiyue + Claude | **计划定稿（用户确认）——阶段3 闭环，阶段4 编码启动，当前任务＝T-20（事务通用化）**。计划权威进度源自此切至 `topic-workspace-plan.md` §7（本快照降为背景/裁定史）。**T-20 要点**：existsCheckDefinitive 接口属性＋两实现 override；SameDocument 护栏＋分派＋MoveFaults 扩；MainScreen 旧 when 补 SameDocument 分支（sealed 编译自洽）；评估标准六条见计划 §2 |
 > | 2026-11-13 | Yiyue + Claude | **T-20 完成（事务通用化）**：existsCheckDefinitive（FileBased=true/Saf=false）＋SameDocument 护栏（引用相等＋canonicalPath——file 字段 private→internal）＋步骤 3 按 definitive 分派＋MainScreen 防御分支；新增 4 测试（SafLikeTarget 假实现含「exists 被调即抛」的跳过断言）；**全量 217/0/0/0**。偏离三条记录在计划 §7（Microcopy 边界微扩/MoveFaults 未扩——假实现覆盖更优/file 可见性）。**下一步＝T-21（TopicRepository ts 缓存 mtime 自愈）——与 T-22/T-24 并行段可流水线** |
 > | 2026-11-13 | Yiyue + Claude | **用户裁定自主执行原则**（问前先判是否真需决策；未跑偏自动执行；六层防偏离机制＝任务三件套自检/偏离三档/硬门禁/全量基线/Planner 独立核验/范围冻结——已入会话记忆）。**T-21 完成（ts 缓存 mtime 自愈）**：TopicTsEntry＋allTopicTimestampsLocked（stat 自愈/读失败 null 整跳/候选目录同源）＋invalidateTopic/AllTopics＋listTopics/deleteTopic 持锁化＋delete 缓存失效；新增 5 测试（命中证明＝mtime 钉同值返回旧集/自愈收编/显式失效强读/多主题/读失败 POSIX 门控）；**全量 222/0/0/0**；零偏离。**下一步＝T-22（EntryLocator＋两 Receiver）——与 T-24 并行段** |
+> | 2026-11-13 | Yiyue + Claude | **T-22 完成（EntryLocator＋两 Receiver）**：EntryLocation sealed＋纯函数核心（主优先/多主题列表序首个）＋生产入口整体单锁（不消费 ts 缓存）；findEntryContent 退役、fire 改接、补发单遍 buildIndex 查表；新增 8 测试；**全量 230/0/0/0**（`65f83d2`）。偏离一条：locate 读失败语义按 v1.4 fire 口径实现并 KDoc 注明（观察项）。**下一步＝T-23（OrphanReconciler＋MainScreen 四块）——依赖 T-21 已就绪，与 T-24 并行** |
 
 ---
 

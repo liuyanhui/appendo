@@ -178,6 +178,13 @@
 - **偏离记录**：无（边界内）。
 - **同日新增**：用户裁定**自主执行原则**（问前先判是否真需决策；未跑偏自动执行；六层防偏离机制）——已入会话记忆。
 
+### T-22 EntryLocator＋两 Receiver 接线（2026-11-13，完成）
+
+- **落盘**：新 `reminder/EntryLocator.kt`——`EntryLocation` sealed（MainFile/Topic(file)）＋纯函数核心 `locateInContents`/`buildIndexFromContents`（主优先/多主题列表序首个/putIfAbsent＋主覆盖）＋生产入口**整体单锁**（`readMainLocked` 经 readAllWithStatus 读失败→null、`readTopicsLocked` 沿 listTopics 序读失败跳过——读失败语义沿 v1.4 fire 口径 KDoc 注明，对账保护归 OrphanReconciler）；**不消费 ts 缓存**（分工裁定 KDoc 注明）。`findEntryContent` 退役（含三个 unused import 清理），handleFire 改接 `locateEntryContent`；`rescheduleAll` 改单遍 `buildIndex` 查表（95(b) 性能前提）。
+- **测试**（新 `EntryLocatorTest` 8 用例）：主命中/同 ts 并存主胜/仅主题命中/多主题列表序首个/主不可读落主题/全库 miss/索引覆盖与全量/`index[ts]` 与 locate 同源。
+- **评估标准自检**：主优先✓；多主题确定性次序✓；miss null✓；buildIndex 与 locate 同源✓；fire 自愈语义不变（结构零改，null→cancel+remove 同 v1.4）✓；全量 230/0/0/0 ✓。
+- **偏离记录**：设计未显式定义 locate 路径读失败语义——按「读失败＝该文件无命中」实现（沿 v1.4 fire 口径＋设计 §20.1「定位失败＝全库不存在」原文），KDoc 注明；如后续评审认为需「不确定」态再升级（登记观察，不阻塞）。
+
 ## 8. 开放决策点（已全部裁定）
 
 | # | 决策点 | 裁定（2026-11-13 用户「两案均采」＋三视角一致支持） | 落点 |
