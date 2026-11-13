@@ -162,7 +162,13 @@
 
 ## 7. 进度记录（执行时追加）
 
-（空）
+### T-20 事务通用化（2026-11-13，完成）
+
+- **落盘**：① `MarkdownFileOperations.existsCheckDefinitive`（KDoc 含分派依据）＋FileBased=true/Saf=false 两 override；② `MoveResult.SameDocument`＋move() 步骤 0 护栏（引用相等＋双 FileBased canonicalPath——`FileBasedMarkdownFile.file` 由 private 提为 internal 供比对，注明原因）；③ 步骤 3 按 definitive 分派（FileBased 维持 exists 分支/SAF 目标直接读）；④ KDoc 双处「目标恒 FileBased」句按通用化改写；⑤ MainScreen 旧 executeMove when 补 SameDocument 防御分支（不设重试态）。
+- **测试**（TopicMoveTransactionTest 17 用例＝既有 13＋新增 4）：同实例护栏（逐字节零副作用）/同 canonicalPath 护栏/SAF 假目标跳过 exists 直接读成功（`SafLikeTarget.exists()` 抛异常＝「跳过」断言本体）/SAF 假目标读失败→TargetReadFailed 源未动。
+- **评估标准自检**：SameDocument 两形态 ✓；SAF 假实现两分支 ✓；六态计数＝既有 ①~⑬ 注入族＋SameDocument 新增覆盖（移出/转移方向与移入同事务，双 FileBased 用例即其形态）✓；MainScreen 新分支仅防御 toast（真机回归随 T-27）✓；全量 217/0/0/0 ✓。
+- **偏离记录**：① 边界微扩——`Microcopy.kt` 加 `TOAST_SAME_TOPIC_GUARD`（编译需要；设计 §24.1 已定义该常量，T-26 变体族照单复用）；② 计划「MoveFaults 扩 SAF 目标注入」未落——SAF 目标分支经接口属性由假实现注入覆盖，无需新增 MoveFaults 枚举（更少生产面）；③ FileBasedMarkdownFile.file 可见性 private→internal（护栏比对需要）。
+- **核验**：Generator 自检（上述）；Planner 独立核验随下一任务流水线补做或用户抽查。
 
 ## 8. 开放决策点（已全部裁定）
 

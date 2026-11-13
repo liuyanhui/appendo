@@ -1,5 +1,6 @@
 package com.yiyue31.android.appendo.util
 
+import com.yiyue31.android.appendo.util.MoveResult.SameDocument
 import com.yiyue31.android.appendo.util.MoveResult.SourceDeleteFailed
 import com.yiyue31.android.appendo.util.MoveResult.SourceReadFailed
 import com.yiyue31.android.appendo.util.MoveResult.Success
@@ -7,8 +8,10 @@ import com.yiyue31.android.appendo.util.MoveResult.TargetReadFailed
 import com.yiyue31.android.appendo.util.MoveResult.TargetWriteFailed
 
 /**
- * 移入组合事务（设计 §6.4，需求 84）：单次持 [FileOperationLock] 的「先写目标、后删源」编排。
- * 纯 util 不碰 Android UI；目标恒为 FileBasedMarkdownFile（topics/ 私有目录，方案 A）。
+ * 移入/移出/转移组合事务（设计 §6.4＋§21.1，需求 84/96）：单次持 [FileOperationLock] 的
+ * 「先写目标、后删源」编排。**通用化（戊批次 T-20）**：源与目标均可为 FileBased 或 SAF
+ * ——移入＝move(主, 主题)；移出＝move(主题, 主)；转移＝move(主题A, 主题B)。
+ * 纯 util 不碰 Android UI。
  */
 
 /**
@@ -25,6 +28,13 @@ sealed interface MoveResult {
      * missingFromSource=所选但源中未找到数（正常恒 0，防御口径）。
      */
     data class Success(val moved: Int, val skippedExisting: Int, val missingFromSource: Int) : MoveResult
+
+    /**
+     * 源与目标为同一文档（戊批次 T-20，需求 96 SameDocument 护栏）：引用相等，或双 FileBased
+     * 且 canonicalPath 相同。零副作用、无任何读写。正常 UI 不可达（目标列表排除当前主题），
+     * 纯防御——A→A 场景下若放行会「全 skipped＋步骤 6 无条件删源」＝条目删光却报成功。
+     */
+    object SameDocument : MoveResult
 
     /** 源读取失败（典型：SAF 授权失效）。目标与源均未改动——干净失败，无任何中间态。 */
     object SourceReadFailed : MoveResult
@@ -59,15 +69,20 @@ enum class MoveFaults {
 object TopicMoveTransaction {
 
     /**
-     * 移入组合事务（需求 84(a)）：单次持 [FileOperationLock]，先写目标、后删源，全程无锁间隙
-     * （synchronized 可重入——内部调 source/target 既有方法不释放锁，禁止两段分离持锁）。
+     * 移入/移出/转移组合事务（需求 84(a)＋96）：单次持 [FileOperationLock]，先写目标、后删源，
+     * 全程无锁间隙（synchronized 可重入——内部调 source/target 既有方法不释放锁，禁止两段分离持锁）。
      *
-     * 六步编排（设计 §6.1），各步以 runCatching 包裹，IOException / RuntimeException 等一切
-     * 异常映射到所在段失败类：
+     * 六步编排（设计 §6.1＋§21.1 通用化），各步以 runCatching 包裹，IOException / RuntimeException
+     * 等一切异常映射到所在段失败类：
+     * 0. **SameDocument 护栏**（96）：`source === target` 或双 FileBased 且 canonicalPath 相同
+     *    → [MoveResult.SameDocument] 零副作用（正常 UI 不可达——目标列表排除当前主题，纯防御）；
      * 1. 源读 source.readAllWithStatus（→ [MoveResult.SourceReadFailed]，源目标均未动）；
      * 2. EntryParser.parse 取权威条目集（UI 只传 keys，内容以锁内源读取为准；→ SourceReadFailed）；
-     * 3. 目标读（exists() 判定；不存在视作空文档、以 [MarkdownFormatter.FILE_HEADER] 起步——
-     *    懒创建兜底；→ [MoveResult.TargetReadFailed]，源未动）；
+     * 3. 目标读——**按 [MarkdownFileOperations.existsCheckDefinitive] 分派**（设计 §21.1/T-20）：
+     *    definitive=true（FileBased）走 exists() 判定，不存在视作空文档、以 [MarkdownFormatter.FILE_HEADER]
+     *    起步（懒创建兜底）；definitive=false（SAF）**不查 exists、直接 readAllWithStatus**——
+     *    SAF 的 exists() 吞 SecurityException 返 false（授权失效≠不存在），照 exists 走会在授权
+     *    失效时误当「不存在」起步覆写；读失败/授权失效→ [MoveResult.TargetReadFailed]（源未动）；
      * 4. 去重计算：toAdd = 所选 − 目标已有；skipped = 所选 ∩ 目标已有（87；→ TargetReadFailed）；
      * 5. 目标写 target.writeAll(目标全文 + toAdd 升序拼接)（→ [MoveResult.TargetWriteFailed]）。
      *    特别地：FileBasedMarkdownFile.atomicWrite 的 `File.createTempFile` 位于其 `return try`
@@ -77,10 +92,10 @@ object TopicMoveTransaction {
      *    一切异常吞为 null 返回（null ⟺ 操作未发生），null 即映射 SourceDeleteFailed；
      *    runCatching 仍包以防万一。
      *
-     * 事务边界（设计 §6.4「两实现的事务边界与失败态」表）：
+     * 事务边界（设计 §6.4「两实现的事务边界与失败态」表＋§21.1 通用化）：
      * - 源读失败：零副作用（FileBased / SAF 同）；SAF 授权失效场景上层叠加 TD-021 文案；
-     * - 目标读/写失败：源未动（目标恒 FileBased，无 SAF 目标分支）；目标写常规失败不回滚、
-     *   可整体重试（atomicWrite rename 失败退化覆写分支的截断风险为既有系统性风险，R11 披露）；
+     * - 目标读/写失败：源未动；SAF 目标（移出方向）读失败含授权失效、写常规失败不回滚、
+     *   可整体重试（SAF 软恢复语义由 SafMarkdownFile 自承）；
      * - 源删失败：目标已写全＝「两边都有」软中间态，重试幂等收敛；崩溃中断要么旧要么新
      *   （84(g)：中断允许「两边都有」，永不「两边都没有」）。
      *
@@ -95,8 +110,8 @@ object TopicMoveTransaction {
      *   missing 优先归类（所选不在源即 missing，不论目标是否已有）；
      * - 任一失败态不得出现「两边都没有」（84 硬约束：写段失败源未删、删段失败目标已写全）。
      *
-     * @param source 当前文件的 MarkdownFileOperations（FileBased 或 Saf）
-     * @param target 主题文档，恒为 FileBasedMarkdownFile（topics/ 私有目录，方案 A）
+     * @param source 源文档（主文件或主题，FileBased 或 Saf）
+     * @param target 目标文档（主题或主文件，FileBased 或 Saf；与源不可为同一文档）
      * @param keys 所选条目标识；条目内容以锁内源读取为准
      * @param faults 故障注入（**仅供测试**，生产恒缺省 [MoveFaults.NONE]）
      */
@@ -106,6 +121,14 @@ object TopicMoveTransaction {
         keys: Set<EntryKey>,
         faults: MoveFaults = MoveFaults.NONE
     ): MoveResult = synchronized(FileOperationLock) {
+
+        // —— 步骤 0：SameDocument 护栏（96；零副作用——正常 UI 不可达，纯防御）——
+        if (source === target) return SameDocument
+        if (source is FileBasedMarkdownFile && target is FileBasedMarkdownFile &&
+            runCatching { source.file.canonicalPath == target.file.canonicalPath }.getOrDefault(false)
+        ) {
+            return SameDocument
+        }
 
         // —— 步骤 1：源读段（异常/读失败 → SourceReadFailed，源目标均未动）——
         val sourceRead = runCatching { source.readAllWithStatus() }
@@ -117,8 +140,17 @@ object TopicMoveTransaction {
             .getOrElse { return SourceReadFailed }
         val selected = sourceEntries.filter { EntryKey.of(it) in keys }
 
-        // —— 步骤 3：目标读段（不存在视作空文档 FILE_HEADER 起步；异常/读失败 → TargetReadFailed，源未动）——
-        val targetRead = runCatching { if (target.exists()) target.readAllWithStatus() else null }
+        // —— 步骤 3：目标读段——按 existsCheckDefinitive 分派（T-20，设计 §21.1）：
+        // FileBased（definitive）维持 exists() 分支（不存在→懒创建起步，防 FileNotFound 误判失败）；
+        // SAF（非 definitive）不查 exists、直接读——授权失效≠不存在（exists 吞 SecurityException），
+        // 读失败→TargetReadFailed 干净失败（防误当「不存在」起步覆写）。SAF 目标＝主文件必已存在。
+        val targetRead = runCatching {
+            if (target.existsCheckDefinitive) {
+                if (target.exists()) target.readAllWithStatus() else null
+            } else {
+                target.readAllWithStatus()
+            }
+        }
         if (targetRead.isFailure) return TargetReadFailed
         val readResult = targetRead.getOrNull()
         if (readResult?.failed == true) return TargetReadFailed

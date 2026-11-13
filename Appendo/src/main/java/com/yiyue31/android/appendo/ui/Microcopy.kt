@@ -121,6 +121,9 @@ internal object Microcopy {
     /** 失败·写入段（84(b)：目标可能已部分写入，可整体重试）。 */
     fun toastMoveFailedTargetWrite(): String = "移入失败（写入主题文档失败）"
 
+    /** SameDocument 护栏兜底（96，设计 §24.1）：正常 UI 不可达（目标列表排除当前文档），防御路径专用。 */
+    const val TOAST_SAME_TOPIC_GUARD = "已在当前主题中"
+
     /** 失败·删除段（84(b)：明示「重试安全」——内容已在目标，重试只完成移除）。 */
     fun toastMoveFailedSourceDelete(): String = "移入失败（主题已保存，从当前列表移除未完成，请重试）"
 

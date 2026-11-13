@@ -383,4 +383,78 @@ class TopicMoveTransactionTest {
             targetEntries.map { it.content }
         )
     }
+
+    // ==================== T-20：SameDocument 护栏＋existsCheckDefinitive 分派（设计 §21.1） ====================
+
+    /**
+     * SAF 语义假目标（existsCheckDefinitive=false）：内容操作委托真实 FileBased；
+     * exists() 一旦被调用即抛——证明非 definitive 目标走「直接 readAllWithStatus」分派、
+     * 不咨询 exists（接口级判别使 JVM 假实现可控覆盖两分支，设计 §25.1）。
+     */
+    private class SafLikeTarget(private val delegate: FileBasedMarkdownFile) : MarkdownFileOperations {
+        override val existsCheckDefinitive: Boolean = false
+        override fun exists(): Boolean = throw IllegalStateException("SAF-like target must not consult exists()")
+        override fun append(content: String) = delegate.append(content)
+        override fun appendReturningTimestamp(content: String) = delegate.appendReturningTimestamp(content)
+        override fun readAll() = delegate.readAll()
+        override fun readAllWithStatus(): ReadResult = delegate.readAllWithStatus()
+        override fun clear() = delegate.clear()
+        override fun count() = delegate.count()
+        override fun initHeader() = delegate.initHeader()
+        override fun deleteEntry(timestamp: String) = delegate.deleteEntry(timestamp)
+        override fun deleteEntries(keys: Set<EntryKey>) = delegate.deleteEntries(keys)
+        override fun updateEntry(timestamp: String, newContent: String) = delegate.updateEntry(timestamp, newContent)
+        override fun writeAll(content: String) = delegate.writeAll(content)
+        override fun appendEntry(timestamp: String, content: String) = delegate.appendEntry(timestamp, content)
+    }
+
+    @Test
+    fun move_sameDocument_sameInstance_zeroSideEffects() {
+        val entries = buildSource("2026-07-20 10:00:00.000" to "a")
+        val before = source.readAll()
+
+        val result = TopicMoveTransaction.move(source, source, keysOf(entries))
+
+        assertEquals(MoveResult.SameDocument, result)
+        assertEquals("源文件逐字节不变（零副作用）", before, source.readAll())
+    }
+
+    @Test
+    fun move_sameDocument_sameCanonicalPath_zeroSideEffects() {
+        val entries = buildSource("2026-07-20 10:00:00.000" to "a")
+        val samePathTarget = FileBasedMarkdownFile(context, sourceFile)
+
+        val result = TopicMoveTransaction.move(source, samePathTarget, keysOf(entries))
+
+        assertEquals(MoveResult.SameDocument, result)
+        assertEquals("条目未被删（护栏先于一切读写）", 1, EntryParser.parse(source.readAll()).size)
+    }
+
+    @Test
+    fun move_safLikeTarget_skipsExists_directRead_succeeds() {
+        val entries = buildSource("2026-07-20 10:00:00.000" to "a")
+        val safLike = SafLikeTarget(target)
+        assertTrue(target.initHeader())
+
+        val result = TopicMoveTransaction.move(source, safLike, keysOf(entries))
+
+        // exists() 被调用会直接抛 IllegalStateException → 测试失败——即「跳过 exists」断言本体
+        assertEquals(MoveResult.Success(moved = 1, skippedExisting = 0, missingFromSource = 0), result)
+        assertEquals("目标经直接读起步并写入", 1, EntryParser.parse(target.readAll()).size)
+        assertEquals("源删除段正常执行（完整事务语义）", 0, EntryParser.parse(source.readAll()).size)
+    }
+
+    @Test
+    fun move_safLikeTarget_readFailed_returnsTargetReadFailed_sourceUntouched() {
+        val entries = buildSource("2026-07-20 10:00:00.000" to "a")
+        // 读失败注入（Windows 适配先例）：路径占为目录——readAllWithStatus.failed=true
+        targetFile.delete()
+        assertTrue(targetFile.mkdirs())
+        val safLike = SafLikeTarget(FileBasedMarkdownFile(context, targetFile))
+
+        val result = TopicMoveTransaction.move(source, safLike, keysOf(entries))
+
+        assertEquals(MoveResult.TargetReadFailed, result)
+        assertEquals("干净失败：源未动", 1, EntryParser.parse(source.readAll()).size)
+    }
 }

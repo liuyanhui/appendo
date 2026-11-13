@@ -411,6 +411,11 @@ fun MainScreen(
                     moveFailed = true
                     showToast(context, Microcopy.toastMoveFailedTargetWrite())
                 }
+                is MoveResult.SameDocument -> {
+                    // 防御分支（96，T-20）：正常 UI 不可达（目标列表不含当前文档）——只提示，
+                    // 不设失败重试态、不动选择上下文
+                    showToast(context, Microcopy.TOAST_SAME_TOPIC_GUARD)
+                }
             }
         }
     }

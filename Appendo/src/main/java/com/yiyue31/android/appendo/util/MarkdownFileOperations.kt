@@ -49,6 +49,17 @@ interface MarkdownFileOperations {
     fun exists(): Boolean
 
     /**
+     * [exists] 返回 false 的可信度（戊批次 T-20，设计 §21.1——事务步骤 3 目标读分派依据）：
+     * - **true**＝exists()==false 可信表示「文件不存在」（FileBased——不存在→懒创建起步合法）；
+     * - **false**＝exists()==false 可能是授权失效误报（SAF exists 吞 SecurityException 返 false）——
+     *   作**事务目标**时须跳过 exists、直接 [readAllWithStatus]（读失败/授权失效→TargetReadFailed
+     *   干净失败，防授权失效被误当「不存在」起步覆写）。
+     *
+     * 接口级判别（非 `is` 类型检查）使 JVM 测试假实现可控覆盖两分支（设计 §25.1）。
+     */
+    val existsCheckDefinitive: Boolean
+
+    /**
      * Count the number of entries in the file.
      * @return Number of timestamp-based entries found
      */

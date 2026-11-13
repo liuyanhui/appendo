@@ -9,8 +9,12 @@ import java.io.FileOutputStream
 
 class FileBasedMarkdownFile(
     private val context: Context,
-    private val file: File
+    /** internal：TopicMoveTransaction SameDocument 护栏需按 canonicalPath 比对源/目标同一性（戊批次 T-20） */
+    internal val file: File
 ) : MarkdownFileOperations {
+
+    /** FileBased 的 exists() 直查文件系统，false 可信表示「不存在」（懒创建起步合法）。 */
+    override val existsCheckDefinitive: Boolean = true
 
     companion object {
         private const val TAG = "FileBasedMarkdownFile"

@@ -24,6 +24,9 @@ class SafMarkdownFile(
     private val uri: Uri
 ) : MarkdownFileOperations {
 
+    /** SAF 的 exists() 吞 SecurityException 返 false（授权失效≠不存在）——事务目标须直接读而非查 exists。 */
+    override val existsCheckDefinitive: Boolean = false
+
     companion object {
         private const val TAG = "SafMarkdownFile"
     }
