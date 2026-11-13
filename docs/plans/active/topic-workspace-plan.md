@@ -218,6 +218,13 @@
 - **偏离记录**：① §22.1「headerText=null」落为空串＋isNotBlank 守卫（T-24 已定 String 非 null 参数形态）；② L1 空态 BODY 留空不渲染（设计只定终句，L1 中性句无字面——TITLE 单行即中性，登记 T-31 切句义务）；③ 顶栏「N 条」经 `topicEntryCountLine` 入 Microcopy（§24 表只画「N 条」字面，未定常量名）。
 - **待真机**：完成准则「本地 smoke 装包手点主题→进工作区→返回」——本机无 adb 设备，APK 已构建（Appendo-debug.apk 2026-11-13 13:48），**待装机补做**；101(a) 断言随 T-27 门槛。
 
+### T-26 多选＋MoveFlow＋移出/转移接线（2026-11-13，完成；真机回归随 T-27）
+
+- **落盘**：① 新 `ui/MoveFlow.kt`——`MoveVerb`（MOVE_OUT/TRANSFER；移入随 T-28 补）＋`MoveFlowHolder`（step/verb/transferTarget/newTopicInput/executing/failed，start/goTo/selectTarget/markExecuting/markFailed/close）＋`MoveOutcomeMapping` 纯函数（MoveResult 全态×动词×useSAF→toast/重试保持/主列表刷新信号；SourceDeleteFailed 统一兜底句＋重试——§24 未定专用句）；② TopicWorkspaceScreen 扩：多选态（MultiSelectTopBar action 槽两钮「移出到主列表」「移入其他主题」）＋勾选切换/重载 retainedSelection＋长按预览（EntryPreviewDialog）＋对话框栈四步（CONFIRM 移出直达/SELECT_TARGET 排除当前主题/NEW_TOPIC 创建即目标/SAME_NAME 指路）＋执行编排（IO 内 move→成功 invalidate 源＋目标＋移出方向 setFileLastModified（A12）＋本页重载；失败重试保持；SameDocument 只提示）；③ TopicMoveDialogs：TopicSelectDialog `excludeName` 排除参数（大小写不敏感）＋MoveConfirmDialog `bodyText/titleText/confirmLabel` 变体（缺省＝移入现句零改动；移出场景 title/label＝「移出到主列表」）；④ Microcopy：§24.1 移出/转移族 10 常量/函数逐字落盘；⑤ MainActivity 传 fileRepository（移出刷新信号）。
+- **测试**：新 `MoveOutcomeMappingTest` 12 用例（成功三态×两动词含转移 N=0 专用变体（E4 禁复用断言）/失败族×useSAF（SAF 变体仅移出 TargetReadFailed＋useSAF，转移恒不 SAF 变体含 true 防御）/SameDocument 防御零状态变更）——全量 **249/0/0/2**；assembleDebug 通过。
+- **评估标准自检**：Mapping 全组合钉死 ✓；目标列表排除当前主题 ✓（excludeName＋事务层护栏第二道）；SameDocument 兜底 toast ✓；D2 新建后即为目标（复用 2/2b 路径零旁路）✓（真机断言 101(l) 随 T-27）；升序追加含主列表目标 ✓（事务 :144-147 零代码＋SafLikeTarget 用例既有覆盖）；全量绿 ✓。
+- **偏离记录**：① 移出确认框 title/confirmLabel 复用 `BTN_MOVE_OUT` 字面作标题与按钮（§21.2 只定去向句分场景，未定移出框标题/按钮字面——零新字面）；② 工作区浏览态长按暂 no-op（浏览态长按复制/编辑出口＝T-29 范围，多选态长按预览已接）；③ SourceDeleteFailed 无专用「重试安全」句（§24 定稿表未定义），统一兜底＋重试保持。
+
 ## 8. 开放决策点（已全部裁定）
 
 | # | 决策点 | 裁定（2026-11-13 用户「两案均采」＋三视角一致支持） | 落点 |

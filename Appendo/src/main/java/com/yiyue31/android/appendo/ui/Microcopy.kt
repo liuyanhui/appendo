@@ -226,6 +226,40 @@ internal object Microcopy {
     const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
     const val TOPIC_WORKSPACE_EMPTY_BODY = ""
 
+    // ---- 移出/转移（戊批次 T-26，设计 §21.2/§24.1；96/100 定稿字面）----
+
+    /** 工作区多选 bar 钮一（96 钉死；禁裸「移入主题」——§21.2）。 */
+    const val BTN_MOVE_OUT = "移出到主列表"
+
+    /** 工作区多选 bar 钮二（96 钉死）。 */
+    const val BTN_MOVE_TO_OTHER = "移入其他主题"
+
+    /** 移出确认去向句（96 分场景）。 */
+    fun dlgMoveOutConfirmBody(n: Int): String = "将 $n 条移出到主列表。"
+
+    /** 转移确认去向句（96 分场景；源/目标主题名语境）。 */
+    fun dlgTransferConfirmBody(n: Int, target: String, source: String): String =
+        "将 $n 条移入「$target」，并从「$source」移除。"
+
+    /** 移出成功（M=0 简形，100）。 */
+    fun toastMovedOutCount(n: Int): String = "移出到主列表 $n 条"
+
+    /** 移出成功（M>0，100 主模板）。 */
+    fun toastMovedOutSkipped(n: Int, m: Int): String = "移出到主列表 $n 条（$m 条已存在）"
+
+    /** 移出成功（N=0，100）——「已从主题移除」源语境句。 */
+    fun toastMovedOutAllExisting(m: Int): String = "$m 条已在主列表中，已从主题移除"
+
+    /** 转移成功（N=0 专用，100/评审 E4——不得复用 toastMovedAllExisting：源＝主题时其句为事实错误）。 */
+    fun toastMovedAllExistingTransfer(m: Int, target: String, source: String): String =
+        "$m 条已在「$target」中，已从「$source」移除"
+
+    /** 移出失败（100 统一兜底）。 */
+    const val TOAST_MOVE_OUT_FAILED = "移出失败"
+
+    /** 移出失败·目标读（SAF 授权失效变体，A10——冒号句式对齐既有移入 SAF 变体）。 */
+    const val TOAST_MOVE_OUT_FAILED_SAF = "移出失败：自定义目录授权可能已失效，请重新选择文件"
+
     // ---- 归档清空合并（topic-move 设计修订二 §16.1；T-15 增量落盘，T-16 全套核对收口）----
 
     /** 网格第四格按钮（§15.3：与「复制全部/分享全部」同款形态，点击触发；旧长按清空退役）。 */

@@ -172,6 +172,7 @@ fun AppendoNavHost(
             val filePath = Uri.decode(backStackEntry.arguments?.getString("filePath") ?: "")
             TopicWorkspaceScreen(
                 filePath = filePath,
+                fileRepository = fileRepository,
                 scrollToTs = backStackEntry.arguments?.getString("scrollTs")?.let { Uri.decode(it) },
                 onNavigateBack = {
                     navController.popBackStack()

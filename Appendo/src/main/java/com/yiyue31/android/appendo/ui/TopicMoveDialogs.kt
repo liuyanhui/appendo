@@ -51,19 +51,23 @@ import java.util.Date
 internal enum class MoveFlowStep { SELECT_TARGET, NEW_TOPIC, SAME_NAME, CONFIRM }
 
 /**
- * 「移入主题」对话框栈步骤（§8.1 流程图的代码化）：
  * 对话框 1 目标选择（§8.1）：主题列表 createdAt 倒序（[TopicRepository.listTopics] 序），
  * 名称主文字＋「yyyy-MM-dd HH:mm · N 条」弱化小字（P3/P8，onSurfaceVariant——格式与归档列表
  * [ArchiveRepository.formatTimestamp] 同源）；末项「新建主题…」（primary，P6 组件级用途）。
  * 点击已有主题 → [onSelect]（目标＝该主题，进对话框 3）；末项 → [onNewTopic]（进对话框 2）；
  * 点外/返回 → [onDismiss]（关全部，保持多选态与选中集）。
+ *
+ * [excludeName]（戊批次 T-26，§21.2）：排除集合＝当前主题（转移场景传——SameDocument 为
+ * 事务层第二道防线，此处列表排除为第一道）；大小写不敏感（与同名检测同口径）。缺省
+ * null＝不排除（MainScreen 移入场景零改动）。
  */
 @Composable
 internal fun TopicSelectDialog(
     topics: List<TopicDocument>,
     onSelect: (TopicDocument) -> Unit,
     onNewTopic: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    excludeName: String? = null
 ) {
     val context = LocalContext.current
     val archiveRepository = remember { ArchiveRepository(context) }
@@ -77,7 +81,9 @@ internal fun TopicSelectDialog(
                     .heightIn(max = 360.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                topics.forEach { topic ->
+                topics
+                    .filterNot { excludeName != null && it.displayName.equals(excludeName, ignoreCase = true) }
+                    .forEach { topic ->
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -197,6 +203,11 @@ internal fun SameNameDialog(
  * （对话框保持、保持勾选与目标，一键重试幂等收敛，84(b)）；其余＝「移入」（primary）。
  * 执行中「取消」与点外关闭一并禁用（事务在途，防中途关框竞态）。
  * 「取消」→ [onDismiss]（关全部对话框，**保持多选态与选中集**，§8.1）。
+ *
+ * 移出/转移变体（戊批次 T-26，§21.2 去向句分场景）：[bodyText] 覆盖缺省正文（移出＝
+ * `dlgMoveOutConfirmBody`、转移＝`dlgTransferConfirmBody`）；[titleText]/[confirmLabel]
+ * 覆盖标题与确认钮字面（移出场景＝「移出到主列表」；转移维持「移入主题」/「移入」——
+ * 动词族归属正确 §24.2）。缺省三参＝移入现句，MainScreen 零改动。
  */
 @Composable
 internal fun MoveConfirmDialog(
@@ -206,14 +217,17 @@ internal fun MoveConfirmDialog(
     executing: Boolean,
     failed: Boolean,
     onConfirm: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    bodyText: String? = null,
+    titleText: String = Microcopy.DLG_MOVE_TITLE,
+    confirmLabel: String = Microcopy.BTN_MOVE_IN
 ) {
     AlertDialog(
         onDismissRequest = { if (!executing) onDismiss() },
-        title = { Text(Microcopy.DLG_MOVE_TITLE, fontWeight = FontWeight.SemiBold) },
+        title = { Text(titleText, fontWeight = FontWeight.SemiBold) },
         text = {
             Column {
-                Text(Microcopy.dlgMoveConfirmBody(count, topicName))
+                Text(bodyText ?: Microcopy.dlgMoveConfirmBody(count, topicName))
                 if (reminderCount > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -230,7 +244,7 @@ internal fun MoveConfirmDialog(
                     when {
                         executing -> Microcopy.BTN_MOVING
                         failed -> Microcopy.BTN_RETRY
-                        else -> Microcopy.BTN_MOVE_IN
+                        else -> confirmLabel
                     },
                     color = MaterialTheme.colorScheme.primary
                 )
