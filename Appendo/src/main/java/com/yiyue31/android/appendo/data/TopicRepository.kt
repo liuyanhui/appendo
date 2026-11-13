@@ -155,18 +155,9 @@ class TopicRepository(
      * 并发时存在撕裂窗口；FileOperationLock 可重入，内部 SP commit（首见回写）随之持锁，低频可接受。
      */
     fun listTopics(): List<TopicDocument> = synchronized(FileOperationLock) {
-        val seen = HashSet<String>()
-        val docs = ArrayList<TopicDocument>()
-        for (dir in candidateTopicDirs()) {
-            val files = dir.listFiles { f -> f.isFile && f.name.endsWith(FILE_SUFFIX) } ?: continue
-            for (file in files.sortedBy { it.name }) {
-                val displayName = file.name.removeSuffix(FILE_SUFFIX)
-                if (displayName.isEmpty()) continue // 防御：跳过杂散 ".md" 空名文件
-                if (!seen.add(displayName.lowercase())) continue // 外部候选优先，同名去重
-                docs.add(documentOf(file, displayName))
-            }
-        }
-        docs.sortedByDescending { it.createdAt }
+        mergedTopicFiles(candidateTopicDirs())
+            .map { documentOf(it, it.name.removeSuffix(FILE_SUFFIX)) }
+            .sortedByDescending { it.createdAt }
     }
 
     /** 按显示名查找（大小写不敏感，与同名检测同口径）。 */
@@ -288,6 +279,27 @@ class TopicRepository(
     fun invalidateAllTopics(): Unit = synchronized(FileOperationLock) { topicTsCache.clear() }
 
     /**
+     * 合并扫描候选主题文件（目录序→文件名序；displayName 跨目录去重，外部候选优先）——
+     * [listTopics] 与 [allTopicTimestampsLocked] 共用同一文件集，保证 UI 列表与对账快照**同源**
+     * （code-review 修正：此前对账扫描未去重，分家期间会基于 UI 不可见的遮蔽文件判定孤儿）。
+     * 纯函数（只依赖传入目录），JVM 直测。防御：跳过杂散 ".md" 空名文件。
+     */
+    internal fun mergedTopicFiles(dirs: List<File>): List<File> {
+        val seen = HashSet<String>()
+        val files = ArrayList<File>()
+        for (dir in dirs) {
+            val list = dir.listFiles { f -> f.isFile && f.name.endsWith(FILE_SUFFIX) } ?: continue
+            for (file in list.sortedBy { it.name }) {
+                val displayName = file.name.removeSuffix(FILE_SUFFIX)
+                if (displayName.isEmpty()) continue // 防御：跳过杂散 ".md" 空名文件
+                if (!seen.add(displayName.lowercase())) continue // 外部候选优先，同名去重
+                files.add(file)
+            }
+        }
+        return files
+    }
+
+    /**
      * 全部主题 ts 并集快照（设计 §20.2，需求 95(a)——OrphanReconciler 锁内消费）：
      * - **mtime 自愈**：每文件锁内 stat——mtime 与缓存一致→用缓存（轮询命中时主题侧零 I/O）；
      *   不一致→锁内重读并更新缓存。不依赖调用方失效纪律：忘失效/USB 直改（改文件必变 mtime）
@@ -295,28 +307,25 @@ class TopicRepository(
      * - **读失败→null**：任一需重读的文件读失败（I/O 异常）→ 整次返回 null＝对账本轮整体跳过
      *   （读失败≠空集，沿需求 39/K7 纪律；**不得**沿用 [documentOf]「读失败按 0 条」先例——
      *   那会把 I/O 故障变成批量清提醒）。缓存命中条目不读盘、无失败面。
-     * - 候选目录与 [listTopics] 同源（双目录合并扫描；仅 File 成员）。
+     * - 候选文件集与 [listTopics] 同源（[mergedTopicFiles] 双目录去重合并）。
      */
     fun allTopicTimestampsLocked(): Map<File, Set<String>>? = synchronized(FileOperationLock) {
         val result = LinkedHashMap<File, Set<String>>()
-        for (dir in candidateTopicDirs()) {
-            val files = dir.listFiles { f -> f.isFile && f.name.endsWith(FILE_SUFFIX) } ?: continue
-            for (file in files) {
-                val mtime = file.lastModified()
-                val cached = topicTsCache[file.absolutePath]
-                if (cached != null && cached.mtime == mtime) {
-                    result[file] = cached.ts
-                    continue
-                }
-                val content = try {
-                    file.readText()
-                } catch (e: Exception) {
-                    return@synchronized null
-                }
-                val ts = EntryParser.parse(content).mapTo(mutableSetOf()) { it.rawTimestamp }
-                topicTsCache[file.absolutePath] = TopicTsEntry(mtime, ts)
-                result[file] = ts
+        for (file in mergedTopicFiles(candidateTopicDirs())) {
+            val mtime = file.lastModified()
+            val cached = topicTsCache[file.absolutePath]
+            if (cached != null && cached.mtime == mtime) {
+                result[file] = cached.ts
+                continue
             }
+            val content = try {
+                file.readText()
+            } catch (e: Exception) {
+                return@synchronized null
+            }
+            val ts = EntryParser.parse(content).mapTo(mutableSetOf()) { it.rawTimestamp }
+            topicTsCache[file.absolutePath] = TopicTsEntry(mtime, ts)
+            result[file] = ts
         }
         result
     }

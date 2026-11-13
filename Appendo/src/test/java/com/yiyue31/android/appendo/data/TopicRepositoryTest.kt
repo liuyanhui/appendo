@@ -292,6 +292,50 @@ class TopicRepositoryTest {
         assertEquals(setOf("dup", "I"), prodRepo.listTopics().map { it.displayName }.toSet())
     }
 
+    // ---------- mergedTopicFiles（code-review 修正 2026-11-13：对账快照与 UI 列表共用同一文件集） ----------
+
+    @Test
+    fun mergedTopicFiles_crossDirDedup_firstDirWins_caseInsensitive() {
+        val dirA = tmp.newFolder("merge-a")
+        val dirB = tmp.newFolder("merge-b")
+        // dirA：dup.md（首目录）＋独有 A.md；dirB：同名不同大小写 DUP.md（大小写不敏感去重）
+        // ＋独有 B.md ＋杂散 ".md" 空名文件（防御跳过）
+        File(dirA, "dup.md").writeText(MarkdownFormatter.FILE_HEADER)
+        File(dirA, "A.md").writeText(MarkdownFormatter.FILE_HEADER)
+        File(dirB, "DUP.md").writeText(MarkdownFormatter.FILE_HEADER)
+        File(dirB, "B.md").writeText(MarkdownFormatter.FILE_HEADER)
+        File(dirB, ".md").writeText(MarkdownFormatter.FILE_HEADER)
+
+        val merged = repo.mergedTopicFiles(listOf(dirA, dirB))
+
+        assertEquals(
+            "同名去重（大小写不敏感）首目录优先；空名 .md 跳过",
+            listOf(File(dirA, "A.md"), File(dirA, "dup.md"), File(dirB, "B.md")),
+            merged
+        )
+    }
+
+    @Test
+    fun mergedTopicFiles_sameSourceAsListTopics_dedupedFileSet() {
+        val externalRoot = tmp.newFolder("ext-src")
+        val internalRoot = tmp.newFolder("int-src")
+        whenever(context.getExternalFilesDir(null)).thenReturn(externalRoot)
+        whenever(context.filesDir).thenReturn(internalRoot)
+        val prodRepo = TopicRepository(context, baseDir = null, prefs = prefs)
+        File(externalRoot, "topics").mkdirs()
+        File(externalRoot, "topics/E.md").writeText(MarkdownFormatter.FILE_HEADER)
+        File(externalRoot, "topics/dup.md").writeText(docWithOneEntry())
+        File(internalRoot, "topics").mkdirs()
+        File(internalRoot, "topics/dup.md").writeText(docWithOneEntry())
+
+        // listTopics（UI 列表）与 mergedTopicFiles（allTopicTimestampsLocked 候选集）必须同文件集
+        assertEquals(
+            "对账快照不消费 UI 不可见的遮蔽文件（分家场景）",
+            prodRepo.listTopics().map { it.file }.toSet(),
+            prodRepo.mergedTopicFiles(listOf(File(externalRoot, "topics"), File(internalRoot, "topics"))).toSet()
+        )
+    }
+
     // ---------- consumeFirstMoveGuide（A-1 改道，§17.1 第二行①②；③门控语义见方法 KDoc，断言落 T-15 M1） ----------
 
     @Test

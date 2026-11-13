@@ -124,4 +124,50 @@ class EntryLocatorTest {
             )
         }
     }
+
+    // ---------- outcomeOf（三态：设计 §20.1 修订 2026-11-13——读失败≠不存在） ----------
+
+    @Test
+    fun outcome_hit_returnsFound() {
+        val outcome = EntryLocator.outcomeOf(
+            mainContent = contentWithEntry("2026-01-01 10:00:00.000"),
+            topicContents = listOf(topicA to contentWithEntry("2026-01-02 10:00:00.000")),
+            anyUnreadable = true, // 命中可读文件即可——不可读文件不影响已命中的判定
+            ts = "2026-01-01 10:00:00.000"
+        )
+        assertEquals(LocateOutcome.Found(EntryLocation.MainFile, "内容"), outcome)
+    }
+
+    @Test
+    fun outcome_missAllReadable_returnsNotFound() {
+        val outcome = EntryLocator.outcomeOf(
+            mainContent = contentWithEntry("2026-01-01 10:00:00.000"),
+            topicContents = listOf(topicA to contentWithEntry("2026-01-02 10:00:00.000")),
+            anyUnreadable = false,
+            ts = "2026-03-03 10:00:00.000"
+        )
+        assertEquals("全库可读且无→可安全取消/删除", LocateOutcome.NotFound, outcome)
+    }
+
+    @Test
+    fun outcome_missWithUnreadable_returnsUnknown() {
+        val outcome = EntryLocator.outcomeOf(
+            mainContent = null, // 主文件不可读——条目可能就在其中
+            topicContents = listOf(topicA to contentWithEntry("2026-01-02 10:00:00.000")),
+            anyUnreadable = true,
+            ts = "2026-03-03 10:00:00.000"
+        )
+        assertEquals("读失败≠不存在→消费方不得取消/删除", LocateOutcome.Unknown, outcome)
+    }
+
+    @Test
+    fun outcome_hitInTopicDespiteUnreadableMain_returnsFound() {
+        val outcome = EntryLocator.outcomeOf(
+            mainContent = null,
+            topicContents = listOf(topicA to contentWithEntry("2026-01-02 10:00:00.000", text = "主题条目")),
+            anyUnreadable = true,
+            ts = "2026-01-02 10:00:00.000"
+        )
+        assertEquals("主不可读但命中主题→仍 Found（不降级为 Unknown）", LocateOutcome.Found(EntryLocation.Topic(topicA), "主题条目"), outcome)
+    }
 }

@@ -22,9 +22,11 @@ import java.io.File
  * ts 缓存**：本类需要条目内容（缓存只存 ts 集）且 fire/boot/深链为低频路径（缓存专属对账——
  * 设计 §20.1 分工裁定）。
  *
- * 读失败语义：主文件或某主题读失败→该文件按「无命中」处理（整体返 null 或跳过该主题）——
- * 沿 v1.4 fire 自愈口径（设计 §20.1「定位失败＝全库不存在」）；**对账路径的读失败保护
- * （读失败≠空集、本轮跳过）在 OrphanReconciler 承担**，不在此类。
+ * 读失败语义（设计 §20.1 修订，2026-11-13 code-review）：定位路径区分三态
+ * [LocateOutcome]——**读失败≠不存在**：命中可读文件→Found；全库可读且无→NotFound（可安全
+ * 取消/删除）；任一文件不可读且未命中→Unknown（该条目可能就在不可读文件中，消费方不得据此
+ * 取消/删除）。深链 [locateEntry] 仍返 null（两种 miss 不区分——导航语义无 destructive 面）。
+ * 对账路径的读失败保护（读失败≠空集、本轮跳过）在 OrphanReconciler 承担，不在此类。
  */
 sealed interface EntryLocation {
     /** 条目在主文件。 */
@@ -32,6 +34,17 @@ sealed interface EntryLocation {
 
     /** 条目仅在某个主题文档。 */
     data class Topic(val file: File) : EntryLocation
+}
+
+/** 定位结果三态（设计 §20.1 修订）：fire / 补发消费——仅 [NotFound] 允许取消提醒＋删 sidecar。 */
+sealed interface LocateOutcome {
+    data class Found(val location: EntryLocation, val content: String) : LocateOutcome
+
+    /** 全库可读且无此 ts——条目确已不存在，可安全取消/删除。 */
+    object NotFound : LocateOutcome
+
+    /** 有文件不可读且未命中——条目可能在不可读文件中：不通知、不取消、不删（读失败≠不存在）。 */
+    object Unknown : LocateOutcome
 }
 
 object EntryLocator {
@@ -81,40 +94,87 @@ object EntryLocator {
         return index
     }
 
+    /**
+     * 三态判定纯函数（JVM 直测）：命中→[LocateOutcome.Found]；miss 且 [anyUnreadable]
+     * （主文件或某主题不可读）→[LocateOutcome.Unknown]；miss 且全库可读→[LocateOutcome.NotFound]。
+     */
+    fun outcomeOf(
+        mainContent: String?,
+        topicContents: List<Pair<File, String>>,
+        anyUnreadable: Boolean,
+        ts: String
+    ): LocateOutcome {
+        val hit = locateInContents(mainContent, topicContents, ts)
+        return when {
+            hit != null -> LocateOutcome.Found(hit.first, hit.second)
+            anyUnreadable -> LocateOutcome.Unknown
+            else -> LocateOutcome.NotFound
+        }
+    }
+
     // ==================== 生产入口（整体单锁） ====================
 
-    /** 定位条目所在（95(c) 深链用）；全库无或读失败→null。 */
+    /** 三态定位（fire 消费，设计 §20.1 修订）：[LocateOutcome.Unknown]＝读失败未命中，不取消不删。 */
+    fun locateOutcome(context: Context, ts: String): LocateOutcome =
+        synchronized(FileOperationLock) {
+            val s = readLibraryLocked(context)
+            outcomeOf(s.mainContent, s.topicContents, s.anyUnreadable, ts)
+        }
+
+    /** 定位条目所在（95(c) 深链用）；全库无或读失败→null（两种 miss 不区分）。 */
     fun locateEntry(context: Context, ts: String): EntryLocation? =
         locateEntryWithContent(context, ts)?.first
 
-    /** 定位并取条目内容（95(b) 通知正文用——fire/补发共用）；全库无或读失败→null。 */
-    fun locateEntryContent(context: Context, ts: String): String? =
-        locateEntryWithContent(context, ts)?.second
-
-    /** 单遍全库索引（补发循环先建后查，需求 95(b) 性能前提——替代逐条全量重读）。 */
-    fun buildIndex(context: Context): Map<String, Pair<EntryLocation, String>> =
+    /**
+     * 索引＋可读性快照（boot 补发消费，需求 95(b) 性能前提——单遍读全库后查表；设计 §20.1 修订）：
+     * [LibraryIndex.anyUnreadable]=true 时索引对未命中 ts **不可信**（不可读文件中的条目全部缺席）
+     * ——补发循环不得据 miss 取消/删除。
+     */
+    fun buildIndexChecked(context: Context): LibraryIndex =
         synchronized(FileOperationLock) {
-            buildIndexFromContents(readMainLocked(context), readTopicsLocked(context))
+            val s = readLibraryLocked(context)
+            LibraryIndex(buildIndexFromContents(s.mainContent, s.topicContents), s.anyUnreadable)
         }
+
+    /** 全库索引＋可读性标志（[buildIndexChecked] 产物）。 */
+    data class LibraryIndex(
+        val index: Map<String, Pair<EntryLocation, String>>,
+        val anyUnreadable: Boolean
+    )
 
     private fun locateEntryWithContent(context: Context, ts: String): Pair<EntryLocation, String>? =
         synchronized(FileOperationLock) {
-            locateInContents(readMainLocked(context), readTopicsLocked(context), ts)
+            val s = readLibraryLocked(context)
+            locateInContents(s.mainContent, s.topicContents, ts)
         }
 
-    /** 主文件读取（锁内重入）：读失败→null（＝该文件无命中，见类 KDoc 读失败语义）。 */
-    private fun readMainLocked(context: Context): String? {
-        val md: MarkdownFileOperations = runCatching {
+    /** 全库快照（锁内一次读齐）：null＝该文件不可读（计入 [LibrarySnapshot.anyUnreadable]）。 */
+    private class LibrarySnapshot(
+        val mainContent: String?,
+        val topicContents: List<Pair<File, String>>,
+        val anyUnreadable: Boolean
+    )
+
+    /** 主文件＋各主题读取（锁内重入，listTopics() 序）：读失败的文件跳过并置 anyUnreadable。 */
+    private fun readLibraryLocked(context: Context): LibrarySnapshot {
+        var anyUnreadable = false
+        val mainContent: String? = runCatching {
             val repo = FileRepository(context)
-            MarkdownFileFactory.create(context, repo.isUsingSAF(), repo.getFileUri(), repo.getDefaultFile())
-        }.getOrNull() ?: return null
-        val result = runCatching { md.readAllWithStatus() }.getOrNull() ?: return null
-        return if (result.failed) null else result.content
-    }
-
-    /** 各主题读取（锁内重入，listTopics() 序）：读失败的主题跳过（见类 KDoc 读失败语义）。 */
-    private fun readTopicsLocked(context: Context): List<Pair<File, String>> =
-        TopicRepository(context).listTopics().mapNotNull { topic ->
-            runCatching { topic.file.readText() }.getOrNull()?.let { topic.file to it }
+            val md: MarkdownFileOperations =
+                MarkdownFileFactory.create(context, repo.isUsingSAF(), repo.getFileUri(), repo.getDefaultFile())
+            val result = md.readAllWithStatus()
+            if (result.failed) null else result.content
+        }.getOrNull()
+        if (mainContent == null) anyUnreadable = true
+        val topicContents = ArrayList<Pair<File, String>>()
+        for (topic in TopicRepository(context).listTopics()) {
+            val content = runCatching { topic.file.readText() }.getOrNull()
+            if (content != null) {
+                topicContents.add(topic.file to content)
+            } else {
+                anyUnreadable = true
+            }
         }
+        return LibrarySnapshot(mainContent, topicContents, anyUnreadable)
+    }
 }

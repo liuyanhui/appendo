@@ -21,7 +21,13 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    /** 到点触发：发通知；重复提醒自动排下一次（fired 保持 false），一次性标记 fired。 */
+    /**
+     * 到点触发：发通知；重复提醒自动排下一次（fired 保持 false），一次性标记 fired。
+     * 三态（设计 §20.1 修订，2026-11-13 评审）：NotFound（全库可读且无）→取消＋删 sidecar；
+     * Unknown（有文件不可读且未命中）→不通知、不取消、不删（读失败≠不存在——条目可能就在
+     * 不可读文件中，v1.4「miss 即清」会在瞬时 I/O 故障时毁掉存活条目的提醒）；循环提醒照常
+     * 排下一次（系列不因单次读失败断链），一次性保留待下次 rescheduleAll 补发自愈（app 启动/开机）。
+     */
     private fun handleFire(context: Context, ts: String) {
         if (ts == ReminderIntents.TEST_REMINDER_TS) {
             NotificationHelper.showTestNotification(context)
@@ -29,19 +35,28 @@ class ReminderAlarmReceiver : BroadcastReceiver() {
         }
         val store = ReminderStore.get(context)
         val meta = store.get(ts)
-        val content = EntryLocator.locateEntryContent(context, ts)
-        if (content == null) {
-            AlarmScheduler.cancel(context, ts)
-            store.remove(ts)
-            return
-        }
-        NotificationHelper.show(context, ts, content, missed = false)
-        if (meta != null && meta.recurrence != Recurrence.NONE) {
-            val next = ReminderLogic.nextOccurrence(meta.effectiveTrigger, meta.recurrence)
-            AlarmScheduler.schedule(context, ts, next)
-            store.set(ts, meta.copy(triggerAt = next, fired = false, snoozedUntil = 0))
-        } else {
-            store.update(ts) { it.copy(fired = true) }
+        when (val outcome = EntryLocator.locateOutcome(context, ts)) {
+            is LocateOutcome.Found -> {
+                NotificationHelper.show(context, ts, outcome.content, missed = false)
+                if (meta != null && meta.recurrence != Recurrence.NONE) {
+                    val next = ReminderLogic.nextOccurrence(meta.effectiveTrigger, meta.recurrence)
+                    AlarmScheduler.schedule(context, ts, next)
+                    store.set(ts, meta.copy(triggerAt = next, fired = false, snoozedUntil = 0))
+                } else {
+                    store.update(ts) { it.copy(fired = true) }
+                }
+            }
+            LocateOutcome.NotFound -> {
+                AlarmScheduler.cancel(context, ts)
+                store.remove(ts)
+            }
+            LocateOutcome.Unknown -> {
+                if (meta != null && meta.recurrence != Recurrence.NONE) {
+                    val next = ReminderLogic.nextOccurrence(meta.effectiveTrigger, meta.recurrence)
+                    AlarmScheduler.schedule(context, ts, next)
+                    store.set(ts, meta.copy(triggerAt = next, fired = false, snoozedUntil = 0))
+                }
+            }
         }
     }
 

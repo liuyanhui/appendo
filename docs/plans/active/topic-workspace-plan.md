@@ -185,6 +185,18 @@
 - **评估标准自检**：主优先✓；多主题确定性次序✓；miss null✓；buildIndex 与 locate 同源✓；fire 自愈语义不变（结构零改，null→cancel+remove 同 v1.4）✓；全量 230/0/0/0 ✓。
 - **偏离记录**：设计未显式定义 locate 路径读失败语义——按「读失败＝该文件无命中」实现（沿 v1.4 fire 口径＋设计 §20.1「定位失败＝全库不存在」原文），KDoc 注明；如后续评审认为需「不确定」态再升级（登记观察，不阻塞）。
 
+### T-20~T-22 code-review 补做（2026-11-13，完成；用户裁定「同意」后执行）
+
+- **评审**：`/code-review 44d40f8^..b224d3d` 7 项发现——3 行为风险＋4 效率/一致性。
+- **#1 采纳（设计修订）**：fire/boot「miss 即 cancel+remove」推翻→`LocateOutcome` 三态（Found/NotFound/Unknown）——任一文件不可读且未命中＝Unknown 不通知不取消不删（读失败≠不存在）；循环提醒照常排下一次防系列断链；boot `buildIndexChecked` 携带 anyUnreadable，miss 不可信时不取消；`locateEntryContent`/`buildIndex` 死接口退役；design §20.1 修订注＋修订记录落盘。
+- **#2 采纳（缺陷）**：`mergedTopicFiles` 抽取（目录序→文件名序、displayName 大小写不敏感跨目录去重）——listTopics 与 allTopicTimestampsLocked 共用同文件集，分家期间对账不消费 UI 不可见的遮蔽文件。
+- **#3 改判（原提案有误）**：「混合类型按 SameDocument 拒绝」不可行——SAF 主文件模式下移入/移出**本就是** Saf＋FileBased 混合，拒绝即断主流；SAF uri 不透明无法可靠判别名。落点＝SameDocument KDoc 局限注记＋TD-048（硬防护归 SAF 选文件入口）。
+- **#4 采纳（顺手）**：rescheduleAll 空库短路＋索引懒建（首个 fireMissed 才读全库——MainScreen 每次组合/开机不再无条件全库 I/O）。
+- **#7 采纳**：`TOAST_SAME_TOPIC_GUARD` const→`toastSameTopicGuard()` fun（评审「全为 fun」说法不确——文件本混用两形态，取参数化先例侧）。
+- **#5/#6 登记**：TD-049（locate 路径 2N 双读，随 T-29 重估）/TD-050（mtime 毫秒粒度窗口，T-23 invalidate 落调用方后第一道防线生效）。
+- **测试**：新增 6 用例（outcomeOf 四态：命中/可读 miss/不可读 miss/主不可读命中主题；mergedTopicFiles 两例：跨目录去重序＋与 listTopics 同源）——全量 **236/0/0/0**。
+- **待真机**：fire/boot 三态行为 JVM 面只覆盖纯函数决策，Receiver 接线随 T-27 真机门槛回归。
+
 ## 8. 开放决策点（已全部裁定）
 
 | # | 决策点 | 裁定（2026-11-13 用户「两案均采」＋三视角一致支持） | 落点 |

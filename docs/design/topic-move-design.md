@@ -24,6 +24,7 @@
 > | 2026-11-12 | Yiyue + Claude | **修订三·定稿前复核轮闭环＋微修落盘（草案修订三）**：三角色复核（架构/工程/测试，用户指示启动）——34 项核销 32 PASS＋2 PARTIAL（根因均入新发现，零返工）；E8 否决经工程师再评估＝**同意维持**（撕裂复发论证成立）。新发现 15 项全采纳：唯一必修级**三方收敛**项＝**MoveFlow 编排两步走**（L1 新建供工作区单消费、MainScreen 暂持旧 executeMove、L2 抽取提交统一迁入）；其余＝mtime 缓存专项用例行（setLastModified 钉造法）/L1 门槛补 (l)/(n) ①②划界/97(e) 归 L2/空态 L1 中性句＋常量族名 TOPIC_WORKSPACE_EMPTY_*/MainScreen 改动面对账（−400±/编排两步走）/ReminderFlowHost 各屏实例形态/specs.md 补行/SAF 变体冒号句式/写侧无落点注/mtime 边界注/等价解释措辞核正/转移新建子流程注。三方判定一致：**修完可直接定稿、无需再评** |
 > | 2026-11-12 | Yiyue + Claude | **可学习性轮（用户指示：架构师/工程师第一次接触项目视角）＋修复落盘**：双新人评审（无会话上下文的干净 sub-agent）高度收敛——总评「评审史编年体而非实施手册」。修复七处：**新增 §19.0 新人导读**（一句话概述/现状 5 分钟版/L1·L2·L3 前置定义＋方案①②对照/评审编号免责/效力链与行号漂移指引/微术语表（含 K13 释义）/specs 95~101 一行摘要/阅读路线）；**文档头部状态行按批次分列**（原「定稿 2026-11-01」致新人误读全文定稿）；**§1.1 加历史快照注**（原一句话概述为 2026-10-31 形态，分区列表/左滑恢复已被后批推翻）；**§5.6 断链修正**（→architecture.md §5.6）；**EntryLocator 与 ts 缓存分工裁定**（locate/buildIndex 锁内实读全量、缓存专属对账——两节各说半边的接口口径闭合）；条目 E 引入句；K13 内联释义。§25.2 逐条断言摘要与 §25.4 任务清单化＝**留阶段3 计划文档承载**（新人建议：不增厚设计本体）。**仍待用户确认定稿** |
 > | 2026-11-12 | Yiyue + Claude | **修订三定稿（用户确认「1」）——戊批次阶段2 闭环**。下一步＝阶段3 执行计划起草（以 §25.4 交付切分为骨架；新人评审建议的任务清单化＋101 断言摘要在计划文档落实）→ Evaluator 核验 → 用户确认 → 编码 T-01 起（L1：提醒解耦＋移出/转移＋工作区骨架） |
+> | 2026-11-13 | Yiyue + Claude | **T-20~T-22 code-review 补做后的设计修订（用户确认「同意」）**：① §20.1 fire/补发读失败语义修订——原「定位失败＝全库不存在→cancel+remove」推翻，改**三态 LocateOutcome（Found/NotFound/Unknown）**：仅「全库可读且未命中」＝NotFound 允许取消＋删 sidecar；「任一文件不可读且未命中」＝Unknown 不通知不取消不删（读失败≠不存在；循环提醒照常排下一次防系列断链，一次性保留待 rescheduleAll 补发自愈）；boot 补发同口径（anyUnreadable 时 miss 不取消）。② §20.2 `allTopicTimestampsLocked` 候选集与 `listTopics` 显式同源（`mergedTopicFiles` 共用合并去重——分家期间不消费 UI 不可见的遮蔽文件）。③ §21.1 SameDocument 护栏补**已知局限注记**：FileBased＋SAF 混合形态同物理文件不可判定（SAF uri 不透明）；硬防护须落 SAF 选文件入口，不在事务层。④ 附带：rescheduleAll 空库短路＋索引懒建（首个 fireMissed 才读全库）；`Microcopy.TOAST_SAME_TOPIC_GUARD` const→fun 对齐同族形态 |
 >
 > **状态（按批次分列，2026-11-12 新人评审后修正——后批覆盖前批，读哪章看哪行）**：
 > - §1~§13 原批（移入主题）：**定稿（2026-11-01 用户确认）**
@@ -1122,6 +1123,8 @@ main ──顶栏「主题」──▶ topics ──点卡片──▶ topic_wor
 - 可测性（评审 T2）：核心编排为参数注入纯函数（`locateEntryLocked(mainFileOps, topicTsSnapshots, ts)` 等），生产入口仅做 Context→参数装配——ReminderStore 私有单例与真实 SP 不进被测面。
 
 自愈语义保持：fire/补发定位失败＝全库不存在＝真孤儿→cancel+remove（架构 §5.2 不变，判定域扩为全库）。
+
+> **修订（2026-11-13 code-review，用户确认）**：上行「定位失败＝全库不存在」口径**作废**——定位失败含「文件不可读」形态，miss 即清会在瞬时 I/O 故障时毁掉存活条目的提醒（fire 与 boot 补发同病）。改三态 `LocateOutcome`：Found＝命中（发通知/补发，语义不变）；NotFound＝**全库可读**且未命中→cancel+remove（原自愈语义仅在可读性证明下保留）；Unknown＝任一文件不可读且未命中→不通知、不取消、不删——循环提醒照常排下一次（系列不断链），一次性保留待下次 rescheduleAll 补发自愈（app 启动/开机均触发）。boot 侧 `buildIndexChecked` 携带 `anyUnreadable`：true 时索引对 miss 不可信，补发循环不据 miss 取消/删除。深链 `locateEntry` 仍返 null（导航无 destructive 面，两种 miss 不区分）。
 
 ### 20.2 孤儿对账扩全库（95(a)：单锁／缓存自愈／读失败跳过）
 

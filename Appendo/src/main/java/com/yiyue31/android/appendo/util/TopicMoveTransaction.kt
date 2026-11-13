@@ -33,6 +33,11 @@ sealed interface MoveResult {
      * 源与目标为同一文档（戊批次 T-20，需求 96 SameDocument 护栏）：引用相等，或双 FileBased
      * 且 canonicalPath 相同。零副作用、无任何读写。正常 UI 不可达（目标列表排除当前主题），
      * 纯防御——A→A 场景下若放行会「全 skipped＋步骤 6 无条件删源」＝条目删光却报成功。
+     *
+     * **已知局限（code-review 修正注记，TD 登记）**：FileBased＋SAF 混合形态无法在此层判定
+     * 同一物理文件（SAF uri 不透明，无可靠路径比对）——触发前提＝用户把 topics/ 目录内文件
+     * 经 SAF 选为主文档（系统 picker 正常不暴露应用私有目录，属病态配置）。若该形态需硬防护，
+     * 须在 SAF 选文件入口做路径排除，而非本事务层。
      */
     object SameDocument : MoveResult
 

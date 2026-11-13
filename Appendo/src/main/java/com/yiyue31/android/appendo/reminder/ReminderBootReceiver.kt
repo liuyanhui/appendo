@@ -16,20 +16,31 @@ import com.yiyue31.android.appendo.util.ReminderLogic
  */
 fun rescheduleAll(context: Context) {
     val store = ReminderStore.get(context)
+    val reminders = store.reminders.value
+    // 空库短路（code-review 修正）：本方法每次 MainScreen 组合/开机/覆盖更新都会进来，
+    // 空库时免全库建索引 I/O
+    if (reminders.isEmpty()) return
     val now = System.currentTimeMillis()
-    // 单遍 ts→(位置, 内容) 索引（T-22，需求 95(b) 性能前提）——替代逐条全量重读；
-    // Receiver 受广播限时，一遍读全库后查表分发
-    val index = EntryLocator.buildIndex(context)
-    for ((ts, meta) in store.reminders.value) {
+    // 单遍 ts→(位置, 内容) 索引＋可读性（T-22，需求 95(b)；§20.1 修订 2026-11-13）——
+    // 懒建：首个 fireMissed 才读全库（无过期提醒时零文件 I/O）；Receiver 受广播限时，
+    // 一遍读全库后查表分发。anyUnreadable 时 miss 不可信（不可读文件中的条目全部缺席索引），
+    // 不得据 miss 取消/删除——保留待下次可读时自愈
+    var library: EntryLocator.LibraryIndex? = null
+    for ((ts, meta) in reminders) {
         val d = ReminderLogic.bootDecide(meta, now)
         if (d.newMeta != meta) store.set(ts, d.newMeta)
         if (d.fireMissed) {
-            val content = index[ts]?.second
+            if (library == null) library = EntryLocator.buildIndexChecked(context)
+            val content = library.index[ts]?.second
             if (content != null) {
                 NotificationHelper.show(context, ts, content, missed = true)
             } else {
-                AlarmScheduler.cancel(context, ts)
-                store.remove(ts)
+                if (!library.anyUnreadable) {
+                    // 全库可读且无 → 条目确已不存在，取消＋删 sidecar（v1.4 语义，
+                    // 仅在可读性证明下降级为不动作——读失败≠不存在）
+                    AlarmScheduler.cancel(context, ts)
+                    store.remove(ts)
+                }
                 continue
             }
         }

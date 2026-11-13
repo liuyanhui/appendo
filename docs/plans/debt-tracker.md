@@ -156,3 +156,9 @@ TD-010 ~ TD-015 全部修复并随 v1.2.1 发布（详见 CHANGELOG 1.2.1、`tas
 - **TD-045 `TopicMoveDialogs:75` KDoc 旧序失真**（来源：T-16 评估建议②「:75 KDoc 旧序失真顺手修」）：:72~75 KDoc 仍写「yyyy-MM-dd HH:mm · N 条」（时间在前），实际 :108 已按 E-2 换序为「N 条 · 创建时间」；源码注释不在 T-19 文件边界，未动。优先级：低（注释失真）。
 - **TD-046 A8 相关注释措辞校准**（来源：T-16 评估建议③）：`SwipeCard.kt:48`/`ArchiveListScreen.kt:291`/`TopicListScreen.kt:384` 引用「A8 裁定」的 KDoc 措辞可再校准（裁定表述为「抽公共骨架共用＋薄包装」的取舍记录，注释引用可更自包含）；源码注释不在 T-19 边界，未动。优先级：低（注释）。
 - **TD-047 主包 CLAUDE.md 路由清单陈旧**（T-19 收尾新发现）：`Appendo/src/main/java/com/yiyue31/android/appendo/CLAUDE.md` 仍写「三个页面路由」且路由树缺 `topics` 与 `archive_detail?kind`（不在 T-19 文件边界——"其他 CLAUDE.md"红线，未动）。优先级：低（文档）。
+
+### 戊批次 T-20~T-22 code-review 补做新债（2026-11-13，3 条，TD-048~050）
+
+- **TD-048 SameDocument 护栏混合形态盲区**（来源：code-review #3）：FileBased＋SAF 混合形态下「SAF uri 解析到同一物理文件」不可判定（uri 不透明、跨 provider 无可靠路径比对）。触发前提＝用户把 topics/ 内文件经 SAF 选为主文档（系统 picker 正常不暴露应用私有目录，属病态配置）。已在 `MoveResult.SameDocument` KDoc 注明局限（设计 §21.1 修订注）；若需硬防护，落点＝SAF 选文件入口做路径排除，非事务层。优先级：低。
+- **TD-049 locate/buildIndex 路径每文件双读**（来源：code-review #5）：`readLibraryLocked` 中 `listTopics()`（entryCount 计数读全文件）后 `readText()` 再读同批文件＝2N 次读/fire 与补发。设计 §20.1 分工裁定（锁内实读全量、不消费缓存）的既知代价；优化方向＝TopicRepository 提供 (file, content) 单遍 API。随 T-29 或戊批次收尾重估。优先级：低（低频路径）。
+- **TD-050 ts 缓存 mtime 毫秒粒度指纹窗口**（来源：code-review #6）：同毫秒（或粗粒度 mtime 文件系统）两次内容变更会被缓存判「新鲜」供出陈旧 ts 集。设计 §20.2 边界注已披露（topics/ 恒私有目录＋atomicWrite 恒产新 mtime，实际风险面闭合）；`invalidateTopic` 生产调用方在 T-23 落地后第一道防线生效。优先级：低（既知既治）。
