@@ -35,8 +35,9 @@ import java.util.Date
  * 「移入主题」流程对话框组（topic-move 设计 §8.1/§7.4，T-06）：
  * - [MoveFlowStep] ＋ MainScreen 侧状态机驱动：对话框 1 目标选择 → 2 新建命名 ⇄ 2b 同名指路
  *   → 3 确认（含执行中/失败重试态）；取消路径逐对话框定义（见各组件 KDoc）；
- * - [EntryPreviewDialog]：多选态长按预览（82 修订 b，§7.4）；
- * - [remindersToCancel]：§8.2 ②③ 提醒联动纯函数（成功回调内 K 重算＋同 ts 连坐防护）。
+ * - [EntryPreviewDialog]：多选态长按预览（82 修订 b，§7.4）。
+ * - 提醒联动取消退役（95(e)，T-23）：确认框 K 行改保留告知（[Microcopy.reminderKeepLine]）；
+ *   旧 [~~remindersToCancel~~] 纯函数与「提醒失效」口径一并退役（§20.3/§20.5）。
  *
  * 颜色全部经 MaterialTheme.colorScheme（P6/P7/P8）：确认/创建/移入该主题按钮＝primary、
  * 辅助小字＝onSurfaceVariant、零写死色；用户可见字面全部经 [Microcopy]（§9 定稿）。
@@ -50,26 +51,7 @@ import java.util.Date
 internal enum class MoveFlowStep { SELECT_TARGET, NEW_TOPIC, SAME_NAME, CONFIRM }
 
 /**
- * §8.2 ②③ 提醒联动核心（纯函数，可 JVM 单测）：在 move 成功回调内重算需取消的提醒 ts 集。
- *
- * @param selectedTs 所选条目的时间戳集（去重后）
- * @param unfiredReminderTs 执行时点 sidecar 中「未触发」提醒的 ts 集——② K 重算：确认框里的
- *   K 只是预览值，停留期间提醒可能被设置/取消/触发，以执行时点快照为准（88 数字可核对）
- * @param remainingSourceTs 移入后**刷新过的源解析**中仍存在的时间戳集——③ 同 ts 连坐防护：
- *   sidecar key＝ts 覆盖同 ts 全部条目，若同 ts 有任一条目（同秒碰撞的未选条目）留在源，
- *   该提醒不取消（仍属于留在主列表的那条，R8）；源读失败传 null → 保守返回空集不取消
- *   （不误杀，遗漏由既有孤儿对账兜底清理）
- * @return 应取消的 ts 集；大小＝防护过滤后实际取消数 K（§8.2 ⑤ toast 附注数字）
- */
-internal fun remindersToCancel(
-    selectedTs: Set<String>,
-    unfiredReminderTs: Set<String>,
-    remainingSourceTs: Set<String>?
-): Set<String> =
-    if (remainingSourceTs == null) emptySet()
-    else (selectedTs intersect unfiredReminderTs) - remainingSourceTs
-
-/**
+ * 「移入主题」对话框栈步骤（§8.1 流程图的代码化）：
  * 对话框 1 目标选择（§8.1）：主题列表 createdAt 倒序（[TopicRepository.listTopics] 序），
  * 名称主文字＋「yyyy-MM-dd HH:mm · N 条」弱化小字（P3/P8，onSurfaceVariant——格式与归档列表
  * [ArchiveRepository.formatTimestamp] 同源）；末项「新建主题…」（primary，P6 组件级用途）。
@@ -235,7 +217,7 @@ internal fun MoveConfirmDialog(
                 if (reminderCount > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        Microcopy.dlgMoveConfirmReminder(reminderCount),
+                        Microcopy.reminderKeepLine(reminderCount),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

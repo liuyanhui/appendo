@@ -109,8 +109,9 @@ internal object Microcopy {
     /** 成功（N=0，87 修订）：M＝全部所选（moved=0、全 skipped）——直陈事实句式，禁「已移入 0 条」失败读感。2026-11-11 精炼：「该/当前」赘词删。 */
     fun toastMovedAllExisting(m: Int): String = "$m 条已在主题中，已从列表移除"
 
-    /** 成功附注（K>0，84(c)）：与主文案直接拼接；K＝实际取消数、按 ts 计（§8.2 ⑤——同 ts 连坐防护 ③ 过滤后，一条提醒覆盖同 ts 全部条目）。2026-11-11 话术修订：「已取消」改「提醒失效」贴用户模板。 */
-    fun removedRemindersSuffix(k: Int): String = "，提醒失效 $k 条"
+    /** 确认框保留告知行（95(f)，设计 §24.1，T-23）：移入/移出/转移三确认框 K>0 时均附——移入
+     *  不再取消提醒（95(e) 联动取消退役），提醒随条目保留在全库所在处。 */
+    fun reminderKeepLine(k: Int): String = "$k 条提醒将随条目保留。"
 
     /** 失败（统一兜底；非 SAF 源读失败等无专属句式场景）。 */
     const val TOAST_MOVE_FAILED = "移入失败"
@@ -135,9 +136,6 @@ internal object Microcopy {
     /** 确认正文（84(d) 后果与去向；2026-11-11 换机验证话术精炼裁定：两句并一句，弃「将把…消失」冗式——specs 92 修订注）；N＝所选条数（selectedKeys.size，打开对话框时快照）。 */
     fun dlgMoveConfirmBody(n: Int, topic: String): String =
         "将 $n 条移入「$topic」，并从主列表移除（顶栏『主题』可查看）。"
-
-    /** 确认正文提醒行（K>0 追加一行）；K＝预览值、按条计（所选中 ts 设有未触发提醒的条数；同 ts 多条重复计），实际取消按 ts 计、成功回调内重算（§8.2 ②）——预览 K ≥ 实际 K 属 R8 同根边界。2026-11-11 话术修订：弃「其中 K 条设有未触发提醒，移入后将取消」（长且难懂），与成功 toast 同用「提醒失效」词。 */
-    fun dlgMoveConfirmReminder(k: Int): String = "移入后 $k 条提醒失效。"
 
     /** 对话框 1 列表末项。 */
     const val ITEM_NEW_TOPIC = "新建主题…"

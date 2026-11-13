@@ -197,6 +197,14 @@
 - **测试**：新增 6 用例（outcomeOf 四态：命中/可读 miss/不可读 miss/主不可读命中主题；mergedTopicFiles 两例：跨目录去重序＋与 listTopics 同源）——全量 **236/0/0/0**。
 - **待真机**：fire/boot 三态行为 JVM 面只覆盖纯函数决策，Receiver 接线随 T-27 真机门槛回归。
 
+### T-23 OrphanReconciler＋MainScreen 四块＋文案两文件（2026-11-13，完成）
+
+- **落盘**：① 新 `reminder/OrphanReconciler.kt`——`reconcile(mainFile, topicRepo, reminderKeys): Set<String>?`（单锁内「自读主文件＋allTopicTimestampsLocked 并集」→findOrphans；读失败任一→null 本轮跳过；cancel/remove 锁外归调用方）；② MainScreen 对账段改调 reconcile（withContext(IO)，null 不动作）；③ 清空分支 63 收窄（cancel 全部→reconcile 全库判定；null 保守不清由轮询兜底）；④ executeMove 取消段删除＋`cancelledReminders`/toast 附注退役＋成功分支补 invalidateTopic(target＋FileBased 源侧)（统一失效规则第一道防线）；⑤ 主列表删除回调改 reconcile 单键全库判定（主题内同 ts 残留保留）；⑥ Microcopy：`reminderKeepLine(k)`「$k 条提醒将随条目保留。」落盘＋`removedRemindersSuffix`/`dlgMoveConfirmReminder` 删；⑦ TopicMoveDialogs：K 行改 `reminderKeepLine`＋`remindersToCancel` 纯函数删＋文件头 KDoc 同步。
+- **测试**（新 `OrphanReconcilerTest` 7 用例；`TopicMoveDialogsTest`（remindersToCancel 专属 6 用例）随函数退役整文件删）：三态（仅主题存活不杀/全库消失杀/并存不杀）＋空键集早退＋主文件 failed 标志→null＋主题读失败 POSIX 门控→null＋并发输出判据（reconcile×双向 move 30 轮零误报＋终态一致）。
+- **评估标准自检**：三态 ✓；读失败 null ✓；并发输出判据 ✓（沿 ⑦ 先例弃时序断言）；`removedRemindersSuffix`/`remindersToCancel` 源码 grep 零残留 ✓（design 命中均为历史表/§20.3 退役清单记录——append 纪律不删）；主列表删除→主题残留保留 JVM 面＝reconcile_entryOnlyInTopic ✓；全量 **237/0/0/2**（skip×2＝POSIX 门控读失败注入，Windows JDK 读拦截不可靠先例）✓。
+- **偏离记录**：① `dlgMoveConfirmReminder`（「移入后 K 条提醒失效。」）随口径作废一并删（计划只点名两符号，但 K 行换 `reminderKeepLine` 后它成死文案）；② 详情对话框「取消提醒」按钮（手动取消，:1256 一带）不动——用户显式动作非删除联动，不在 §20.3 范围；③ 删除回调的 reconcile 在主线程 onClick 直调（沿该回调既有 deleteEntry 主线程 I/O 先例，不在此任务扩改动面）。
+- **待真机**：对账/清空/删除三路径全库判定随 T-27 真机门槛回归（JVM 面已覆盖决策纯函数）。
+
 ## 8. 开放决策点（已全部裁定）
 
 | # | 决策点 | 裁定（2026-11-13 用户「两案均采」＋三视角一致支持） | 落点 |

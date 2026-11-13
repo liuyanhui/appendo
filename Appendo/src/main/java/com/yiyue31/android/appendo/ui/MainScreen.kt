@@ -83,6 +83,7 @@ import com.yiyue31.android.appendo.data.TopicCreateResult
 import com.yiyue31.android.appendo.data.TopicDocument
 import com.yiyue31.android.appendo.data.TopicRepository
 import com.yiyue31.android.appendo.reminder.AlarmScheduler
+import com.yiyue31.android.appendo.reminder.OrphanReconciler
 import com.yiyue31.android.appendo.reminder.ReminderStore
 import com.yiyue31.android.appendo.reminder.rescheduleAll
 import androidx.core.content.ContextCompat
@@ -90,7 +91,6 @@ import androidx.core.app.NotificationManagerCompat
 import com.yiyue31.android.appendo.reminder.ReminderIntents
 import com.yiyue31.android.appendo.util.Recurrence
 import com.yiyue31.android.appendo.util.ReminderMeta
-import com.yiyue31.android.appendo.util.ReminderLogic
 import com.yiyue31.android.appendo.ui.EntryListScreen
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.ui.theme.AppendoDarkScheme
@@ -294,11 +294,14 @@ fun MainScreen(
                 entryCount = newEntries.size
                 // §7.3：刷新后保留仍存在的选中项——被删剔除、新插入默认未选（勾选按 key 查 Set，不错位）
                 selectedKeys = retainedSelection(selectedKeys, newEntries)
-                // 对账：清掉 sidecar 中已不存在的条目（外部编辑/换文件导致的孤儿提醒）
-                val timestamps = newEntries.map { it.timestamp }.toSet()
+                // 对账：清掉全库（主文件＋全部主题）已不存在的孤儿提醒（95(a)，T-23——
+                // 单锁扫描＋读失败本轮整体跳过；cancel/remove 锁外）。主题内仍有同 ts
+                // 条目的提醒保留（101(i)）
                 val store = ReminderStore.get(context)
-                val orphans = ReminderLogic.findOrphans(store.allKeys(), timestamps)
-                if (orphans.isNotEmpty()) {
+                val orphans = withContext(Dispatchers.IO) {
+                    OrphanReconciler.reconcile(getCurrentMarkdownFile(), topicRepository, store.allKeys())
+                }
+                if (orphans != null && orphans.isNotEmpty()) {
                     orphans.forEach { ts ->
                         AlarmScheduler.cancel(context, ts)
                         store.remove(ts)
@@ -317,14 +320,13 @@ fun MainScreen(
     // —— 「移入主题」执行（T-06，§8.1 对话框 3 确认/重试共用入口；§6.6/§8.2 处置）——
     /**
      * 执行移入组合事务（失败重试同走本入口，move 幂等收敛，84(b)）：
-     * - 事务与提醒联动的源重读均在 [Dispatchers.IO]（200 条＝2 次全文件写，不 ANR，89(p)）；
-     * - 提醒联动严格 §8.2 执行序：① 仅 Success（含 N=0）取消——一切失败态（含 SourceDeleteFailed）
-     *   均不取消；② K 在成功回调内以 sidecar 时点快照重算（确认框 K 仅预览）；③ 同 ts 连坐防护
-     *   ——以移入后的源重读解析为准，同 ts 仍有条目留在源则不取消该提醒；④ 取消动作与删除条目
-     *   联动同款（AlarmScheduler.cancel ＋ ReminderStore.remove 成对）；⑤ K>0 时 toast 追加附注；
-     *   ⑥ 恢复不复活＝零代码保证（纯条目追加无复活路径，README 声明落 T-11/R1）。
-     * - 成功：关全部对话框＋退出多选＋toast 三态（K>0 追加提醒附注）＋setFileLastModified＋
-     *   refreshEntryCount（§6.6 立即主动刷新，不等 2 秒轮询）。
+     * - 事务在 [Dispatchers.IO]（200 条＝2 次全文件写，不 ANR，89(p)）；
+     * - 提醒联动取消**退役**（95(e)，设计 §20.3，T-23）：移入不再取消任何提醒——同 ts 条目
+     *   在主题中仍存在，全库孤儿对账（refreshEntryCount → OrphanReconciler）自然不杀；
+     *   成功分支仅做统一失效规则双失效（invalidateTopic 源＋目标，§20.2 第一道防线）
+     *   ＋首次指路旗标消费；恢复不复活＝零代码保证（纯条目追加无复活路径，R1）。
+     * - 成功：关全部对话框＋退出多选＋toast 三态＋setFileLastModified＋
+     *   refreshEntryCount（§6.6 立即主动刷新，不等 2 秒轮询——对账随此轮触发）。
      * - 失败：toast 按分类、对话框 3 保持变「重试」、保持勾选与目标；仅 SourceDeleteFailed
      *   例外同时刷新（源可能已部分移除，即刻如实反映，§6.6），其余失败态源未动不刷新。
      */
@@ -340,28 +342,17 @@ fun MainScreen(
         val targetMd = FileBasedMarkdownFile(context, target.file)
         moveExecuting = true
         coroutineScope.launch {
-            var cancelledReminders = 0
             var firstMoveGuide = false
             val result = withContext(Dispatchers.IO) {
                 val r = TopicMoveTransaction.move(source, targetMd, keys)
                 if (r is MoveResult.Success) {
-                    // §8.2（①仅 Success 分支内；②以执行时点 sidecar 为准；③源重读解析）
-                    val store = ReminderStore.get(context)
-                    val unfiredTs = store.allKeys().filterTo(mutableSetOf()) { store.hasUnfired(it) }
-                    val remainingTs = runCatching {
-                        EntryParser.parse(source.readAll()).mapTo(mutableSetOf()) { it.rawTimestamp }
-                    }.getOrNull() // 源读失败 → null → 保守不取消（§8.2 ③，孤儿对账兜底）
-                    val toCancel = remindersToCancel(
-                        selectedTs = keys.mapTo(mutableSetOf()) { it.timestamp },
-                        unfiredReminderTs = unfiredTs,
-                        remainingSourceTs = remainingTs
-                    )
-                    for (ts in toCancel) {
-                        // ④ 与删除条目联动同款（成对调用，对齐删除路径先例）
-                        AlarmScheduler.cancel(context, ts)
-                        store.remove(ts)
-                    }
-                    cancelledReminders = toCancel.size
+                    // 统一失效规则第一道防线（设计 §20.2，T-23）：move 成功 → 源＋目标双失效。
+                    // 此处移入＝目标失效＋源侧 FileBased 时同失效（SAF 源恒主文件、无缓存键，
+                    // as? 空过）——移出/转移的源目标双主题形态随 T-26 接入同一规则
+                    topicRepository.invalidateTopic(targetMd.file)
+                    (source as? FileBasedMarkdownFile)?.let { topicRepository.invalidateTopic(it.file) }
+                    // 移入联动取消退役（95(e)，设计 §20.3）：孤儿判定归 OrphanReconciler
+                    // （上方对账段——主题内有同 ts 条目的提醒保留，101(i)）
                     // 首次指路（§15.4 U1）：仅 moved>0 的 Success 消耗旗标（N=0 不消耗不展示）
                     if (r.moved > 0) {
                         firstMoveGuide = topicRepository.consumeFirstMoveGuide()
@@ -374,17 +365,16 @@ fun MainScreen(
                 is MoveResult.Success -> {
                     closeMoveFlow()
                     exitSelectionMode()
-                    // toast 三态（§9.1；N＝moved 实写数）＋⑤ K>0 追加附注（K＝实际取消数）
-                    // ＋首次指路后缀（§15.4 U1：拼接序末位，单 toast 原则；moved=0 不展示不消耗）
+                    // toast 三态（§9.1；N＝moved 实写数）＋首次指路后缀（§15.4 U1：拼接序末位，
+                    // 单 toast 原则；moved=0 不展示不消耗）。提醒附注退役（95(e)/§20.3——
+                    // 提醒随条目保留，不再取消，无取消数可报）
                     val base = when {
                         result.moved == 0 -> Microcopy.toastMovedAllExisting(result.skippedExisting)
                         result.skippedExisting > 0 ->
                             Microcopy.toastMovedCountSkipped(result.moved, result.skippedExisting)
                         else -> Microcopy.toastMovedCount(result.moved)
                     }
-                    var msg =
-                        if (cancelledReminders > 0) base + Microcopy.removedRemindersSuffix(cancelledReminders)
-                        else base
+                    var msg = base
                     if (firstMoveGuide) msg += Microcopy.firstMoveGuideSuffix
                     showToast(context, msg)
                     // §6.6：立即主动刷新（mtime 双保险，不等 2 秒轮询）
@@ -454,10 +444,19 @@ fun MainScreen(
                     resyncArchiveState()
                     return@launch
                 }
-                // 取消全部提醒（需求 63 联动保持，与旧清空路径同款）
+                // 63 收窄（95(e)，设计 §20.3，T-23）：清空后主文件空集，孤儿判定改全库
+                // （sidecar−主题集）——主题内仍有同 ts 条目的提醒保留；读失败（reconcile
+                // null）保守不清，遗留孤儿由轮询对账兜底
                 val store = ReminderStore.get(context)
-                store.allKeys().forEach { AlarmScheduler.cancel(context, it) }
-                store.removeAll()
+                val clearOrphans = withContext(Dispatchers.IO) {
+                    OrphanReconciler.reconcile(mdFile, topicRepository, store.allKeys())
+                }
+                if (clearOrphans != null) {
+                    clearOrphans.forEach { ts ->
+                        AlarmScheduler.cancel(context, ts)
+                        store.remove(ts)
+                    }
+                }
             }
 
             action.toast?.let { showToast(context, it) }
@@ -906,9 +905,17 @@ fun MainScreen(
                                             fileRepository.setFileLastModified(System.currentTimeMillis())
                                             refreshEntryCount()
                                             showToast(context, "已删除")
-                                            // 联动取消该条提醒
-                                            AlarmScheduler.cancel(context, entryToDeleteTimestamp)
-                                            ReminderStore.get(context).remove(entryToDeleteTimestamp)
+                                            // 联动取消改全库判定（101(i)，设计 §20.3，T-23）：
+                                            // 全库（主＋主题）再无该 ts 才取消＋删 sidecar；
+                                            // 主题内同 ts 残留时提醒保留（reconcile 单键探测——
+                                            // 删除后主文件已无该 ts，命中即全库消失）
+                                            val delOrphans = OrphanReconciler.reconcile(
+                                                mdFile, topicRepository, setOf(entryToDeleteTimestamp)
+                                            )
+                                            if (delOrphans?.contains(entryToDeleteTimestamp) == true) {
+                                                AlarmScheduler.cancel(context, entryToDeleteTimestamp)
+                                                ReminderStore.get(context).remove(entryToDeleteTimestamp)
+                                            }
                                         } else {
                                             if (BuildConfig.DEBUG) {
                                                 android.util.Log.e("MainScreen", "Delete returned false")
