@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
+import com.yiyue31.android.appendo.util.FileOperationLock
 import com.yiyue31.android.appendo.util.MarkdownFormatter
 import java.io.File
 
@@ -149,8 +150,11 @@ class TopicRepository(
      * 全部主题（§6.5）：createdAt 倒序（新主题在前，§5.2 定稿）；正向标识 = `topics/` 目录成员
      * （.md 文件）；条数实时读文件（不入 SP）。文件存在但 SP created_ key 丢失（云备份部分恢复/
      * 异常）→ 本次观测以 file.lastModified() 回写 SP 一次（首见回写，此后冻结，排序稳定不漂移）。
+     *
+     * 持锁（戊批次 T-21，设计 §20.2）：读路径原为裸 `file.readText()`——与跨双文档事务（移入/移出）
+     * 并发时存在撕裂窗口；FileOperationLock 可重入，内部 SP commit（首见回写）随之持锁，低频可接受。
      */
-    fun listTopics(): List<TopicDocument> {
+    fun listTopics(): List<TopicDocument> = synchronized(FileOperationLock) {
         val seen = HashSet<String>()
         val docs = ArrayList<TopicDocument>()
         for (dir in candidateTopicDirs()) {
@@ -162,7 +166,7 @@ class TopicRepository(
                 docs.add(documentOf(file, displayName))
             }
         }
-        return docs.sortedByDescending { it.createdAt }
+        docs.sortedByDescending { it.createdAt }
     }
 
     /** 按显示名查找（大小写不敏感，与同名检测同口径）。 */
@@ -229,23 +233,24 @@ class TopicRepository(
      * 删除主题（§6.5，需求 85(a)）：entryCount 实时重算 >0 → [TopicDeleteResult.NotEmpty]
      * （非空禁删）；0 条先删文件、成功后删 SP created_ key（文件＋key 同清）；删文件失败 →
      * [TopicDeleteResult.Failed]（文件与 key 均保持）。读失败无法判空 → 保守拒绝
-     * （[TopicDeleteResult.Failed]，不动任何状态）。
+     * （[TopicDeleteResult.Failed]，不动任何状态）。持锁（T-21，同 listTopics 口径）＋缓存失效。
      */
-    fun deleteTopic(topic: TopicDocument): TopicDeleteResult {
+    fun deleteTopic(topic: TopicDocument): TopicDeleteResult = synchronized(FileOperationLock) {
         val content = try {
             topic.file.readText()
         } catch (e: Exception) {
-            return TopicDeleteResult.Failed
+            return@synchronized TopicDeleteResult.Failed
         }
-        if (EntryParser.countEntries(content) > 0) return TopicDeleteResult.NotEmpty
+        if (EntryParser.countEntries(content) > 0) return@synchronized TopicDeleteResult.NotEmpty
         val deleted = try {
             topic.file.delete()
         } catch (e: Exception) {
             false
         }
-        if (!deleted) return TopicDeleteResult.Failed
+        if (!deleted) return@synchronized TopicDeleteResult.Failed
+        topicTsCache.remove(topic.file.absolutePath)
         prefs.edit().remove(createdKey(topic.file.name)).commit()
-        return TopicDeleteResult.Deleted
+        TopicDeleteResult.Deleted
     }
 
     /**
@@ -263,5 +268,56 @@ class TopicRepository(
         if (prefs.getBoolean(KEY_FIRST_MOVE_GUIDE, false)) return false
         prefs.edit().putBoolean(KEY_FIRST_MOVE_GUIDE, true).commit()
         return true
+    }
+
+    // ==================== 戊批次 T-21：主题 ts 缓存（mtime 自愈）＋失效 API（设计 §20.2） ====================
+
+    /** 缓存条目：文件 mtime ＋ 该文件全部条目时间戳集（对账/孤儿判定专用——不含内容）。 */
+    private data class TopicTsEntry(val mtime: Long, val ts: Set<String>)
+
+    /**
+     * 主题 ts 集缓存。**访问一律在 [FileOperationLock] 内**（HashMap 非线程安全；轮询对账 IO 线程
+     * 与写操作失效回调并发）。key = file.absolutePath（改名后旧键成孤儿条目——invalidateAll 清理）。
+     */
+    private val topicTsCache = HashMap<String, TopicTsEntry>()
+
+    /** 失效单个主题（写操作成功回调第一道防线；T-23/T-26 调用）。自愈兜底见 [allTopicTimestampsLocked]。 */
+    fun invalidateTopic(file: File): Unit = synchronized(FileOperationLock) { topicTsCache.remove(file.absolutePath) }
+
+    /** 全量失效（改名等路径级变化）。 */
+    fun invalidateAllTopics(): Unit = synchronized(FileOperationLock) { topicTsCache.clear() }
+
+    /**
+     * 全部主题 ts 并集快照（设计 §20.2，需求 95(a)——OrphanReconciler 锁内消费）：
+     * - **mtime 自愈**：每文件锁内 stat——mtime 与缓存一致→用缓存（轮询命中时主题侧零 I/O）；
+     *   不一致→锁内重读并更新缓存。不依赖调用方失效纪律：忘失效/USB 直改（改文件必变 mtime）
+     *   均被 stat 校验兜住。
+     * - **读失败→null**：任一需重读的文件读失败（I/O 异常）→ 整次返回 null＝对账本轮整体跳过
+     *   （读失败≠空集，沿需求 39/K7 纪律；**不得**沿用 [documentOf]「读失败按 0 条」先例——
+     *   那会把 I/O 故障变成批量清提醒）。缓存命中条目不读盘、无失败面。
+     * - 候选目录与 [listTopics] 同源（双目录合并扫描；仅 File 成员）。
+     */
+    fun allTopicTimestampsLocked(): Map<File, Set<String>>? = synchronized(FileOperationLock) {
+        val result = LinkedHashMap<File, Set<String>>()
+        for (dir in candidateTopicDirs()) {
+            val files = dir.listFiles { f -> f.isFile && f.name.endsWith(FILE_SUFFIX) } ?: continue
+            for (file in files) {
+                val mtime = file.lastModified()
+                val cached = topicTsCache[file.absolutePath]
+                if (cached != null && cached.mtime == mtime) {
+                    result[file] = cached.ts
+                    continue
+                }
+                val content = try {
+                    file.readText()
+                } catch (e: Exception) {
+                    return@synchronized null
+                }
+                val ts = EntryParser.parse(content).mapTo(mutableSetOf()) { it.rawTimestamp }
+                topicTsCache[file.absolutePath] = TopicTsEntry(mtime, ts)
+                result[file] = ts
+            }
+        }
+        result
     }
 }

@@ -170,6 +170,14 @@
 - **偏离记录**：① 边界微扩——`Microcopy.kt` 加 `TOAST_SAME_TOPIC_GUARD`（编译需要；设计 §24.1 已定义该常量，T-26 变体族照单复用）；② 计划「MoveFaults 扩 SAF 目标注入」未落——SAF 目标分支经接口属性由假实现注入覆盖，无需新增 MoveFaults 枚举（更少生产面）；③ FileBasedMarkdownFile.file 可见性 private→internal（护栏比对需要）。
 - **核验**：Generator 自检（上述）；Planner 独立核验随下一任务流水线补做或用户抽查。
 
+### T-21 TopicRepository ts 缓存与持锁读（2026-11-13，完成）
+
+- **落盘**：① `TopicTsEntry(mtime, ts)`＋`topicTsCache`（访问一律 FileOperationLock 内，KDoc 注明）；② `allTopicTimestampsLocked(): Map<File, Set<String>>?`——锁内 stat 自愈（mtime 一致用缓存/不一致重读收编）、任一需重读文件失败→null 整次跳过（95(a) 前提 3，KDoc 点名不得沿用「读失败按 0」先例）、候选目录与 listTopics 同源；③ `invalidateTopic/invalidateAllTopics`（第一道防线，显式 `: Unit` 防私有类型外泄）；④ `listTopics`/`deleteTopic` 持锁化（撕裂防护，KDoc 注明 SP commit 持锁低频可接受）＋deleteTopic 缓存失效。
+- **测试**（TopicRepositoryTest 17 用例＝既有 12＋新增 5）：缓存命中（mtime 钉同值改内容→返回旧集＝命中证明）/mtime 变自愈重读收编/显式失效强制重读（同 mtime）/多主题并集/读失败→null→恢复（POSIX 门控 assumeTrue，沿 T-02 先例注记 Windows 不可靠）。
+- **评估标准自检**：缓存三态 ✓；自愈支线（setLastModified 钉造法＋绕过 invalidate 直改）✓；注入沿 TemporaryFolder＋InMemorySharedPreferences 先例 ✓；全量 222/0/0/0 ✓。
+- **偏离记录**：无（边界内）。
+- **同日新增**：用户裁定**自主执行原则**（问前先判是否真需决策；未跑偏自动执行；六层防偏离机制）——已入会话记忆。
+
 ## 8. 开放决策点（已全部裁定）
 
 | # | 决策点 | 裁定（2026-11-13 用户「两案均采」＋三视角一致支持） | 落点 |
