@@ -1,5 +1,6 @@
 package com.yiyue31.android.appendo.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -128,6 +130,9 @@ fun TopicWorkspaceScreen(
         selectedKeys = emptySet()
     }
 
+    // §7.2：系统返回手势退出多选并清空选中集（仅多选态拦截；沿 MainScreen 先例）
+    BackHandler(enabled = selectionMode) { exitSelectionMode() }
+
     fun startMoveOut() {
         moveFlow.start(MoveVerb.MOVE_OUT, MoveFlowStep.CONFIRM)
     }
@@ -234,6 +239,15 @@ fun TopicWorkspaceScreen(
                                 Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                                 contentDescription = "返回"
                             )
+                        }
+                    },
+                    actions = {
+                        // 多选入口（§7.1 方案 A 沿 MainScreen 先例）：浏览态常驻、条目数为 0
+                        // 时隐藏（空列表无从选择）；contentDescription 直写沿惯例
+                        if (!entries.isNullOrEmpty()) {
+                            IconButton(onClick = { selectionMode = true }) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = "多选")
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
