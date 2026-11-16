@@ -96,9 +96,11 @@ internal fun SwipeCard(
                     .fillMaxWidth()
                     .background(swipeBackgroundColor, RoundedCornerShape(16.dp))
                     .padding(16.dp),
+                // 指示文字对齐露出的那侧缘（T-27 真机走查修复：卡片向右滑露出**左**缘，
+                // 文字须 CenterStart——原 CenterEnd 恰被卡片本体盖住，全页面只剩色块无文字）
                 contentAlignment = when {
-                    offsetX > 0 -> Alignment.CenterEnd
-                    else -> Alignment.CenterStart
+                    offsetX > 0 -> Alignment.CenterStart
+                    else -> Alignment.CenterEnd
                 }
             ) {
                 Text(

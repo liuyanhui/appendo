@@ -256,7 +256,9 @@ private fun EntryCard(
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.error, RoundedCornerShape(16.dp))
                         .padding(16.dp),
-                    contentAlignment = Alignment.CenterEnd
+                    // 右滑露左缘——文字对齐被露出的那侧（T-27 真机走查修复：原 CenterEnd
+                    // 被卡片本体盖住，只剩色块无文字；同 SwipeCard 修复）
+                    contentAlignment = Alignment.CenterStart
                 ) {
                     Text(
                         text = swipeActionText,
