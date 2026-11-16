@@ -213,7 +213,6 @@ internal fun SameNameDialog(
 internal fun MoveConfirmDialog(
     count: Int,
     topicName: String,
-    reminderCount: Int,
     executing: Boolean,
     failed: Boolean,
     onConfirm: () -> Unit,
@@ -228,14 +227,6 @@ internal fun MoveConfirmDialog(
         text = {
             Column {
                 Text(bodyText ?: Microcopy.dlgMoveConfirmBody(count, topicName))
-                if (reminderCount > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        Microcopy.reminderKeepLine(reminderCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
         },
         confirmButton = {

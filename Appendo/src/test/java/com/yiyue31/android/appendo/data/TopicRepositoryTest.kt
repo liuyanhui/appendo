@@ -367,73 +367,10 @@ class TopicRepositoryTest {
     private fun contentWithEntry(ts: String): String =
         MarkdownFormatter.FILE_HEADER + EntryParser.format(ts, "内容-$ts")
 
-    @Test
-    fun allTopicTimestamps_cacheHit_mtimePinned_returnsCachedSetNotReread() {
-        putTopic("t1", contentWithEntry("2026-01-01 10:00:00.000"), lastModified = 1000L)
-        val snap1 = repo.allTopicTimestampsLocked()!!
-        assertEquals(setOf("2026-01-01 10:00:00.000"), snap1.values.single())
 
-        // 内容已变但 mtime 钉回同值 → 命中缓存返回旧集（命中证明：新条目时间戳不可见）
-        val f = File(topicsDir(), "t1.md")
-        f.writeText(contentWithEntry("2026-02-02 20:00:00.000"))
-        f.setLastModified(1000L)
-        val snap2 = repo.allTopicTimestampsLocked()!!
-        assertEquals("mtime 未变 → 用缓存（旧集）", setOf("2026-01-01 10:00:00.000"), snap2.values.single())
-    }
 
-    @Test
-    fun allTopicTimestamps_mtimeChanged_healsByRereading() {
-        putTopic("t1", contentWithEntry("2026-01-01 10:00:00.000"), lastModified = 1000L)
-        repo.allTopicTimestampsLocked()
 
-        // 自愈支线：绕过 invalidate 直接改文件（mtime 变）→ 锁内 stat 发现 → 重读收编
-        val f = File(topicsDir(), "t1.md")
-        f.writeText(contentWithEntry("2026-02-02 20:00:00.000"))
-        f.setLastModified(2000L)
-        val snap = repo.allTopicTimestampsLocked()!!
-        assertEquals("mtime 变 → 重读收编新集", setOf("2026-02-02 20:00:00.000"), snap.values.single())
 
-        // 收编后缓存已更新：同 mtime 再取仍为新集
-        assertEquals(repo.allTopicTimestampsLocked()!!.values.single(), setOf("2026-02-02 20:00:00.000"))
-    }
-
-    @Test
-    fun invalidateTopic_forcesRereadEvenWithSameMtime() {
-        putTopic("t1", contentWithEntry("2026-01-01 10:00:00.000"), lastModified = 1000L)
-        repo.allTopicTimestampsLocked()
-
-        // 第一道防线：显式失效后即使 mtime 钉住同值也强制重读
-        val f = File(topicsDir(), "t1.md")
-        f.writeText(contentWithEntry("2026-03-03 30:00:00.000")) // 注：非法时刻字符串仅作数据，parse 不校验语义
-        f.setLastModified(1000L)
-        repo.invalidateTopic(f)
-        val snap = repo.allTopicTimestampsLocked()!!
-        assertEquals("失效 → 强制重读", setOf("2026-03-03 30:00:00.000"), snap.values.single())
-    }
-
-    @Test
-    fun allTopicTimestamps_multipleTopics_allPresent() {
-        putTopic("a", contentWithEntry("2026-01-01 10:00:00.000"), lastModified = 1000L)
-        putTopic("b", contentWithEntry("2026-01-02 10:00:00.000"), lastModified = 1000L)
-        val snap = repo.allTopicTimestampsLocked()!!
-        assertEquals(2, snap.size)
-        assertEquals(setOf("2026-01-01 10:00:00.000"), snap[File(topicsDir(), "a.md")])
-        assertEquals(setOf("2026-01-02 10:00:00.000"), snap[File(topicsDir(), "b.md")])
-    }
-
-    @Test
-    fun allTopicTimestamps_readFailure_returnsNull_skipRound() {
-        // 读失败注入：POSIX setReadable(false)（Windows 的 JDK 读拦截不可靠——T-02 先例）
-        assumeTrue(!System.getProperty("os.name", "").lowercase().contains("windows"))
-        val f = putTopic("t1", contentWithEntry("2026-01-01 10:00:00.000"), lastModified = 1000L)
-        repo.allTopicTimestampsLocked() // 先入缓存（命中条目无失败面）
-
-        val f2 = putTopic("t2", contentWithEntry("2026-01-02 10:00:00.000"), lastModified = 1000L)
-        f2.setReadable(false) // 需重读且读失败 → 整次 null（95(a)：读失败≠空集，本轮对账跳过）
-        assertTrue(repo.allTopicTimestampsLocked() == null)
-        f2.setReadable(true) // 恢复（勿留脏状态影响同 fixture 后续）
-        assertEquals(2, repo.allTopicTimestampsLocked()!!.size)
-    }
 }
 
 /**

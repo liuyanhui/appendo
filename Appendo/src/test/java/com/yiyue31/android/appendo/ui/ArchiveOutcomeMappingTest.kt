@@ -27,7 +27,6 @@ class ArchiveOutcomeMappingTest {
         )
         assertEquals(Microcopy.toastArchivedAndCleared(archiveName), action.toast)
         assertTrue("归档并清空路径应执行清空", action.shouldClear)
-        assertTrue("归档并清空路径应取消全部提醒（需求 63 联动）", action.shouldCancelAllReminders)
     }
 
     // ---------- ② Archived × 只归档 ----------
@@ -41,7 +40,6 @@ class ArchiveOutcomeMappingTest {
         )
         assertEquals(Microcopy.toastArchivedTo(archiveName), action.toast)
         assertFalse("只归档路径不得清空（需求 12 快照语义）", action.shouldClear)
-        assertFalse("只归档路径不得动提醒", action.shouldCancelAllReminders)
     }
 
     // ---------- ③ Failed × 两路径（TD-017：均不 clear） ----------
@@ -51,7 +49,6 @@ class ArchiveOutcomeMappingTest {
         val action = archiveActionFor(ArchiveOutcome.Failed, ArchivePath.ARCHIVE_AND_CLEAR, archiveName)
         assertEquals(Microcopy.TOAST_ARCHIVE_FAILED_CLEAR_KEPT, action.toast)
         assertFalse("TD-017：归档失败不得清空", action.shouldClear)
-        assertFalse(action.shouldCancelAllReminders)
     }
 
     @Test
@@ -59,7 +56,6 @@ class ArchiveOutcomeMappingTest {
         val action = archiveActionFor(ArchiveOutcome.Failed, ArchivePath.ARCHIVE_ONLY, archiveName)
         assertEquals(Microcopy.TOAST_ARCHIVE_FAILED, action.toast)
         assertFalse(action.shouldClear)
-        assertFalse(action.shouldCancelAllReminders)
     }
 
     // ---------- ④ NothingToArchive × 两路径（行为变更钉死：不清空＋守卫字面＋无其他动作） ----------
@@ -74,7 +70,6 @@ class ArchiveOutcomeMappingTest {
                 action.toast
             )
             assertFalse("行为变更（A-3/T-3）：空内容不清空（$path）", action.shouldClear)
-            assertFalse(action.shouldCancelAllReminders)
         }
     }
 
@@ -85,7 +80,6 @@ class ArchiveOutcomeMappingTest {
         val action = clearFailedAction()
         assertEquals(Microcopy.TOAST_CLEAR_FAILED_ARCHIVED, action.toast)
         assertFalse("清空失败后无后续清空动作", action.shouldClear)
-        assertFalse(action.shouldCancelAllReminders)
     }
 
     // ---------- 补充：成功字面句式族（§16.4：已动词＋对象＋逗号附注链式） ----------

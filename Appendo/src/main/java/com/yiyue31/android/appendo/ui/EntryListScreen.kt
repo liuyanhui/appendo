@@ -56,9 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.yiyue31.android.appendo.reminder.ReminderStore
 import com.yiyue31.android.appendo.util.EntryKey
-import com.yiyue31.android.appendo.util.ReminderText
 
 // 振动时长常量与 performVibration 已随 SwipeCard 骨架共享下沉（T-13，A-4/E-3），本文件直接引用
 private const val SWIPE_THRESHOLD_DP = 120f
@@ -93,7 +91,6 @@ fun EntryListScreen(
     onPreview: (LinkEntry) -> Unit = { }
 ) {
     val context = LocalContext.current
-    val reminderMap = ReminderStore.get(context).reminders.value
     val listStateResolved = listState ?: rememberLazyListState()
 
     // Header（sourceFileName 参数随 2026-11-11 主题名并入顶栏标题裁定退役；
@@ -122,10 +119,7 @@ fun EntryListScreen(
             ) { _, entry ->
                 EntryCard(
                     entry = entry,
-                    // 归档详情（readOnly）不显示提醒徽标：归档是历史快照，提醒属于活动文件的同时间戳条目（缺陷① 2026-09-02）
-                    reminderLabel = if (readOnly) null else reminderMap[entry.timestamp]?.let { m ->
-                        if (!m.fired) ReminderText.fullLabel(m) else null
-                    },
+                    // 提醒徽标随自建提醒退役删除（R 批次，specs 16.C）
                     readOnly = readOnly,
                     // §7.3：勾选态按 key 查 Set——与复合 key（"${timestamp}_$index"）解耦，插删后不错位
                     selectionMode = selectionMode,
@@ -158,7 +152,6 @@ fun EntryListScreen(
 @Composable
 private fun EntryCard(
     entry: LinkEntry,
-    reminderLabel: String? = null,
     readOnly: Boolean = false,
     onLongClick: () -> Unit,
     onSwipeToDelete: () -> Unit,
@@ -302,14 +295,6 @@ private fun EntryCard(
                             maxLines = 3,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (reminderLabel != null) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "⏰ $reminderLabel 提醒",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
                     }
                 }
             }

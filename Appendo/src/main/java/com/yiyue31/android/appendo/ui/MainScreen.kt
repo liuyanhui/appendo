@@ -82,15 +82,7 @@ import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.data.TopicCreateResult
 import com.yiyue31.android.appendo.data.TopicDocument
 import com.yiyue31.android.appendo.data.TopicRepository
-import com.yiyue31.android.appendo.reminder.AlarmScheduler
-import com.yiyue31.android.appendo.reminder.OrphanReconciler
-import com.yiyue31.android.appendo.reminder.ReminderStore
-import com.yiyue31.android.appendo.reminder.rescheduleAll
 import androidx.core.content.ContextCompat
-import androidx.core.app.NotificationManagerCompat
-import com.yiyue31.android.appendo.reminder.ReminderIntents
-import com.yiyue31.android.appendo.util.Recurrence
-import com.yiyue31.android.appendo.util.ReminderMeta
 import com.yiyue31.android.appendo.ui.EntryListScreen
 import com.yiyue31.android.appendo.ui.showToast
 import com.yiyue31.android.appendo.ui.theme.AppendoDarkScheme
@@ -129,7 +121,6 @@ fun parseMarkdownEntries(content: String): List<LinkEntry> =
 @Composable
 fun MainScreen(
     fileRepository: FileRepository,
-    scrollToTs: String? = null,
     onNavigateToArchiveList: () -> Unit = {},
     onNavigateToTopics: () -> Unit = {},
     currentThemeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -147,7 +138,6 @@ fun MainScreen(
     var showArchiveDialog by remember { mutableStateOf(false) }
     var showInputDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
-    var showSelfCheck by remember { mutableStateOf(false) }
     var inputContent by remember { mutableStateOf("") }
     var lastModified by remember { mutableStateOf(fileRepository.getFileLastModified()) }
     var showMenu by remember { mutableStateOf(false) }
@@ -207,47 +197,7 @@ fun MainScreen(
         }
     }
 
-    // 深链：从提醒通知点按进来后，滚动到该记录（仅滚一次）
     val entryListState = rememberLazyListState()
-    val scrolledTs = remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(scrollToTs, entries) {
-        val ts = scrollToTs ?: return@LaunchedEffect
-        if (ts == scrolledTs.value) return@LaunchedEffect
-        val idx = entries.sortedByDescending { it.timestamp }.indexOfFirst { it.timestamp == ts }
-        if (idx >= 0) {
-            entryListState.animateScrollToItem(idx)
-            scrolledTs.value = ts
-        }
-    }
-
-    // —— 提醒（C 方案）——
-    var showReminderPicker by remember { mutableStateOf(false) }
-    var pendingReminderTs by remember { mutableStateOf<String?>(null) }
-    var showOverwriteReminder by remember { mutableStateOf(false) }
-    var pendingSchedule by remember { mutableStateOf<Triple<String, Long, Recurrence>?>(null) }
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val p = pendingSchedule
-        pendingSchedule = null
-        if (p != null) {
-            if (granted) scheduleReminder(context, p.first, p.second, p.third)
-            else showToast(context, "未授予通知权限，提醒将不会显示")
-        }
-    }
-
-    fun startSetReminder(ts: String, triggerAt: Long, recurrence: Recurrence) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            pendingSchedule = Triple(ts, triggerAt, recurrence)
-            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            scheduleReminder(context, ts, triggerAt, recurrence)
-        }
-    }
 
     // Helper function to get current MarkdownFileOperations instance
     fun getCurrentMarkdownFile(): MarkdownFileOperations {
@@ -294,19 +244,6 @@ fun MainScreen(
                 entryCount = newEntries.size
                 // §7.3：刷新后保留仍存在的选中项——被删剔除、新插入默认未选（勾选按 key 查 Set，不错位）
                 selectedKeys = retainedSelection(selectedKeys, newEntries)
-                // 对账：清掉全库（主文件＋全部主题）已不存在的孤儿提醒（95(a)，T-23——
-                // 单锁扫描＋读失败本轮整体跳过；cancel/remove 锁外）。主题内仍有同 ts
-                // 条目的提醒保留（101(i)）
-                val store = ReminderStore.get(context)
-                val orphans = withContext(Dispatchers.IO) {
-                    OrphanReconciler.reconcile(getCurrentMarkdownFile(), topicRepository, store.allKeys())
-                }
-                if (orphans != null && orphans.isNotEmpty()) {
-                    orphans.forEach { ts ->
-                        AlarmScheduler.cancel(context, ts)
-                        store.remove(ts)
-                    }
-                }
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) {
                     android.util.Log.e("MainScreen", "Failed to refresh entries", e)
@@ -321,12 +258,9 @@ fun MainScreen(
     /**
      * 执行移入组合事务（失败重试同走本入口，move 幂等收敛，84(b)）：
      * - 事务在 [Dispatchers.IO]（200 条＝2 次全文件写，不 ANR，89(p)）；
-     * - 提醒联动取消**退役**（95(e)，设计 §20.3，T-23）：移入不再取消任何提醒——同 ts 条目
-     *   在主题中仍存在，全库孤儿对账（refreshEntryCount → OrphanReconciler）自然不杀；
-     *   成功分支仅做统一失效规则双失效（invalidateTopic 源＋目标，§20.2 第一道防线）
-     *   ＋首次指路旗标消费；恢复不复活＝零代码保证（纯条目追加无复活路径，R1）。
+     * - 成功分支仅首次指路旗标消费（提醒联动随自建提醒退役整体删除——R 批次，specs 16.C）。
      * - 成功：关全部对话框＋退出多选＋toast 三态＋setFileLastModified＋
-     *   refreshEntryCount（§6.6 立即主动刷新，不等 2 秒轮询——对账随此轮触发）。
+     *   refreshEntryCount（§6.6 立即主动刷新，不等 2 秒轮询）。
      * - 失败：toast 按分类、对话框 3 保持变「重试」、保持勾选与目标；仅 SourceDeleteFailed
      *   例外同时刷新（源可能已部分移除，即刻如实反映，§6.6），其余失败态源未动不刷新。
      */
@@ -346,14 +280,8 @@ fun MainScreen(
             val result = withContext(Dispatchers.IO) {
                 val r = TopicMoveTransaction.move(source, targetMd, keys)
                 if (r is MoveResult.Success) {
-                    // 统一失效规则第一道防线（设计 §20.2，T-23）：move 成功 → 源＋目标双失效。
-                    // 此处移入＝目标失效＋源侧 FileBased 时同失效（SAF 源恒主文件、无缓存键，
-                    // as? 空过）——移出/转移的源目标双主题形态随 T-26 接入同一规则
-                    topicRepository.invalidateTopic(targetMd.file)
-                    (source as? FileBasedMarkdownFile)?.let { topicRepository.invalidateTopic(it.file) }
-                    // 移入联动取消退役（95(e)，设计 §20.3）：孤儿判定归 OrphanReconciler
-                    // （上方对账段——主题内有同 ts 条目的提醒保留，101(i)）
                     // 首次指路（§15.4 U1）：仅 moved>0 的 Success 消耗旗标（N=0 不消耗不展示）
+                    // （提醒联动与缓存失效随自建提醒退役删除——R 批次，specs 16.C）
                     if (r.moved > 0) {
                         firstMoveGuide = topicRepository.consumeFirstMoveGuide()
                     }
@@ -444,19 +372,6 @@ fun MainScreen(
                     resyncArchiveState()
                     return@launch
                 }
-                // 63 收窄（95(e)，设计 §20.3，T-23）：清空后主文件空集，孤儿判定改全库
-                // （sidecar−主题集）——主题内仍有同 ts 条目的提醒保留；读失败（reconcile
-                // null）保守不清，遗留孤儿由轮询对账兜底
-                val store = ReminderStore.get(context)
-                val clearOrphans = withContext(Dispatchers.IO) {
-                    OrphanReconciler.reconcile(mdFile, topicRepository, store.allKeys())
-                }
-                if (clearOrphans != null) {
-                    clearOrphans.forEach { ts ->
-                        AlarmScheduler.cancel(context, ts)
-                        store.remove(ts)
-                    }
-                }
             }
 
             action.toast?.let { showToast(context, it) }
@@ -543,7 +458,6 @@ fun MainScreen(
         refreshEntryCount()
 
         // 应用启动即重排提醒（TD-014：覆盖安装/force-stop 会丢闹钟，不能只等开机广播）
-        coroutineScope.launch(Dispatchers.IO) { rescheduleAll(context) }
 
         // 旧数据一次性隔离迁移（2026-09-01 决策③）：为未隔离的边界形态内容行补 ZWSP，旧条目不再丢行。
         // 幂等（无需迁移返回 null）；走 writeAll 原子写；完成后靠 mtime 轮询自然刷新 UI。
@@ -660,13 +574,6 @@ fun MainScreen(
                                 onClick = {
                                     showMenu = false
                                     changeFileLauncher.launch("Appendo.md")
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("提醒自检") },
-                                onClick = {
-                                    showMenu = false
-                                    showSelfCheck = true
                                 }
                             )
                             DropdownMenuItem(
@@ -905,17 +812,6 @@ fun MainScreen(
                                             fileRepository.setFileLastModified(System.currentTimeMillis())
                                             refreshEntryCount()
                                             showToast(context, "已删除")
-                                            // 联动取消改全库判定（101(i)，设计 §20.3，T-23）：
-                                            // 全库（主＋主题）再无该 ts 才取消＋删 sidecar；
-                                            // 主题内同 ts 残留时提醒保留（reconcile 单键探测——
-                                            // 删除后主文件已无该 ts，命中即全库消失）
-                                            val delOrphans = OrphanReconciler.reconcile(
-                                                mdFile, topicRepository, setOf(entryToDeleteTimestamp)
-                                            )
-                                            if (delOrphans?.contains(entryToDeleteTimestamp) == true) {
-                                                AlarmScheduler.cancel(context, entryToDeleteTimestamp)
-                                                ReminderStore.get(context).remove(entryToDeleteTimestamp)
-                                            }
                                         } else {
                                             if (BuildConfig.DEBUG) {
                                                 android.util.Log.e("MainScreen", "Delete returned false")
@@ -1163,20 +1059,19 @@ fun MainScreen(
                         placeholder = { Text(Microcopy.PLACEHOLDER_EDIT) }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    // C 设提醒（主操作）。需求 75"次级动作先落盘"：空校验 → 有修改先保存
-                    //（失败 return，框保持）→ pendingReminderTs 赋值（关框前！选择器/替换确认只读它，
-                    // 漏写会因守卫静默不弹）→ 关框+收键盘 → 再弹选择器/替换确认（替换确认在保存之后）
+                    // 添加到日历（主操作，R 批次 specs 16.C：自建提醒退役，日历承接提醒诉求）。
+                    // 需求 75"次级动作先落盘"语义保留：空校验 → 有修改先保存（失败 return，框保持）
+                    // → 关框+收键盘 → 跳日历；日历失败独立反馈、不回滚已保存内容
                     OutlinedButton(
                         onClick = {
                             if (editContent.isBlank()) {
                                 showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
                                 return@OutlinedButton
                             }
-                            val ts = selectedEntry!!.timestamp
                             if (editContent != selectedEntry!!.content) {
                                 try {
                                     val mdFile = getCurrentMarkdownFile()
-                                    if (mdFile.updateEntry(ts, editContent)) {
+                                    if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
                                         fileRepository.setFileLastModified(System.currentTimeMillis())
                                         refreshEntryCount()
                                         showToast(context, Microcopy.TOAST_SAVED)
@@ -1192,51 +1087,6 @@ fun MainScreen(
                                     return@OutlinedButton
                                 }
                             }
-                            pendingReminderTs = ts
-                            showDetailDialog = false
-                            selectedEntry = null
-                            editContent = ""
-                            lastEditedTs = null
-                            keyboardController?.hide()
-                            if (ReminderStore.get(context).hasUnfired(ts)) {
-                                showOverwriteReminder = true
-                            } else {
-                                showReminderPicker = true
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("⏰ 设提醒", fontWeight = FontWeight.Medium)
-                    }
-                    // A 添加到日历（次要，缩小）。同"次级动作先落盘"（需求 75）：保存成功后关框再跳日历；
-                    // 日历失败独立反馈、不回滚已保存内容
-                    TextButton(
-                        onClick = {
-                            if (editContent.isBlank()) {
-                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                                return@TextButton
-                            }
-                            if (editContent != selectedEntry!!.content) {
-                                try {
-                                    val mdFile = getCurrentMarkdownFile()
-                                    if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
-                                        fileRepository.setFileLastModified(System.currentTimeMillis())
-                                        refreshEntryCount()
-                                        showToast(context, Microcopy.TOAST_SAVED)
-                                    } else {
-                                        showToast(context, Microcopy.TOAST_SAVE_FAILED)
-                                        return@TextButton // 保存失败不执行后续（须在关框之前 return）
-                                    }
-                                } catch (e: Exception) {
-                                    if (BuildConfig.DEBUG) {
-                                        android.util.Log.e("MainScreen", "Failed to update entry", e)
-                                    }
-                                    showToast(context, Microcopy.TOAST_SAVE_FAILED)
-                                    return@TextButton
-                                }
-                            }
                             val entry = CalendarEntryMapper.map(editContent)
                             showDetailDialog = false
                             selectedEntry = null
@@ -1246,18 +1096,12 @@ fun MainScreen(
                             if (!CalendarLauncher.launch(context, entry)) {
                                 showToast(context, Microcopy.TOAST_NO_CALENDAR)
                             }
-                        }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("添加到日历", style = MaterialTheme.typography.labelMedium)
-                    }
-                    if (ReminderStore.get(context).hasUnfired(selectedEntry!!.timestamp)) {
-                        TextButton(
-                            onClick = {
-                                AlarmScheduler.cancel(context, selectedEntry!!.timestamp)
-                                ReminderStore.get(context).remove(selectedEntry!!.timestamp)
-                                showToast(context, "已取消提醒")
-                            }
-                        ) { Text("取消提醒", color = MaterialTheme.colorScheme.error) }
+                        Text("添加到日历", fontWeight = FontWeight.Medium)
                     }
                 }
             },
@@ -1313,76 +1157,6 @@ fun MainScreen(
         )
     }
 
-    // 提醒自检（验证本机提醒能否触发：通知权限 + 电池白名单 + 测试提醒）
-    if (showSelfCheck) {
-        val notifEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
-        val batteryOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            context.getSystemService(android.os.PowerManager::class.java)
-                .isIgnoringBatteryOptimizations(context.packageName)
-        } else true
-        AlertDialog(
-            onDismissRequest = { showSelfCheck = false },
-            title = { Text("提醒自检") },
-            text = {
-                Column {
-                    Text(if (notifEnabled) "通知权限：✅ 已开启" else "通知权限：❌ 未开启（提醒不会显示）")
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        if (batteryOk) "后台运行：✅ 已加白名单"
-                        else "后台运行：❌ 未加白名单（realme 等可能杀后台，导致提醒不响）"
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("自启动：⚠️ 无法自动检测——重启后提醒的重注册依赖它；realme 需到 应用设置→自启动 开启")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "点“发送测试提醒”，约 1 分钟后若响起 = 此机支持本地提醒（短时正证明）。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    AlarmScheduler.schedule(
-                        context,
-                        ReminderIntents.TEST_REMINDER_TS,
-                        System.currentTimeMillis() + 60_000L
-                    )
-                    showToast(context, "测试提醒已排，约 1 分钟后响")
-                }) { Text("发送测试提醒") }
-            },
-            dismissButton = {
-                Row {
-                    if (!batteryOk) {
-                        TextButton(onClick = {
-                            try {
-                                val intent = android.content.Intent(
-                                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                    android.net.Uri.parse("package:${context.packageName}")
-                                )
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                showToast(context, "无法跳转，请到系统设置手动允许后台运行")
-                            }
-                        }) { Text("允许后台运行") }
-                    }
-                    TextButton(onClick = {
-                        try {
-                            val intent = android.content.Intent(
-                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                android.net.Uri.parse("package:${context.packageName}")
-                            )
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            showToast(context, "无法跳转，请手动到设置开启自启动")
-                        }
-                    }) { Text("自启动设置") }
-                    TextButton(onClick = { showSelfCheck = false }) { Text("关闭") }
-                }
-            }
-        )
-    }
-
     // SAF 授权失效引导（TD-021）：数据仍在原文件中，绝不静默空列表
     if (showSafInvalidDialog) {
         AlertDialog(
@@ -1418,53 +1192,6 @@ fun MainScreen(
     }
 
     // 提醒时间选择
-    if (showReminderPicker) {
-        val ts = pendingReminderTs
-        if (ts != null) {
-            ReminderTimePickerDialog(
-                onPick = { triggerAt, recurrence ->
-                    showReminderPicker = false
-                    if (triggerAt <= System.currentTimeMillis()) {
-                        showToast(context, "请选择未来时间")
-                    } else {
-                        startSetReminder(ts, triggerAt, recurrence)
-                    }
-                },
-                onDismiss = { showReminderPicker = false }
-            )
-        }
-    }
-
-    // 覆盖确认（已有提醒时）
-    if (showOverwriteReminder) {
-        AlertDialog(
-            onDismissRequest = {
-                showOverwriteReminder = false
-                pendingReminderTs = null
-            },
-            title = {
-                Text(
-                    "替换已有提醒？",
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.error
-                )
-            },
-            text = { Text("该记录已设提醒，确定替换为新时间？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showOverwriteReminder = false
-                    showReminderPicker = true
-                }) { Text("替换", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showOverwriteReminder = false
-                    pendingReminderTs = null
-                }) { Text("取消") }
-            }
-        )
-    }
-
     // Manual input dialog
     if (showInputDialog) {
         val focusRequester = remember { FocusRequester() }
@@ -1502,45 +1229,14 @@ fun MainScreen(
                         placeholder = { Text("请输入要追加的内容") }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    // 并列次要入口（需求 75"次级动作先落盘"）：先追加落盘（toast"已追加"，不带重复旁注）
-                    // → 清空/关框/收键盘 → 再开提醒选择器。新条目时间戳经 appendReturningTimestamp 在
-                    // 同一持锁事务内取得（消除"追加后重读末条"的并发插入竞态）；返回 null ⟺ 追加未发生
+                    // 添加到日历（主操作，R 批次 specs 16.C：提醒诉求由日历承接）。需求 75
+                    // "次级动作先落盘"语义保留：先追加落盘（toast"已追加"）→ 清空/关框/收键盘
+                    // → 跳日历；日历失败独立反馈、不回滚已追加内容
                     OutlinedButton(
                         onClick = {
                             if (inputContent.isBlank()) {
                                 showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
                                 return@OutlinedButton
-                            }
-                            try {
-                                val mdFile = getCurrentMarkdownFile()
-                                val newTs = mdFile.appendReturningTimestamp(inputContent)
-                                if (newTs != null) {
-                                    fileRepository.setFileLastModified(System.currentTimeMillis())
-                                    refreshEntryCount()
-                                    showToast(context, Microcopy.TOAST_APPENDED)
-                                    inputContent = ""
-                                    showInputDialog = false
-                                    keyboardController?.hide()
-                                    pendingReminderTs = newTs
-                                    showReminderPicker = true
-                                } else {
-                                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                                }
-                            } catch (_: Exception) {
-                                showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("⏰ 设提醒", fontWeight = FontWeight.Medium)
-                    }
-                    TextButton(
-                        onClick = {
-                            if (inputContent.isBlank()) {
-                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                                return@TextButton
                             }
                             try {
                                 val mdFile = getCurrentMarkdownFile()
@@ -1561,9 +1257,12 @@ fun MainScreen(
                             } catch (_: Exception) {
                                 showToast(context, Microcopy.TOAST_APPEND_FAILED)
                             }
-                        }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Text("添加到日历", style = MaterialTheme.typography.labelMedium)
+                        Text("添加到日历", fontWeight = FontWeight.Medium)
                     }
                 }
             },
@@ -1689,7 +1388,6 @@ fun MainScreen(
             count = selectedKeys.size, // N＝所选条数（84(d)/88 口径）
             topicName = moveTarget?.displayName ?: "",
             // K 预览（§8.2 ②：执行取消在成功回调内重算，此处仅确认框前置告知）
-            reminderCount = selectedKeys.count { ReminderStore.get(context).hasUnfired(it.timestamp) },
             executing = moveExecuting,
             failed = moveFailed,
             onConfirm = { executeMove() }, // 失败重试同入口（move 幂等收敛）
@@ -1704,11 +1402,6 @@ fun MainScreen(
     }
 }
 
-private fun scheduleReminder(context: android.content.Context, ts: String, triggerAt: Long, recurrence: Recurrence = Recurrence.NONE) {
-    AlarmScheduler.schedule(context, ts, triggerAt)
-    ReminderStore.get(context).set(ts, ReminderMeta(triggerAt = triggerAt, fired = false, snoozedUntil = 0, recurrence = recurrence))
-    showToast(context, "已设置提醒")
-}
 
 /** 主题三选对话框（需求 48）：跟随系统整行 + 浅色/深色并列（真机验收两轮修正：纯横排四字换行、纯纵排面板偏高）。 */
 @Composable
@@ -1873,7 +1566,6 @@ enum class ArchivePath { ARCHIVE_AND_CLEAR, ARCHIVE_ONLY }
 data class ArchiveAction(
     val toast: String?,
     val shouldClear: Boolean,
-    val shouldCancelAllReminders: Boolean
 )
 
 /**
@@ -1889,26 +1581,24 @@ internal fun archiveActionFor(
     is ArchiveOutcome.Archived -> when (path) {
         ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(
             toast = Microcopy.toastArchivedAndCleared(archiveName),
-            shouldClear = true,
-            shouldCancelAllReminders = true
+            shouldClear = true
         )
         ArchivePath.ARCHIVE_ONLY -> ArchiveAction(
             toast = Microcopy.toastArchivedTo(archiveName),
-            shouldClear = false,
-            shouldCancelAllReminders = false
+            shouldClear = false
         )
     }
     ArchiveOutcome.Failed -> when (path) {
         // TD-017：归档失败不得清空——归档并清空路径明示「未清空」
-        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED_CLEAR_KEPT, false, false)
-        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED, false, false)
+        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED_CLEAR_KEPT, shouldClear = false)
+        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED, shouldClear = false)
     }
-    ArchiveOutcome.NothingToArchive -> ArchiveAction(Microcopy.TOAST_NOTHING_TO_ARCHIVE, false, false)
+    ArchiveOutcome.NothingToArchive -> ArchiveAction(Microcopy.TOAST_NOTHING_TO_ARCHIVE, shouldClear = false)
 }
 
 /** 清空段失败映射（§17.1 M1 ⑤：两路径同字面——归档已保存，仅清空未完成）。 */
 internal fun clearFailedAction(): ArchiveAction =
-    ArchiveAction(Microcopy.TOAST_CLEAR_FAILED_ARCHIVED, shouldClear = false, shouldCancelAllReminders = false)
+    ArchiveAction(Microcopy.TOAST_CLEAR_FAILED_ARCHIVED, shouldClear = false)
 
 /**
  * Archive current content to a new file（修订二 93 ④ 重构）。

@@ -40,7 +40,6 @@ import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.data.TopicCreateResult
 import com.yiyue31.android.appendo.data.TopicDocument
 import com.yiyue31.android.appendo.data.TopicRepository
-import com.yiyue31.android.appendo.reminder.ReminderStore
 import com.yiyue31.android.appendo.util.EntryKey
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
@@ -65,14 +64,13 @@ import java.io.File
  * - 执行：Dispatchers.IO 内 move（沿 executeMove 先例）；成功→invalidate(源＋目标)（§20.2
  *   统一规则）＋移出方向 setFileLastModified（评审 A12：工作区在栈顶，主列表经返回时轮询/
  *   初始加载自刷）＋本页重载＋选中集 retainedSelection 保留；失败→对话框保持变「重试」；
- * - 深链定位（101(a)）／读失败如实呈现／L1 中性空态（T-25 语义不变）。
+ * - 读失败如实呈现／L1 中性空态（T-25 语义不变；深链定位随自建提醒退役删除——R 批次，specs 16.C）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TopicWorkspaceScreen(
     filePath: String,
     fileRepository: FileRepository,
-    scrollToTs: String? = null,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -115,14 +113,6 @@ fun TopicWorkspaceScreen(
             // 重载后保留仍存在的选中项（§22.4：retainedSelection 复用——被删剔除、新插入未选）
             selectedKeys = retainedSelection(selectedKeys, loaded)
         }
-    }
-
-    // 深链滚动定位（101(a)，§20.4）：条目载入后滚到 scrollTs 命中项（miss 不滚不弹错）
-    LaunchedEffect(entries, scrollToTs) {
-        val ts = scrollToTs ?: return@LaunchedEffect
-        val loaded = entries ?: return@LaunchedEffect
-        val index = loaded.indexOfFirst { it.timestamp == ts }
-        if (index >= 0) listState.scrollToItem(index)
     }
 
     fun exitSelectionMode() {
@@ -168,10 +158,8 @@ fun TopicWorkspaceScreen(
             val outcome = MoveOutcomeMapping.map(result, verb, useSAF, topicName, targetName)
             when (result) {
                 is MoveResult.Success -> {
-                    // 统一失效规则（§20.2）：源＋目标双失效（目标＝主文件时无缓存键，no-op）
-                    topicRepository.invalidateTopic(topicFile)
-                    (target as? FileBasedMarkdownFile)?.let { topicRepository.invalidateTopic(it.file) }
-                    // 移出方向：主列表刷新信号（A12——不直接调用 MainScreen 方法）
+                    // 移出方向：主列表刷新信号（A12——不直接调用 MainScreen 方法）；
+                    // 缓存失效随自建提醒退役删除（R 批次，specs 16.C）
                     if (outcome.refreshMain) {
                         fileRepository.setFileLastModified(System.currentTimeMillis())
                     }
@@ -342,9 +330,6 @@ fun TopicWorkspaceScreen(
     when (moveFlow.step) {
         MoveFlowStep.CONFIRM -> {
             val n = selectedKeys.size
-            val reminderCount = selectedKeys.count {
-                ReminderStore.get(context).hasUnfired(it.timestamp)
-            }
             val body = when (currentVerb) {
                 MoveVerb.MOVE_OUT -> Microcopy.dlgMoveOutConfirmBody(n)
                 MoveVerb.TRANSFER -> Microcopy.dlgTransferConfirmBody(
@@ -355,7 +340,6 @@ fun TopicWorkspaceScreen(
             MoveConfirmDialog(
                 count = n,
                 topicName = topicName,
-                reminderCount = reminderCount,
                 executing = moveFlow.executing,
                 failed = moveFlow.failed,
                 onConfirm = { executeMove() },

@@ -2,12 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
-        android:name=".AppendoApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -38,20 +34,6 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
-
-        <receiver
-            android:name="com.yiyue31.android.appendo.reminder.ReminderAlarmReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name="com.yiyue31.android.appendo.reminder.ReminderBootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <!-- 覆盖安装后系统闹钟会被清空，须由本接收器重注册（TD-014） -->
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
 
     </application>
 
