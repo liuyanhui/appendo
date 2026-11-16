@@ -160,5 +160,5 @@ TD-010 ~ TD-015 全部修复并随 v1.2.1 发布（详见 CHANGELOG 1.2.1、`tas
 ### 戊批次 T-20~T-22 code-review 补做新债（2026-11-13，3 条，TD-048~050）
 
 - **TD-048 SameDocument 护栏混合形态盲区**（来源：code-review #3）：FileBased＋SAF 混合形态下「SAF uri 解析到同一物理文件」不可判定（uri 不透明、跨 provider 无可靠路径比对）。触发前提＝用户把 topics/ 内文件经 SAF 选为主文档（系统 picker 正常不暴露应用私有目录，属病态配置）。已在 `MoveResult.SameDocument` KDoc 注明局限（设计 §21.1 修订注）；若需硬防护，落点＝SAF 选文件入口做路径排除，非事务层。优先级：低。
-- **TD-049 locate/buildIndex 路径每文件双读**（来源：code-review #5）：`readLibraryLocked` 中 `listTopics()`（entryCount 计数读全文件）后 `readText()` 再读同批文件＝2N 次读/fire 与补发。设计 §20.1 分工裁定（锁内实读全量、不消费缓存）的既知代价；优化方向＝TopicRepository 提供 (file, content) 单遍 API。随 T-29 或戊批次收尾重估。优先级：低（低频路径）。
-- **TD-050 ts 缓存 mtime 毫秒粒度指纹窗口**（来源：code-review #6）：同毫秒（或粗粒度 mtime 文件系统）两次内容变更会被缓存判「新鲜」供出陈旧 ts 集。设计 §20.2 边界注已披露（topics/ 恒私有目录＋atomicWrite 恒产新 mtime，实际风险面闭合）；`invalidateTopic` 生产调用方在 T-23 落地后第一道防线生效。优先级：低（既知既治）。
+- **TD-049 locate/buildIndex 路径每文件双读**（✅ 随模块退役关闭 2026-11-16——EntryLocator 已删，specs 16.C）：`readLibraryLocked` 中 `listTopics()`（entryCount 计数读全文件）后 `readText()` 再读同批文件＝2N 次读/fire 与补发。设计 §20.1 分工裁定（锁内实读全量、不消费缓存）的既知代价；优化方向＝TopicRepository 提供 (file, content) 单遍 API。随 T-29 或戊批次收尾重估。优先级：低（低频路径）。
+- **TD-050 ts 缓存 mtime 毫秒粒度指纹窗口**（✅ 随模块退役关闭 2026-11-16——ts 缓存已删，specs 16.C）：同毫秒（或粗粒度 mtime 文件系统）两次内容变更会被缓存判「新鲜」供出陈旧 ts 集。设计 §20.2 边界注已披露（topics/ 恒私有目录＋atomicWrite 恒产新 mtime，实际风险面闭合）；`invalidateTopic` 生产调用方在 T-23 落地后第一道防线生效。优先级：低（既知既治）。
