@@ -92,6 +92,7 @@ gradle/                   # Gradle wrapper 与版本目录（libs.versions.toml�
 
 **阶段5：测试与验收**
 - 根据需求文档和设计文档验证实现
+- 测试验收按 `docs/test-cases.md` 分级门槛执行（批次门槛 §0.3.1＋发布门槛 §0.3.2）
 - 确保所有测试通过
 - 如不满足需求，制定新计划，从阶段3循环执行
 
@@ -154,5 +155,5 @@ gradle/                   # Gradle wrapper 与版本目录（libs.versions.toml�
 
 ## 任务完成检查
 
-- **文档更新评估**：每个任务完成后，必须评估是否需要更新以下文档：`CLAUDE.md`、`docs/specs.md`、`docs/design/`、`docs/architecture.md`（涉及数据协议/完整性语义的代码改动**必须**同步修订）、`README.md`、`CHANGELOG.md`。如需更新，在提交代码前完成
+- **文档更新评估**：每个任务完成后，必须评估是否需要更新以下文档：`CLAUDE.md`、`docs/specs.md`、`docs/design/`、`docs/architecture.md`（涉及数据协议/完整性语义的代码改动**必须**同步修订）、`README.md`、`CHANGELOG.md`、`docs/test-cases.md`（用例增删/分级/状态变更时必须同步——该文档为用例与判据的唯一权威源，批次计划只引用 TC-ID 不复制内容）。如需更新，在提交代码前完成
 - **强制测试**：编码任务完成后，必须执行单元测试和功能测试（真机或模拟器验证），测试通过后才能提交
