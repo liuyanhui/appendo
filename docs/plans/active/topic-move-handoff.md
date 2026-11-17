@@ -1,3 +1,10 @@
+# 交接快照（v1.5.0 发布后 · 2026-11-17）
+
+> **当前状态**：v1.5.0 已 tag＋push（3271f0a）；GitHub Release 网页发布待用户执行（正文＝CHANGELOG v1.5.0 段，资产＝`Appendo/build/outputs/apk/debug/Appendo-v1.5.0-debug.apk`）。本周期大事记：戊批次 T-20~T-27（工作区/移出/转移）→ **specs 16.C 自建提醒退役（R 批次，系统日历承接）**——旧戊计划 T-28~T-34 作废，两计划已归档 completed/；拆除前完整态＝tag `archive/self-built-reminders-final`。待补：v1.5.0 装机终验（设备掉线延后，与冒烟包同配置）。历史交接内容见下文。
+
+
+---
+
 # 主题分拣（移入主题）— 阶段交接文档
 
 > **修订记录**
