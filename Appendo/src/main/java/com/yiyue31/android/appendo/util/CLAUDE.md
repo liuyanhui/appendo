@@ -12,7 +12,6 @@
 | `ParsedEntry.kt` / `ReadResult.kt` | util 纯数据（解析条目 / 读结果+恢复标志） | 数据类 |
 | `DuplicateHintThrottle.kt` | 重复内容提示 5s 节流（进程内单例） | 工具 |
 | `CalendarEntryMapper.kt` / `CalendarLauncher.kt` | 添加到日历（v1.0.3）：标题映射纯函数 + ACTION_INSERT 拉起日历 | 工具 |
-| `ReminderMeta.kt` / `ReminderMetaCodec.kt` / `ReminderLogic.kt` / `ReminderText.kt` | 提醒纯逻辑（v1.1–v1.2）：元数据 / 编解码 / 状态决策 / 通知文案；Android 侧在 `reminder/` 包 | 纯函数 |
 | `MarkdownFileOperations.kt` | 文件操作接口 + 全局锁 + 默认方法（appendEntry / readAllForExternal / readAllWithStatus） | 策略接口 |
 | `MarkdownFileFactory.kt` | 根据存储模式创建对应实现 | 工厂 |
 | `FileBasedMarkdownFile.kt` | 默认文件存储：atomicWrite(temp+fsync+rename) + 读持锁 + EntryParser 化写侧 | 具体策略 A |
@@ -113,7 +112,7 @@ FileBasedMarkdownFile / SafMarkdownFile → EntryParser (parse/format/边界算�
 FileRepository (data层) → MarkdownFormatter (归档文件名格式)
 MainScreen (ui层)       → MarkdownFileFactory, MarkdownFileOperations
 ShareReceiverActivity   → FileBasedMarkdownFile, SafMarkdownFile (直接使用)
-CalendarEntryMapper / ReminderText → EntryParser (stripIsolationMarkers 出口剥离)
+CalendarEntryMapper → EntryParser (stripIsolationMarkers 出口剥离)
 ```
 
 ## 扩展指南

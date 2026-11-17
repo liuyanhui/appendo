@@ -20,9 +20,6 @@ test/java/com/yiyue31/android/appendo/
     ├── FileBasedMarkdownFileTest.kt            — FileBasedMarkdownFile 真类（mock Context + 真 FS）
     ├── DuplicateHintThrottleTest.kt            — 重复提示节流
     ├── CalendarEntryMapperTest.kt              — 添加到日历标题映射（v1.0.3）
-    ├── ReminderLogicTest.kt                    — 提醒状态决策：错过/补发/重复/贪睡（v1.2）
-    ├── ReminderMetaCodecTest.kt                — sidecar 编解码 round-trip（v1.2）
-    └── ReminderTextTest.kt                     — 通知标题/时间标签（v1.2）
 ```
 
 ## 测试分类
