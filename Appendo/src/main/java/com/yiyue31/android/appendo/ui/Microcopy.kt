@@ -343,5 +343,6 @@ internal object Microcopy {
     const val TOAST_NOTHING_TO_ARCHIVE = "暂无内容可归档"
 
     /** 首次指路后缀（§15.4 U1：拼接序末位——基础→提醒附注→本后缀，单 toast 原则）。 */
-    const val firstMoveGuideSuffix = "，可在顶栏『主题』查看"
+    // 复审#7：首次移入指路兼告知「复制全部」不含已移入条目（发现性，会话级一次性）
+    const val firstMoveGuideSuffix = "，可在顶栏『主题』查看；复制全部需在各主题内操作"
 }
