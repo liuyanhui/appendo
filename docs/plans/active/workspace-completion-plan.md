@@ -53,4 +53,18 @@
 
 - **落盘**：新 EntryEditDialog/EntryInputDialog 无状态共享组件（渲染面逐项钉死：时间戳行/占位符常量化/标题字面）；MainScreen 改写 performEditSaveCore/performAppendSave 单源消重（两按钮共用）；行为修正 1：保存失败保持开框不清草稿（修订⑤）；chooseAppendToast helper（查重＋节流两宿主共用——日历路径不带查重沿现状）；Microcopy 四常量落盘。全量 219/0/0/0。
 
-- **段A 门禁状态**：全量 JVM 219 绿 ✓；TC-005/006/006b/050/060/061 真机回归未补（设备离线）。{'}
+- **段A 门禁状态**：全量 JVM 219 绿 ✓；TC-005/006/006b/050/060/061 真机回归未补（设备离线）。
+
+### WB-1 归档参数化＋主题归档件（2026-11-18，完成）
+- ArchiveFlow.kt 共享编排＋ArchiveWordbook＋ArchiveChoiceDialog；FileRepository 主题名变体＋同秒_n后缀（上限100不覆盖，主/题统一）；ArchiveRepository 尾部锚定三类解析＋sourceTopic＋archiveFileFor 单点；MainActivity 解析收敛；ArchiveListScreen 来源标注；9 测试。228 绿。
+
+### WB-2 工作区编辑/删除/批量删除（含105）（2026-11-18，完成）
+- onEntryClick→EntryEditDialog（ts首条/草稿镜像/失败保持开框）；右滑→error红振动确认→同key全删（105消除）；多选第三钮删除＋明示N＋退出多选。228 绿。
+
+### WB-3 新增/出口/顶栏（2026-11-18，完成）
+- 顶栏＋/复制全部/分享＋溢出归档；EntryInputDialog（toastAppendedToTopic＋重复旁注＋定位顶部）；长按复制；copy/share提权internal；归档接runArchive主题词族；空态切引导句。228 绿。
+
+### WB-4 改名＋左滑切换＋钳0指路（2026-11-18，完成）
+- renameTopic 三步锁内/createdAt保留/原名无操作/回滚；RenameTopicDialog；左滑恢复退役→改名；SwipeCard禁用尝试回调＋会话级指路；6 测试。234 绿。
+
+- **段B 门禁状态**：全量 JVM 234 绿 ✓；09x 双宿主等价组＋主题归档组真机回归待设备解锁（WC-2）。{'}
