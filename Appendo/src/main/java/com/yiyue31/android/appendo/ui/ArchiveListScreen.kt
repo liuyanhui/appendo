@@ -171,7 +171,9 @@ fun ArchiveListScreen(
                     ) { archive ->
                         ArchiveCard(
                             title = archive.name.removeSuffix(".md"),
-                            subtitle = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
+                            // WB-1：主题归档件标注来源（旧式/主界面归档无来源标注）
+                            subtitle = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条" +
+                                (archive.sourceTopic?.let { " · 来源：$it" } ?: ""),
                             onClick = { onArchiveClick(archive.file) },
                             onLongClick = {
                                 performVibration(context, VIBRATION_DURATION_SHORT_MS)

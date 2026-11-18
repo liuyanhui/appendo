@@ -222,6 +222,23 @@ internal object Microcopy {
     const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
     const val TOPIC_WORKSPACE_EMPTY_BODY = ""
 
+    // ---- 主题归档词族（己批次 WB-1，设计 §7 定稿）----
+
+    /** 主题二选一框正文（一层明示作用域，§5.2）。 */
+    fun dlgTopicArchiveBody(n: Int, topic: String): String = "将备份主题「$topic」的 $n 条。"
+
+    /** 主题归档并清空成功（含指路，§7）。 */
+    fun toastTopicArchivedAndCleared(topic: String): String = "已备份并清空主题「$topic」，可在归档管理查看"
+
+    /** 主题只归档成功。 */
+    fun toastTopicArchived(topic: String): String = "已备份主题「$topic」"
+
+    /** 清空成功指路（会话级）。 */
+    const val TOAST_TOPIC_CLEAR_GUIDE = "已清空，可删除空主题"
+
+    /** 非空主题右滑钳 0 指路（会话级一次性）。 */
+    const val TOAST_TOPIC_DELETE_GUIDE = "清空主题后方可删除"
+
     // ---- 共享对话框词族（己批次 WA-2 抽取随入）----
 
     /** 编辑/输入对话框标题（抽取常量化——原 MainScreen 直写）。 */

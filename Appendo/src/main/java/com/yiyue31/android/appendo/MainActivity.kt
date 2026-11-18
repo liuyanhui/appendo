@@ -155,9 +155,11 @@ fun AppendoNavHost(
             val file = File(filePath ?: "")
 
             if (file.exists()) {
-                val timestamp = parseTimestampFromFileName(file.name)
-                val entryCount = countEntries(file)
-                val archive = ArchiveFile(file, file.name, timestamp ?: java.util.Date(), entryCount)
+                // WB-1：时间戳/来源解析收敛 ArchiveRepository 单点（新式名带 sourceTopic，
+                // 旧私有 parseTimestampFromFileName 对新式名会误兜底为打开时刻——已退役）
+                val archive = androidx.compose.ui.platform.LocalContext.current.let { ctx ->
+                    com.yiyue31.android.appendo.data.ArchiveRepository(ctx).archiveFileFor(file)
+                } ?: ArchiveFile(file, file.name, java.util.Date(), countEntries(file))
 
                 ArchiveDetailScreen(
                     archive = archive,
@@ -169,17 +171,6 @@ fun AppendoNavHost(
                 )
             }
         }
-    }
-}
-
-private fun parseTimestampFromFileName(filename: String): java.util.Date? {
-    return try {
-        val timestampStr = filename
-            .removePrefix("Appendo_")
-            .removeSuffix(".md")
-        java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).parse(timestampStr)
-    } catch (e: Exception) {
-        null
     }
 }
 

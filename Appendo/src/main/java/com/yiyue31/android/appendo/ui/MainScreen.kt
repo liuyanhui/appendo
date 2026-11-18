@@ -321,40 +321,23 @@ fun MainScreen(
      */
     fun runArchiveAction(path: ArchivePath) {
         val mdFile = getCurrentMarkdownFile()
-        coroutineScope.launch {
-            // 归档段（异常 → Failed，E-1）
-            val outcome = withContext(Dispatchers.IO) {
-                runCatching {
-                    archiveFile(context, mdFile, fileRepository.getArchiveFile())
-                }.getOrDefault(ArchiveOutcome.Failed)
-            }
-            val archiveName = (outcome as? ArchiveOutcome.Archived)?.file?.name ?: ""
-            val action = archiveActionFor(outcome, path, archiveName)
-
-            if (outcome is ArchiveOutcome.Archived && action.shouldClear) {
-                // 清空段（异常/返回 false → 清空失败文案，归档已保存；E-1）
-                val cleared = withContext(Dispatchers.IO) {
-                    runCatching { mdFile.clear() }.getOrDefault(false)
-                }
-                if (!cleared) {
-                    showToast(context, clearFailedAction().toast!!)
-                    resyncArchiveState()
-                    return@launch
+        runArchive(
+            context = context,
+            scope = coroutineScope,
+            sourceMd = mdFile,
+            getTarget = { fileRepository.getArchiveFile() },
+            wordbook = mainArchiveWordbook(),
+            path = path,
+            onCompleted = { shouldClear, _ ->
+                // A-2 onComplete 等价动作：两路径共用重同步三状态；归档并清空另加
+                // clearFileLastModified＋refreshEntryCount（主文件 mtime 键仅主界面触碰）
+                resyncArchiveState()
+                if (shouldClear) {
+                    fileRepository.clearFileLastModified()
+                    refreshEntryCount()
                 }
             }
-
-            action.toast?.let { showToast(context, it) }
-
-            // onComplete 等价动作（A-2）：两路径共用重同步三状态；归档并清空另加
-            // clearFileLastModified（替换口径：原 setFileLastModified 改清键——同驱动轮询刷新，
-            // 清空后文件已空、清键语义更准）＋refreshEntryCount（承接原计数清零）；
-            // 只归档丢弃 clearFileLastModified（主文件未动，remove key 为无害 no-op，A-2 附由）。
-            resyncArchiveState()
-            if (action.shouldClear) {
-                fileRepository.clearFileLastModified()
-                refreshEntryCount()
-            }
-        }
+        )
     }
 
     // File selection launcher for changing to SAF mode
@@ -933,61 +916,19 @@ fun MainScreen(
         )
     }
 
-    // 归档清空二选一对话框（修订二 93 方案 X：替换旧清空确认框；旧框标题/正文/直写族随之退役）
+    // 归档清空二选一对话框（WB-1：本体迁共享 ArchiveChoiceDialog）
     if (showArchiveDialog) {
-        val archiveAndClearFocus = remember { FocusRequester() }
-        LaunchedEffect(Unit) { archiveAndClearFocus.requestFocus() } // 93：默认焦点落「归档并清空」
-        AlertDialog(
-            onDismissRequest = { showArchiveDialog = false },
-            title = {
-                // 路径选择非破坏（§15.3 C6）：标题默认色；破坏性警示下沉到「归档并清空」按钮
-                Text(Microcopy.DLG_ARCHIVE_TITLE, fontWeight = FontWeight.SemiBold)
+        ArchiveChoiceDialog(
+            entryCount = entryCount,
+            onArchiveAndClear = {
+                showArchiveDialog = false
+                runArchiveAction(ArchivePath.ARCHIVE_AND_CLEAR)
             },
-            text = {
-                Column {
-                    Text(Microcopy.dlgArchiveBody(entryCount))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    // 路径一（78(a)：清空属破坏类＝error 红填充；＝原「清空」语义——需求 13 先备份后清空）
-                    Button(
-                        onClick = {
-                            showArchiveDialog = false
-                            runArchiveAction(ArchivePath.ARCHIVE_AND_CLEAR)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(archiveAndClearFocus),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError
-                        )
-                    ) {
-                        Text(Microcopy.BTN_ARCHIVE_AND_CLEAR)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    // 路径二（78(b)：备份非破坏＝primary；＝原菜单「归档」语义——需求 12 快照不清空）
-                    OutlinedButton(
-                        onClick = {
-                            showArchiveDialog = false
-                            runArchiveAction(ArchivePath.ARCHIVE_ONLY)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text(Microcopy.BTN_ARCHIVE_ONLY)
-                    }
-                }
+            onArchiveOnly = {
+                showArchiveDialog = false
+                runArchiveAction(ArchivePath.ARCHIVE_ONLY)
             },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { showArchiveDialog = false }) {
-                    Text("取消")
-                }
-            }
+            onDismiss = { showArchiveDialog = false }
         )
     }
 
@@ -1398,102 +1339,5 @@ private fun openFile(context: android.content.Context, useSAF: Boolean, fileUri:
             android.util.Log.e("MainScreen", "Open file failed", e)
         }
         showToast(context, "打开失败，请安装 Markdown 查看器")
-    }
-}
-
-/** 归档执行结果（修订二 93 ④：archiveFile 重构返回通道——写盘段逐字节等价，仅返回值与 toast 通道变更）。 */
-sealed interface ArchiveOutcome {
-    /** 归档副本已生成。 */
-    data class Archived(val file: File) : ArchiveOutcome
-
-    /**
-     * 空内容（仅文件头）。**行为变更（A-3/T-3）**：现状（重构前）返 true 且调用方继续清空；
-     * 重构后语义＝不清空，由调用方按决策映射提示（入口守卫配套防呆，R15 陈旧窗口下可达）。
-     */
-    object NothingToArchive : ArchiveOutcome
-
-    /** 归档失败（含异常；TD-017：调用方不得清空）。 */
-    object Failed : ArchiveOutcome
-}
-
-/** 归档清空二选一路径（修订二 93 方案 X）。 */
-enum class ArchivePath { ARCHIVE_AND_CLEAR, ARCHIVE_ONLY }
-
-/** 二选一决策映射产物（§17.1 M1：编排层只执行决定，不自行判断）。 */
-data class ArchiveAction(
-    val toast: String?,
-    val shouldClear: Boolean,
-)
-
-/**
- * 归档二选一决策映射（§17.1 M1 ①~④，纯函数 JVM 可测）：
- * Archived×归档并清空→归并 toast＋清空＋取消全部提醒；Archived×只归档→只报备不清空不动提醒；
- * Failed×两路径→两失败字面且均不清空（TD-017）；NothingToArchive×两路径→守卫字面无动作。
- */
-internal fun archiveActionFor(
-    outcome: ArchiveOutcome,
-    path: ArchivePath,
-    archiveName: String
-): ArchiveAction = when (outcome) {
-    is ArchiveOutcome.Archived -> when (path) {
-        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(
-            toast = Microcopy.toastArchivedAndCleared(archiveName),
-            shouldClear = true
-        )
-        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(
-            toast = Microcopy.toastArchivedTo(archiveName),
-            shouldClear = false
-        )
-    }
-    ArchiveOutcome.Failed -> when (path) {
-        // TD-017：归档失败不得清空——归档并清空路径明示「未清空」
-        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED_CLEAR_KEPT, shouldClear = false)
-        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED, shouldClear = false)
-    }
-    ArchiveOutcome.NothingToArchive -> ArchiveAction(Microcopy.TOAST_NOTHING_TO_ARCHIVE, shouldClear = false)
-}
-
-/** 清空段失败映射（§17.1 M1 ⑤：两路径同字面——归档已保存，仅清空未完成）。 */
-internal fun clearFailedAction(): ArchiveAction =
-    ArchiveAction(Microcopy.TOAST_CLEAR_FAILED_ARCHIVED, shouldClear = false)
-
-/**
- * Archive current content to a new file（修订二 93 ④ 重构）。
- * **writeAll 写盘段与重构前逐字节等价**（等价宣称限于写盘段，A-3/T-3）；
- * toast 全部上移调用方（经 [archiveActionFor] 决策映射）；onComplete 通道改为调用方
- * 编排（runArchiveAction 的 resyncArchiveState 等价动作）；
- * 未使用的 fileRepository 参数已删除（E-1）；调用方负责 IO 线程（A-9）。
- */
-private fun archiveFile(
-    context: android.content.Context,
-    currentMdFile: MarkdownFileOperations,
-    archiveFile: File
-): ArchiveOutcome {
-    return try {
-        // Read current content BEFORE creating new archive file
-        val currentContent = currentMdFile.readAll()
-
-        // Check if content is empty (only has header, no actual entries)
-        if (currentContent.isBlank() || !currentContent.contains("## ")) {
-            return ArchiveOutcome.NothingToArchive
-        }
-
-        // 通过 MarkdownFileOperations.writeAll 写归档（v1.1 CB6：享 atomicWrite + 锁 + 同源同格式 ZWSP）
-        val contentWithoutHeader = if (currentContent.startsWith(MarkdownFormatter.FILE_HEADER)) {
-            currentContent.substring(MarkdownFormatter.FILE_HEADER.length)
-        } else {
-            currentContent
-        }
-        val archiveMdFile = FileBasedMarkdownFile(context, archiveFile)
-        if (!archiveMdFile.writeAll(MarkdownFormatter.FILE_HEADER + contentWithoutHeader)) {
-            return ArchiveOutcome.Failed // TD-017：失败上抛，调用方不得继续清空
-        }
-
-        ArchiveOutcome.Archived(archiveFile)
-    } catch (e: Exception) {
-        if (BuildConfig.DEBUG) {
-            android.util.Log.e("MainScreen", "Archive failed", e)
-        }
-        ArchiveOutcome.Failed
     }
 }

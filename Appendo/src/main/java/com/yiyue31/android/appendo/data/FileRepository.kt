@@ -15,6 +15,8 @@ class FileRepository(private val context: Context) {
         context.getSharedPreferences(APPENDO_PREFS, Context.MODE_PRIVATE)
 
     companion object {
+        /** WB-1：同秒归档后缀上限（超限放弃不覆盖）。 */
+        private const val ARCHIVE_SUFFIX_MAX = 100
         /** `appendo` SP 文件名（历史沿革，见 architecture.md §3.6）；ThemePreferences 等共享。 */
         const val APPENDO_PREFS = "appendo"
         private const val KEY_USE_SAF = "use_saf"
@@ -139,20 +141,30 @@ class FileRepository(private val context: Context) {
     }
 
     /**
-     * Generate archive filename with timestamp
+     * Generate archive filename with timestamp（WB-1：主题归档件带主题名——
+     * `Appendo_<主题名>_<ts>.md`；主界面 sourceTopic=null 沿旧式 `Appendo_<ts>.md`）。
      */
-    fun generateArchiveFilename(): String {
+    fun generateArchiveFilename(sourceTopic: String? = null): String {
         val timestamp = java.text.SimpleDateFormat(MarkdownFormatter.ARCHIVE_TIMESTAMP_FORMAT, java.util.Locale.getDefault())
             .format(java.util.Date())
-        return "Appendo_$timestamp.md"
+        return if (sourceTopic != null) "Appendo_${sourceTopic}_$timestamp.md" else "Appendo_$timestamp.md"
     }
 
     /**
-     * Get archive file in default directory
+     * Get archive file in default directory（WB-1：同秒冲突加 `_n` 递增后缀——存在性检查
+     * 循环上限 [ARCHIVE_SUFFIX_MAX]，超限返 null＝放弃不覆盖，数据安全优先；主/题双消费方
+     * 统一，消除两套归档命名行为）。
      */
-    fun getArchiveFile(): File {
+    fun getArchiveFile(sourceTopic: String? = null): File? {
         val appDir = context.getExternalFilesDir(null) ?: context.filesDir
-        return File(appDir, generateArchiveFilename())
+        val base = generateArchiveFilename(sourceTopic).removeSuffix(".md")
+        var candidate = File(appDir, "$base.md")
+        if (!candidate.exists()) return candidate
+        for (n in 1..ARCHIVE_SUFFIX_MAX) {
+            candidate = File(appDir, "${base}_$n.md")
+            if (!candidate.exists()) return candidate
+        }
+        return null // 同秒 100 件已满——不覆盖，调用方按归档失败处置
     }
 
     fun getFileLastModified(): Long = prefs.getLong(KEY_FILE_LAST_MODIFIED, 0L)
