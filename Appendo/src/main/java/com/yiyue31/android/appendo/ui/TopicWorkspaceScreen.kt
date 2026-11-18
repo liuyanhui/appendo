@@ -335,7 +335,8 @@ fun TopicWorkspaceScreen(
                 MoveVerb.TRANSFER -> Microcopy.dlgTransferConfirmBody(
                     n, moveFlow.transferTarget?.displayName.orEmpty(), topicName
                 )
-                null -> Microcopy.dlgMoveConfirmBody(n, topicName)
+                // MOVE_IN 工作区不可达（主列表专属动词）——防御兜底沿移入确认句
+                MoveVerb.MOVE_IN, null -> Microcopy.dlgMoveConfirmBody(n, topicName)
             }
             MoveConfirmDialog(
                 count = n,

@@ -103,6 +103,77 @@ class MoveOutcomeMappingTest {
         assertTrue(o.keepRetryState)
     }
 
+    // ---------- MOVE_IN 组合（WA-1：MainScreen 迁移随入） ----------
+
+    @Test
+    fun success_moveIn_reusesFamilyAndRefreshesMain() {
+        val o = MoveOutcomeMapping.map(MoveResult.Success(3, 0, 0), MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
+        assertEquals(Microcopy.toastMovedCount(3), o.toast)
+        assertFalse(o.keepRetryState)
+        assertTrue("移入成功＝条目离开主文件→刷新信号", o.refreshMain)
+    }
+
+    @Test
+    fun success_moveIn_allExisting_dedicatedToast() {
+        val o = MoveOutcomeMapping.map(MoveResult.Success(0, 5, 0), MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
+        assertEquals(Microcopy.toastMovedAllExisting(5), o.toast)
+    }
+
+    @Test
+    fun success_moveIn_guideSuffixAppended_onlyForMoveIn() {
+        val withGuide = MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T", guideSuffix = Microcopy.firstMoveGuideSuffix)
+        assertEquals(Microcopy.toastMovedCount(1) + Microcopy.firstMoveGuideSuffix, withGuide.toast)
+        assertEquals(Microcopy.firstMoveGuideSuffix, withGuide.guideSuffix)
+        val notForOut = MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.MOVE_OUT, useSAF = false, sourceName = "S", targetName = "T", guideSuffix = Microcopy.firstMoveGuideSuffix)
+        assertEquals("指路仅移入动词（§15.4）", Microcopy.toastMovedOutCount(1), notForOut.toast)
+    }
+
+    @Test
+    fun sourceReadFailed_moveIn_safVariant() {
+        val o = MoveOutcomeMapping.map(MoveResult.SourceReadFailed, MoveVerb.MOVE_IN, useSAF = true, sourceName = "主列表", targetName = "T")
+        assertEquals("移入源＝主文件，SAF 授权失效变体", Microcopy.TOAST_MOVE_FAILED_SAF_REVOKED, o.toast)
+        assertTrue(o.keepRetryState)
+    }
+
+    @Test
+    fun sourceReadFailed_moveIn_default_plain() {
+        val o = MoveOutcomeMapping.map(MoveResult.SourceReadFailed, MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
+        assertEquals(Microcopy.TOAST_MOVE_FAILED, o.toast)
+    }
+
+    @Test
+    fun targetFailures_moveIn_targetWriteFamily() {
+        for (r in listOf(MoveResult.TargetReadFailed, MoveResult.TargetWriteFailed)) {
+            val o = MoveOutcomeMapping.map(r, MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
+            assertEquals("移入目标恒 FileBased 主题——沿目标写句式：$r", Microcopy.toastMoveFailedTargetWrite(), o.toast)
+            assertTrue(o.keepRetryState)
+            assertFalse(o.refreshMain)
+        }
+    }
+
+    @Test
+    fun sourceDeleteFailed_moveIn_retryAndRefresh() {
+        val o = MoveOutcomeMapping.map(MoveResult.SourceDeleteFailed(1, 0, 0), MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
+        assertEquals(Microcopy.toastMoveFailedSourceDelete(), o.toast)
+        assertTrue("对话框保持重试（84(b)）", o.keepRetryState)
+        assertTrue("移入源删失败＝主文件已部分移除→即刻如实刷新（§6.6）", o.refreshMain)
+    }
+
+    @Test
+    fun sourceDeleteFailed_moveOut_noRefresh() {
+        val o = MoveOutcomeMapping.map(MoveResult.SourceDeleteFailed(1, 0, 0), MoveVerb.MOVE_OUT, useSAF = false, sourceName = "S", targetName = "主列表")
+        assertEquals(Microcopy.TOAST_MOVE_OUT_FAILED, o.toast)
+        assertTrue(o.keepRetryState)
+        assertFalse("移出源删失败＝主题侧部分移除，主文件未动不刷新", o.refreshMain)
+    }
+
+    @Test
+    fun success_refreshMain_byVerb() {
+        assertTrue(MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.MOVE_IN, false, "s", "t").refreshMain)
+        assertTrue(MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.MOVE_OUT, false, "s", "t").refreshMain)
+        assertFalse("转移不动主文件", MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.TRANSFER, false, "s", "t").refreshMain)
+    }
+
     // ---------- SameDocument 防御 ----------
 
     @Test

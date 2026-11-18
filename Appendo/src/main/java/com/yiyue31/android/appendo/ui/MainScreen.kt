@@ -161,16 +161,11 @@ fun MainScreen(
         selectedKeys = emptySet()
     }
 
-    // —— 「移入主题」流程（T-06，§8.1）：对话框栈状态（1 目标选择 / 2 新建命名 / 2b 同名指路 / 3 确认）——
-    var moveFlowStep by remember { mutableStateOf<MoveFlowStep?>(null) }
+    // —— 「移入主题」流程（WA-1 迁 MoveFlowHolder：三动词单一状态机，工作区同款）——
+    // 宿主自持：目标列表快照/同名指路对象/长按预览条目（Holder 持流程态与命名草稿）
+    val moveFlow = remember { MoveFlowHolder() }
     var moveTopics by remember { mutableStateOf(emptyList<TopicDocument>()) }
-    var moveTarget by remember { mutableStateOf<TopicDocument?>(null) }
     var sameNameExisting by remember { mutableStateOf<TopicDocument?>(null) }
-    // 对话框 2 输入由本处持有：2b「取消」返回对话框 2 时输入保留（§8.1）
-    var newTopicInput by remember { mutableStateOf("") }
-    // 对话框 3 执行/失败态（§8.1）：执行中按钮禁用＋「移入中…」；失败对话框保持变「重试」
-    var moveExecuting by remember { mutableStateOf(false) }
-    var moveFailed by remember { mutableStateOf(false) }
     // 多选态长按预览（§7.4）：持有预览条目，对话框本体＝TopicMoveDialogs.EntryPreviewDialog
     var previewEntry by remember { mutableStateOf<LinkEntry?>(null) }
 
@@ -178,22 +173,18 @@ fun MainScreen(
 
     /**
      * 关闭移入流程全部对话框（§8.1「取消」路径：**保持多选态与选中集**——用户可换目标重来；
-     * 本流程新建的空主题保留，可删可复用，§6.5 创建时机取舍）。
+     * 本流程新建的空主题保留，可删可复用，§6.5）。Holder.close() 保留命名草稿（修订⑤）。
      */
     fun closeMoveFlow() {
-        moveFlowStep = null
-        moveTarget = null
+        moveFlow.close()
         sameNameExisting = null
-        // newTopicInput 不清（关窗不丢字，2026-11-11）：命名草稿保留，创建成功才清空
-        moveExecuting = false
-        moveFailed = false
     }
 
     /** 打开对话框 1：主题列表 createdAt 倒序；每主题实时读文件计数，加载下放 [Dispatchers.IO]。 */
     fun openMoveFlow() {
         coroutineScope.launch {
             moveTopics = withContext(Dispatchers.IO) { topicRepository.listTopics() }
-            moveFlowStep = MoveFlowStep.SELECT_TARGET
+            moveFlow.start(MoveVerb.MOVE_IN, MoveFlowStep.SELECT_TARGET)
         }
     }
 
@@ -265,7 +256,7 @@ fun MainScreen(
      *   例外同时刷新（源可能已部分移除，即刻如实反映，§6.6），其余失败态源未动不刷新。
      */
     fun executeMove() {
-        val target = moveTarget ?: return
+        val target = moveFlow.transferTarget ?: return
         val keys = selectedKeys
         if (keys.isEmpty()) {
             // 防御：确认停留期间选中集被清空（轮询剔除/SAF 失效退出）——无条目可移，关流程保多选语义
@@ -274,67 +265,45 @@ fun MainScreen(
         }
         val source = getCurrentMarkdownFile()
         val targetMd = FileBasedMarkdownFile(context, target.file)
-        moveExecuting = true
+        moveFlow.markExecuting(true)
         coroutineScope.launch {
             var firstMoveGuide = false
             val result = withContext(Dispatchers.IO) {
                 val r = TopicMoveTransaction.move(source, targetMd, keys)
                 if (r is MoveResult.Success) {
-                    // 首次指路（§15.4 U1）：仅 moved>0 的 Success 消耗旗标（N=0 不消耗不展示）
-                    // （提醒联动与缓存失效随自建提醒退役删除——R 批次，specs 16.C）
+                    // 首次指路（§15.4 U1）：仅 moved>0 的 Success 消耗旗标（N=0 不消耗不展示）——
+                    // 旗标判定归宿主（WA-1：经 Mapping.guideSuffix 拼装，防迁移丢失）
                     if (r.moved > 0) {
                         firstMoveGuide = topicRepository.consumeFirstMoveGuide()
                     }
                 }
                 r
             }
-            moveExecuting = false
+            moveFlow.markExecuting(false)
+            // 产出映射（WA-1：全动词统一经 MoveOutcomeMapping——移入组合随 Holder 迁入）
+            val outcome = MoveOutcomeMapping.map(
+                result = result,
+                verb = MoveVerb.MOVE_IN,
+                useSAF = useSAF,
+                sourceName = "主列表",
+                targetName = target.displayName,
+                guideSuffix = if (firstMoveGuide) Microcopy.firstMoveGuideSuffix else null
+            )
             when (result) {
                 is MoveResult.Success -> {
                     closeMoveFlow()
                     exitSelectionMode()
-                    // toast 三态（§9.1；N＝moved 实写数）＋首次指路后缀（§15.4 U1：拼接序末位，
-                    // 单 toast 原则；moved=0 不展示不消耗）。提醒附注退役（95(e)/§20.3——
-                    // 提醒随条目保留，不再取消，无取消数可报）
-                    val base = when {
-                        result.moved == 0 -> Microcopy.toastMovedAllExisting(result.skippedExisting)
-                        result.skippedExisting > 0 ->
-                            Microcopy.toastMovedCountSkipped(result.moved, result.skippedExisting)
-                        else -> Microcopy.toastMovedCount(result.moved)
-                    }
-                    var msg = base
-                    if (firstMoveGuide) msg += Microcopy.firstMoveGuideSuffix
-                    showToast(context, msg)
-                    // §6.6：立即主动刷新（mtime 双保险，不等 2 秒轮询）
-                    fileRepository.setFileLastModified(System.currentTimeMillis())
-                    refreshEntryCount()
                 }
-                is MoveResult.SourceDeleteFailed -> {
-                    moveFailed = true // 对话框 3 保持变「重试」、保持勾选与目标（84(b)）
-                    showToast(context, Microcopy.toastMoveFailedSourceDelete())
-                    // §6.6 例外：源可能已部分移除，即刻如实反映；其余失败态不刷新（见下）
-                    fileRepository.setFileLastModified(System.currentTimeMillis())
-                    refreshEntryCount()
-                }
-                is MoveResult.SourceReadFailed -> {
-                    moveFailed = true
-                    showToast(
-                        context,
-                        // SAF 失效场景叠加 TD-021 句式（§9.1）；默认模式源读失败用统一兜底句式
-                        if (useSAF) Microcopy.TOAST_MOVE_FAILED_SAF_REVOKED
-                        else Microcopy.TOAST_MOVE_FAILED
-                    )
-                }
-                is MoveResult.TargetReadFailed, is MoveResult.TargetWriteFailed -> {
-                    moveFailed = true
-                    showToast(context, Microcopy.toastMoveFailedTargetWrite())
-                }
-                is MoveResult.SameDocument -> {
-                    // 防御分支（96，T-20）：正常 UI 不可达（目标列表不含当前文档）——只提示，
-                    // 不设失败重试态、不动选择上下文
-                    showToast(context, Microcopy.toastSameTopicGuard())
-                }
+                is MoveResult.SameDocument -> Unit // 防御（96）：只提示，不动选择上下文
+                else -> if (outcome.keepRetryState) moveFlow.markFailed() // 对话框 3 保持变「重试」（84(b)）
             }
+            if (outcome.refreshMain) {
+                // §6.6：主文件条目增减→立即主动刷新（mtime 双保险，不等 2 秒轮询）；
+                // 移入 SourceDeleteFailed 例外同理（源可能已部分移除，即刻如实反映）
+                fileRepository.setFileLastModified(System.currentTimeMillis())
+                refreshEntryCount()
+            }
+            showToast(context, outcome.toast ?: return@launch)
         }
     }
 
@@ -1318,46 +1287,46 @@ fun MainScreen(
     }
 
     // —— 「移入主题」流程对话框栈（T-06，§8.1；对话框本体在 TopicMoveDialogs.kt）——
-    when (moveFlowStep) {
+    when (moveFlow.step) {
         MoveFlowStep.SELECT_TARGET -> TopicSelectDialog(
             topics = moveTopics, // createdAt 倒序（TopicRepository.listTopics 序）
             onSelect = { topic ->
                 // 点选已有主题 → 对话框 3（§8.1）
-                moveTarget = topic
-                moveFailed = false
-                moveFlowStep = MoveFlowStep.CONFIRM
+                moveFlow.selectTarget(topic)
+                moveFlow.clearFailed()
+                moveFlow.goTo(MoveFlowStep.CONFIRM)
             },
-            onNewTopic = { moveFlowStep = MoveFlowStep.NEW_TOPIC },
+            onNewTopic = { moveFlow.goTo(MoveFlowStep.NEW_TOPIC) },
             // 点外/返回关全部——保持多选态与选中集（与对话框 3「取消」同处置）
             onDismiss = ::closeMoveFlow
         )
         MoveFlowStep.NEW_TOPIC -> NewTopicNameDialog(
-            name = newTopicInput,
-            onNameChange = { newTopicInput = it },
+            name = moveFlow.newTopicInput,
+            onNameChange = { moveFlow.newTopicInput = it },
             onCreate = {
                 // 校验链＋创建一体经 createEmptyTopic（原子，无「先校验后创建」间隙）；
                 // 校验各失败分支 → 对应 toast 且对话框保持（§8.1）；取消留空文档不回收（§6.5）
                 coroutineScope.launch {
                     val created = withContext(Dispatchers.IO) {
-                        topicRepository.createEmptyTopic(newTopicInput)
+                        topicRepository.createEmptyTopic(moveFlow.newTopicInput)
                     }
                     when (created) {
                         is TopicCreateResult.Created -> {
                             // 进确认框前已建空文档（§6.5 创建时机取舍）：确认框取消留空文档，可删可复用
-                            moveTarget = TopicDocument(
+                            moveFlow.selectTarget(TopicDocument(
                                 file = created.file,
-                                displayName = newTopicInput.trim(),
+                                displayName = moveFlow.newTopicInput.trim(),
                                 createdAt = System.currentTimeMillis(),
                                 entryCount = 0
-                            )
-                            moveFailed = false
-                            newTopicInput = "" // 名称已消费进 moveTarget（关窗不丢字口径：此处清）
-                            moveFlowStep = MoveFlowStep.CONFIRM
+                            ))
+                            moveFlow.clearFailed()
+                            moveFlow.newTopicInput = "" // 名称已消费进目标（关窗不丢字口径：此处清）
+                            moveFlow.goTo(MoveFlowStep.CONFIRM)
                         }
                         is TopicCreateResult.NameExists -> {
                             // 同名 → 对话框 2b 指路（83 修订 c）
                             sameNameExisting = created.existing
-                            moveFlowStep = MoveFlowStep.SAME_NAME
+                            moveFlow.goTo(MoveFlowStep.SAME_NAME)
                         }
                         TopicCreateResult.NameEmpty -> showToast(context, Microcopy.TOAST_TOPIC_NAME_EMPTY)
                         TopicCreateResult.NameReserved -> showToast(context, Microcopy.TOAST_TOPIC_NAME_RESERVED)
@@ -1371,25 +1340,24 @@ fun MainScreen(
                     }
                 }
             },
-            onDismiss = { moveFlowStep = MoveFlowStep.SELECT_TARGET } // 「取消」→ 回对话框 1（§8.1）
+            onDismiss = { moveFlow.goTo(MoveFlowStep.SELECT_TARGET) } // 「取消」→ 回对话框 1（§8.1）
         )
         MoveFlowStep.SAME_NAME -> SameNameDialog(
             existingName = sameNameExisting?.displayName ?: "",
             onMoveToExisting = {
                 // 「移入该主题」→ 目标切该已有主题，直达对话框 3（§8.1）
-                moveTarget = sameNameExisting
+                moveFlow.selectTarget(sameNameExisting)
                 sameNameExisting = null
-                moveFailed = false
-                moveFlowStep = MoveFlowStep.CONFIRM
+                moveFlow.clearFailed()
+                moveFlow.goTo(MoveFlowStep.CONFIRM)
             },
-            onDismiss = { moveFlowStep = MoveFlowStep.NEW_TOPIC } // 「取消」→ 回对话框 2，输入保留（§8.1）
+            onDismiss = { moveFlow.goTo(MoveFlowStep.NEW_TOPIC) } // 「取消」→ 回对话框 2，输入保留（§8.1）
         )
         MoveFlowStep.CONFIRM -> MoveConfirmDialog(
             count = selectedKeys.size, // N＝所选条数（84(d)/88 口径）
-            topicName = moveTarget?.displayName ?: "",
-            // K 预览（§8.2 ②：执行取消在成功回调内重算，此处仅确认框前置告知）
-            executing = moveExecuting,
-            failed = moveFailed,
+            topicName = moveFlow.transferTarget?.displayName ?: "",
+            executing = moveFlow.executing,
+            failed = moveFlow.failed,
             onConfirm = { executeMove() }, // 失败重试同入口（move 幂等收敛）
             onDismiss = ::closeMoveFlow // 「取消」关全部对话框，保持多选态与选中集（§8.1）
         )
