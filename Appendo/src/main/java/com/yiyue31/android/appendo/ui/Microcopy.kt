@@ -220,7 +220,7 @@ internal object Microcopy {
      * BODY 留空不渲染；T-31 落地后切「暂无条目／点右上角“＋”添加条目」终句（§25.4）。
      */
     const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
-    const val TOPIC_WORKSPACE_EMPTY_BODY = ""
+    const val TOPIC_WORKSPACE_EMPTY_BODY = "点右上角“＋”添加条目"
 
     // ---- 条目删除词族（己批次 WB-2，102(b)(c)）----
 
@@ -240,6 +240,9 @@ internal object Microcopy {
 
     /** 主题归档并清空成功（含指路，§7）。 */
     fun toastTopicArchivedAndCleared(topic: String): String = "已备份并清空主题「$topic」，可在归档管理查看"
+
+    /** 主题新增成功（目的地标识，102(d)/97(c)）。 */
+    fun toastAppendedToTopic(name: String): String = "已追加到「$name」"
 
     /** 主题只归档成功。 */
     fun toastTopicArchived(topic: String): String = "已备份主题「$topic」"

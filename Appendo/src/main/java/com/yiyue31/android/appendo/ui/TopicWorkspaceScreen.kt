@@ -11,8 +11,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +39,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,6 +52,7 @@ import com.yiyue31.android.appendo.data.TopicRepository
 import com.yiyue31.android.appendo.util.EntryKey
 import com.yiyue31.android.appendo.util.CalendarEntryMapper
 import com.yiyue31.android.appendo.util.CalendarLauncher
+import com.yiyue31.android.appendo.util.DuplicateHintThrottle
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
@@ -99,6 +108,12 @@ fun TopicWorkspaceScreen(
     var deleteTargetTs by remember { mutableStateOf<String?>(null) }
     var showBatchDelete by remember { mutableStateOf(false) }
 
+    // —— 新增/归档/溢出菜单（WB-3，102(d)(e)(g)）——
+    var showInputDialog by remember { mutableStateOf(false) }
+    var inputDraft by remember { mutableStateOf("") }
+    var showArchiveDialog by remember { mutableStateOf(false) }
+    var showOverflow by remember { mutableStateOf(false) }
+
     // —— 移出/转移流程（MoveFlowHolder，T-26）——
     val moveFlow = remember { MoveFlowHolder() }
     var topics by remember { mutableStateOf<List<TopicDocument>>(emptyList()) }
@@ -120,6 +135,8 @@ fun TopicWorkspaceScreen(
         } else {
             val loaded = EntryParser.parse(result.content).map { LinkEntry.from(it) }
             entries = loaded
+            // WB-3：新增后定位顶部（倒序新条恒 index 0；设计自有增强）
+            if (loaded.isNotEmpty()) listState.scrollToItem(0)
             // 重载后保留仍存在的选中项（§22.4：retainedSelection 复用——被删剔除、新插入未选）
             selectedKeys = retainedSelection(selectedKeys, loaded)
         }
@@ -290,8 +307,27 @@ fun TopicWorkspaceScreen(
                         }
                     },
                     actions = {
-                        // 多选入口（§7.1 方案 A 沿 MainScreen 先例）：浏览态常驻、条目数为 0
-                        // 时隐藏（空列表无从选择）；contentDescription 直写沿惯例
+                        // WB-3 顶栏三动作「＋/复制全部/分享」（102(e)；归档收溢出菜单）
+                        IconButton(onClick = { showInputDialog = true }) {
+                            Icon(Icons.Default.AddCircle, contentDescription = "新增")
+                        }
+                        TextButton(onClick = {
+                            copyContent(context, FileBasedMarkdownFile(context, topicFile))
+                        }) { Text("复制全部") }
+                        IconButton(onClick = {
+                            shareContent(context, FileBasedMarkdownFile(context, topicFile))
+                        }) { Icon(Icons.Default.Share, contentDescription = "分享全部") }
+                        // 溢出菜单：归档二选一入口（102(g)）
+                        IconButton(onClick = { showOverflow = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                        }
+                        DropdownMenu(expanded = showOverflow, onDismissRequest = { showOverflow = false }) {
+                            DropdownMenuItem(
+                                text = { Text("归档…") },
+                                onClick = { showOverflow = false; showArchiveDialog = true }
+                            )
+                        }
+                        // 多选入口（§7.1 方案 A）：条目数为 0 时隐藏
                         if (!entries.isNullOrEmpty()) {
                             IconButton(onClick = { selectionMode = true }) {
                                 Icon(Icons.Default.CheckCircle, contentDescription = "多选")
@@ -385,7 +421,14 @@ fun TopicWorkspaceScreen(
                             editEntry = entry
                         },
                         // WB-2：右滑删除（102(b)/105——指示与动作一致）
-                        onEntrySwipeToDelete = { ts -> deleteTargetTs = ts }
+                        onEntrySwipeToDelete = { ts -> deleteTargetTs = ts },
+                        // WB-3：长按单条复制（102(e)；出口干净——parse 产物无 ZWSP）
+                        onEntryLongClick = { content ->
+                            performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("entry", content))
+                            showToast(context, Microcopy.TOAST_COPIED)
+                        }
                     )
                 }
             }
@@ -477,6 +520,88 @@ fun TopicWorkspaceScreen(
             )
         }
         null -> Unit
+    }
+
+    // —— 新增对话框（WB-3：共享 EntryInputDialog；toast 含主题名＋定位顶部）——
+    if (showInputDialog) {
+        EntryInputDialog(
+            draft = inputDraft,
+            onDraftChange = { inputDraft = it },
+            onAppend = {
+                if (inputDraft.isBlank()) {
+                    showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+                } else {
+                    try {
+                        val md = FileBasedMarkdownFile(context, topicFile)
+                        val existing = EntryParser.parse(md.readAll()).count { it.content == inputDraft }
+                        if (md.appendReturningTimestamp(inputDraft) != null) {
+                            val base = Microcopy.toastAppendedToTopic(topicName)
+                            val msg = if (existing > 0 && DuplicateHintThrottle.shouldShow(inputDraft))
+                                base + "（已有相同内容 $existing 条）" else base
+                            showToast(context, msg)
+                            inputDraft = ""
+                            showInputDialog = false
+                            reloadKey++
+                        } else showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                    } catch (e: Exception) {
+                        showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                    }
+                }
+            },
+            onRequestCalendar = {
+                if (inputDraft.isBlank()) {
+                    showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+                } else {
+                    try {
+                        val md = FileBasedMarkdownFile(context, topicFile)
+                        if (md.appendReturningTimestamp(inputDraft) != null) {
+                            val cal = CalendarEntryMapper.map(inputDraft)
+                            showToast(context, Microcopy.toastAppendedToTopic(topicName))
+                            inputDraft = ""
+                            showInputDialog = false
+                            reloadKey++
+                            if (!CalendarLauncher.launch(context, cal)) {
+                                showToast(context, Microcopy.TOAST_NO_CALENDAR)
+                            }
+                        } else showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                    } catch (e: Exception) {
+                        showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                    }
+                }
+            },
+            onDismiss = { showInputDialog = false }
+        )
+    }
+
+    // —— 归档二选一（WB-3：共享 ArchiveChoiceDialog；主题词族＋onCompleted 仅 reloadKey）——
+    if (showArchiveDialog) {
+        ArchiveChoiceDialog(
+            entryCount = entries?.size ?: 0,
+            topicName = topicName,
+            onArchiveAndClear = {
+                showArchiveDialog = false
+                runArchive(
+                    context = context, scope = coroutineScope,
+                    sourceMd = FileBasedMarkdownFile(context, topicFile),
+                    getTarget = { fileRepository.getArchiveFile(topicName) },
+                    wordbook = topicArchiveWordbook(topicName),
+                    path = ArchivePath.ARCHIVE_AND_CLEAR,
+                    onCompleted = { _, _ -> reloadKey++ }
+                )
+            },
+            onArchiveOnly = {
+                showArchiveDialog = false
+                runArchive(
+                    context = context, scope = coroutineScope,
+                    sourceMd = FileBasedMarkdownFile(context, topicFile),
+                    getTarget = { fileRepository.getArchiveFile(topicName) },
+                    wordbook = topicArchiveWordbook(topicName),
+                    path = ArchivePath.ARCHIVE_ONLY,
+                    onCompleted = { _, _ -> reloadKey++ }
+                )
+            },
+            onDismiss = { showArchiveDialog = false }
+        )
     }
 
     // —— 编辑对话框（WB-2：共享 EntryEditDialog，草稿/时序宿主）——

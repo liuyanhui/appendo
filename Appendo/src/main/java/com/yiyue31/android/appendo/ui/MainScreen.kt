@@ -1280,7 +1280,7 @@ private fun ThemeOptionButton(
     }
 }
 
-private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
+internal fun copyContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
     try {
         // 出口格式化（v1.3，specs 68~70）：经 parse 产物构建，无结构标记、无 ZWSP、秒级时间戳
         val entries = EntryParser.parse(mdFile.readAll())
@@ -1300,7 +1300,7 @@ private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOp
     }
 }
 
-private fun shareContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
+internal fun shareContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
     try {
         // 出口格式化（v1.3，specs 68~70）：经 parse 产物构建，无结构标记、无 ZWSP、秒级时间戳
         val entries = EntryParser.parse(mdFile.readAll())
