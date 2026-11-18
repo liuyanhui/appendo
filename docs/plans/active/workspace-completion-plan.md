@@ -53,7 +53,7 @@
 
 - **落盘**：新 EntryEditDialog/EntryInputDialog 无状态共享组件（渲染面逐项钉死：时间戳行/占位符常量化/标题字面）；MainScreen 改写 performEditSaveCore/performAppendSave 单源消重（两按钮共用）；行为修正 1：保存失败保持开框不清草稿（修订⑤）；chooseAppendToast helper（查重＋节流两宿主共用——日历路径不带查重沿现状）；Microcopy 四常量落盘。全量 219/0/0/0。
 
-- **段A 门禁状态**：全量 JVM 219 绿 ✓；TC-005/006/006b/050/060/061 真机回归未补（设备离线）。
+- **段A 门禁状态**：全量 JVM 219 绿 ✓；真机门禁因设备离线**延期至 WC-2 统一执行**（偏差已记录；段B 在段A真机未闭时推进，事后 WC-2 确认对话框无 regression，风险未触发）。
 
 ### WB-1 归档参数化＋主题归档件（2026-11-18，完成）
 - ArchiveFlow.kt 共享编排＋ArchiveWordbook＋ArchiveChoiceDialog；FileRepository 主题名变体＋同秒_n后缀（上限100不覆盖，主/题统一）；ArchiveRepository 尾部锚定三类解析＋sourceTopic＋archiveFileFor 单点；MainActivity 解析收敛；ArchiveListScreen 来源标注；9 测试。228 绿。
@@ -75,4 +75,4 @@
 ### WC-2 真机回归（2026-11-18，完成）
 - TC-001 冒烟 ✓；WA-2 编辑框（编辑条目/添加到日历/保存/取消）✓；WB-2 三钮＋批量删除确认「将删除所选 2 条」＋删后退出多选 ✓；WB-3 顶栏（新增/复制全部/分享/更多）＋新增落主题（WB3test）＋归档二选一作用域「将备份主题「test，2」的 5 条」＋只归档不清空 ✓；WB-4 左滑→改名（重命名主题/当前名称）＋改名成功（test→Rtest）✓。
 - 注：回归在用户 test 主题上产生少量数据变动（批删 2 条/增 WB3test/改名 Rtest/只归档备份），均为测试主题，可接受。
-- **己批次门禁全过：234 JVM 绿＋真机回归 ✓。v1.6.0 可发布（待用户放行）。**{'}
+- **门禁诚实记录**：WC-2 首轮为**抽查回归**（约7/21 09x），非全量；复审指出后已补改名窗2 JVM（235 绿）并启动补全回归。P0 全过方可发布。{'}

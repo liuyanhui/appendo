@@ -422,6 +422,22 @@ class TopicRepositoryTest {
     }
 
     @Test
+    fun rename_renameToFailure_rollsBackNewKey_keepsOldFile() {
+        putTopic("Src", docWithOneEntry())
+        prefs.edit().putLong(createdKey("Src"), 777L).commit()
+        // 窗2：预占新文件名为非空目录 → renameTo 失败 → 回滚新键
+        val occupy = File(topicsDir(), "Dst.md")
+        occupy.mkdirs()
+        File(occupy, "child").writeText("x")
+        val t = repo.findTopic("Src")!!
+        val r = repo.renameTopic(t, "Dst")
+        assertEquals(TopicRenameResult.Failed, r)
+        assertTrue("旧文件保留", File(topicsDir(), "Src.md").exists())
+        assertFalse("新键回滚", prefs.contains(createdKey("Dst")))
+        assertEquals("旧键不动", 777L, prefs.getLong(createdKey("Src"), -1L))
+    }
+
+    @Test
     fun rename_otherExisting_invalidExists() {
         putTopic("A1", docWithOneEntry())
         putTopic("B1", docWithOneEntry())
