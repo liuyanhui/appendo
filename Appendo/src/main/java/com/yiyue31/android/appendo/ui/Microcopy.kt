@@ -222,6 +222,17 @@ internal object Microcopy {
     const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
     const val TOPIC_WORKSPACE_EMPTY_BODY = ""
 
+    // ---- 条目删除词族（己批次 WB-2，102(b)(c)）----
+
+    /** 单条删除确认（error 红＋振动，78 口径；主/题共用）。 */
+    const val DLG_ENTRY_DELETE_TITLE = "删除条目"
+    const val DLG_ENTRY_DELETE_BODY = "确定要删除这条内容吗？此操作无法撤销。"
+    const val TOAST_ENTRY_DELETED = "已删除"
+    const val TOAST_ENTRY_DELETE_FAILED = "删除失败"
+
+    /** 批量删除确认（明示 N，97(d)/102(c)）。 */
+    fun dlgBatchDeleteBody(n: Int): String = "将删除所选 $n 条条目。"
+
     // ---- 主题归档词族（己批次 WB-1，设计 §7 定稿）----
 
     /** 主题二选一框正文（一层明示作用域，§5.2）。 */

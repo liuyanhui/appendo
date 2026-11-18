@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +42,8 @@ import com.yiyue31.android.appendo.data.TopicCreateResult
 import com.yiyue31.android.appendo.data.TopicDocument
 import com.yiyue31.android.appendo.data.TopicRepository
 import com.yiyue31.android.appendo.util.EntryKey
+import com.yiyue31.android.appendo.util.CalendarEntryMapper
+import com.yiyue31.android.appendo.util.CalendarLauncher
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
@@ -89,6 +92,13 @@ fun TopicWorkspaceScreen(
     var selectedKeys by remember { mutableStateOf<Set<EntryKey>>(emptySet()) }
     var previewEntry by remember { mutableStateOf<LinkEntry?>(null) }
 
+    // —— 编辑/删除（WB-2，102(a)(b)(c)；草稿三件套宿主镜像 §2.2）——
+    var editEntry by remember { mutableStateOf<LinkEntry?>(null) }
+    var editDraft by remember { mutableStateOf("") }
+    var lastEditedTs by remember { mutableStateOf<String?>(null) }
+    var deleteTargetTs by remember { mutableStateOf<String?>(null) }
+    var showBatchDelete by remember { mutableStateOf(false) }
+
     // —— 移出/转移流程（MoveFlowHolder，T-26）——
     val moveFlow = remember { MoveFlowHolder() }
     var topics by remember { mutableStateOf<List<TopicDocument>>(emptyList()) }
@@ -112,6 +122,46 @@ fun TopicWorkspaceScreen(
             entries = loaded
             // 重载后保留仍存在的选中项（§22.4：retainedSelection 复用——被删剔除、新插入未选）
             selectedKeys = retainedSelection(selectedKeys, loaded)
+        }
+    }
+
+    /** 编辑保存核心（§2.3：失败保持开框不清草稿——行为修正 1；updateEntry 按 ts 首条）。 */
+    fun performEditSave(): Boolean {
+        val entry = editEntry ?: return false
+        if (editDraft.isBlank()) {
+            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+            return false
+        }
+        if (editDraft == entry.content) {
+            editEntry = null; editDraft = ""; lastEditedTs = null
+            return true
+        }
+        return try {
+            val md = FileBasedMarkdownFile(context, topicFile)
+            if (md.updateEntry(entry.timestamp, editDraft)) {
+                showToast(context, Microcopy.TOAST_SAVED)
+                reloadKey++
+                true
+            } else {
+                showToast(context, Microcopy.TOAST_SAVE_FAILED); false
+            }
+        } catch (e: Exception) {
+            showToast(context, Microcopy.TOAST_SAVE_FAILED); false
+        }
+    }
+
+    /** 同 key 全删（102(b)；deleteEntries 按 EntryKey 寻址）。 */
+    fun deleteKeys(keys: Set<EntryKey>) {
+        try {
+            val md = FileBasedMarkdownFile(context, topicFile)
+            if (md.deleteEntries(keys) != null) {
+                showToast(context, Microcopy.TOAST_ENTRY_DELETED)
+                reloadKey++
+            } else {
+                showToast(context, Microcopy.TOAST_ENTRY_DELETE_FAILED)
+            }
+        } catch (e: Exception) {
+            showToast(context, Microcopy.TOAST_ENTRY_DELETE_FAILED)
         }
     }
 
@@ -199,6 +249,16 @@ fun TopicWorkspaceScreen(
                             )
                         ) {
                             Text(Microcopy.BTN_MOVE_TO_OTHER)
+                        }
+                        // WB-2 第三钮「删除」（102(c)；确认框明示 N）
+                        TextButton(
+                            onClick = { showBatchDelete = true },
+                            enabled = selectedKeys.isNotEmpty(),
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("删除")
                         }
                     }
                 )
@@ -317,7 +377,15 @@ fun TopicWorkspaceScreen(
                             val key = entry.entryKey
                             selectedKeys = if (key in selectedKeys) selectedKeys - key else selectedKeys + key
                         },
-                        onPreview = { previewEntry = it }
+                        onPreview = { previewEntry = it },
+                        // WB-2：编辑入口（102(a)；草稿同条目保留/换条目重置 §2.2）
+                        onEntryClick = { entry ->
+                            if (lastEditedTs != entry.timestamp) editDraft = entry.content
+                            lastEditedTs = entry.timestamp
+                            editEntry = entry
+                        },
+                        // WB-2：右滑删除（102(b)/105——指示与动作一致）
+                        onEntrySwipeToDelete = { ts -> deleteTargetTs = ts }
                     )
                 }
             }
@@ -409,6 +477,66 @@ fun TopicWorkspaceScreen(
             )
         }
         null -> Unit
+    }
+
+    // —— 编辑对话框（WB-2：共享 EntryEditDialog，草稿/时序宿主）——
+    editEntry?.let { entry ->
+        EntryEditDialog(
+            entry = entry,
+            draft = editDraft,
+            onDraftChange = { editDraft = it },
+            onSave = {
+                if (performEditSave()) {
+                    editEntry = null; editDraft = ""; lastEditedTs = null
+                }
+            },
+            onRequestCalendar = {
+                if (!performEditSave()) return@EntryEditDialog
+                val cal = CalendarEntryMapper.map(editDraft.ifBlank { entry.content })
+                editEntry = null; editDraft = ""; lastEditedTs = null
+                if (!CalendarLauncher.launch(context, cal)) {
+                    showToast(context, Microcopy.TOAST_NO_CALENDAR)
+                }
+            },
+            onDismiss = { editEntry = null } // 仅关窗不清草稿（修订⑤）
+        )
+    }
+
+    // —— 单条删除确认（WB-2：error 红＋振动；同 key 全删）——
+    deleteTargetTs?.let { ts ->
+        AlertDialog(
+            onDismissRequest = { deleteTargetTs = null },
+            title = { Text(Microcopy.DLG_ENTRY_DELETE_TITLE, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error) },
+            text = { Text(Microcopy.DLG_ENTRY_DELETE_BODY) },
+            confirmButton = {
+                TextButton(onClick = {
+                    performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                    val target = entries?.firstOrNull { it.timestamp == ts }
+                    deleteTargetTs = null
+                    if (target != null) deleteKeys(setOf(target.entryKey))
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteTargetTs = null }) { Text("取消") } }
+        )
+    }
+
+    // —— 批量删除确认（WB-2：明示 N；删后退出多选）——
+    if (showBatchDelete) {
+        AlertDialog(
+            onDismissRequest = { showBatchDelete = false },
+            title = { Text(Microcopy.DLG_ENTRY_DELETE_TITLE, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error) },
+            text = { Text(Microcopy.dlgBatchDeleteBody(selectedKeys.size)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    performVibration(context, VIBRATION_DURATION_SHORT_MS)
+                    val keys = selectedKeys
+                    showBatchDelete = false
+                    exitSelectionMode()
+                    deleteKeys(keys)
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { showBatchDelete = false }) { Text("取消") } }
+        )
     }
 
     // 多选态长按预览（§22.4——预览含复制动作，「长按复制不被占用」）
