@@ -169,3 +169,10 @@ TD-010 ~ TD-015 全部修复并随 v1.2.1 发布（详见 CHANGELOG 1.2.1、`tas
 - **TD-042/039/040/043 维持**：单消费方重复，不满足 107 准入门槛③，未随批抽象（范围冻结）。
 - **新登记 TD-051 uiMode 重建丢草稿/多选态**：系统深浅切换触发 Activity 重建，remember 级草稿/多选/moveFlow 丢失（与「关窗不丢字」精神冲突的边界）；test-cases §9 已声明，待立批次（ViewModel 提升）。优先级：中。
 - **新登记 TD-052 默认模式「打开文件」FileUriExposedException**：targetSdk34 下 Uri.fromFile 抛异常→误导性 toast；低频场景（SAF 模式正常），test-cases §9 已声明。优先级：低。
+
+### 己批次复审登记（2026-11-18，可后置）
+
+- **TD-053 executeMove 双宿主编排重复**：MainScreen 与 TopicWorkspaceScreen 各持 ~40 行同构编排（设计承认的"编排两步走'过渡态）。第三 Move 消费方出现时统一迁入 MoveFlow。优先级：低。
+- **TD-054 chooseAppendToast 主题变体**：工作区 onAppend 内联重复检测＋主题名 toast，与 chooseAppendToast 同质但格式不同（含主题名）。第三输入宿主出现时改 baseToast 参数统一。优先级：低。
+- **TD-055 archiveActionFor 参数微胖**：archiveName 在 NothingToArchive/Failed 分支未使用。无功能影响，记录不修。优先级：低。
+- **TD-056 归档恢复去重镜像腿**：ArchiveRestoreDeduplicationTest 为手工镜像算法，生产在 Composable；宜抽 internal 纯函数直测消除漂移。优先级：中。

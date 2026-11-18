@@ -10,7 +10,9 @@
 |------|------|
 | `FileRepository.kt` | 文件存储偏好管理、SAF URI 持久化、首次启动检测、SAF 恢复文件（.bak/.pending）清理；companion 持有 SP 文件名共享常量 `APPENDO_PREFS` |
 | `ThemePreferences.kt` | 主题三态偏好（v1.3）：`theme_mode` 键读写（缺省/非法回退 SYSTEM）、`applyWindowTheme`（Activity 冷启动 setTheme） |
-| `ArchiveRepository.kt` | 归档文件的增删查、时间戳解析、内容读取（`ArchiveFile` 数据类定义在此文件内，无独立文件） |
+| `ArchiveRepository.kt` | 归档文件的增删查、时间戳解析（v1.6 尾部锚定三类形态＋sourceTopic＋archiveFileFor 单点）、内容读取（`ArchiveFile` 数据类定义在此文件内，无独立文件） |
+| `TopicRepository.kt` | 主题文档管理（topics/ 目录、命名校验、创建/删除、createdAt 元数据、首次移入指路旗标）；v1.6 增 `renameTopic`（锁内三步/createdAt 保留/原名无操作/失败回滚） |
+| `FileRepository.kt`（v1.6 归档命名） | `getArchiveFile(sourceTopic)` 主题名变体＋同秒 `_n` 递增后缀（上限 100 不覆盖，主/题统一） |
 
 ## 存储架构：双模式设计
 

@@ -17,6 +17,10 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 | `TopicBadge.kt` | 主题首字标色板派生纯函数（v1.4）：`deriveBadgePalette`/`contentColorFor`/`badgeIndex`/`firstGrapheme`，全 JVM 可测 | 低 |
 | `MultiSelect.kt` | 多选选中集维护纯函数（`retainedSelection`）＋多选态 contextual 顶栏 | 低 |
 | `TopicMoveDialogs.kt` | 移入主题流程对话框：目标选择/新建命名/同名确认/确认（含失败重试态）/多选长按预览 | 中 |
+| `EntryEditDialog.kt` / `EntryInputDialog.kt` | v1.6 无状态共享对话框（草稿提升宿主、onSave 单源、日历时序归宿主；MainScreen/工作区两消费方） | 低 |
+| `ArchiveFlow.kt` | v1.6 归档共享编排（runArchive/ArchiveWordbook/ArchiveChoiceDialog/ArchiveOutcome/决策映射；主/题两消费方 onCompleted 差异化善后） | 中 |
+| `MoveFlow.kt` | v1.6 三动词（移入/移出/转移）状态 holder＋MoveOutcomeMapping 全组合（guideSuffix 承载首次指路） | 中 |
+| `TopicWorkspaceScreen.kt` | v1.6 主题工作区（编辑/删除/批量/新增/复制/分享/归档；与主界面同权；topic_workspace 路由） | 高 |
 | `ArchiveRestore.kt` | 恢复确认对话框＋去重追加循环（自 ArchiveListScreen 迁移共用，归档/主题两路消费） | 中 |
 | `Microcopy.kt` | 微文案常量源（v1.3.x 起）：追加/保存/复制反馈＋移入主题词族＋归档二选一词族 | 低 |
 | `LinkEntry.kt` | UI 层条目模型：timestamp（完整时间戳串作 key）+ content + 派生 timestampDisplay | 低 |
