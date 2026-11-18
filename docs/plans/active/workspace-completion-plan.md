@@ -45,4 +45,12 @@
 
 ## §7 进度记录（执行时追加）
 
-（待段A 起）
+### WA-1 MoveFlow 迁移（2026-11-18，完成）
+
+- **落盘**：MoveVerb.MOVE_IN 三动词全量；MoveOutcome 增 guideSuffix（指路后缀承载——旗标消费留宿主防丢失）；MoveOutcomeMapping 全组合（移入失败词族/SourceReadFailed SAF 变体/SourceDeleteFailed 重试＋refreshMain 组合/refreshMain 语义＝主文件增减方向）；MoveFlowHolder.close() 不再清命名草稿（修订⑤纠偏）；MainScreen ~130 行移入状态机＋对话框栈迁 Holder。新增 9 测试；全量 219/0/0/0。
+
+### WA-2 对话框抽取（2026-11-18，完成）
+
+- **落盘**：新 EntryEditDialog/EntryInputDialog 无状态共享组件（渲染面逐项钉死：时间戳行/占位符常量化/标题字面）；MainScreen 改写 performEditSaveCore/performAppendSave 单源消重（两按钮共用）；行为修正 1：保存失败保持开框不清草稿（修订⑤）；chooseAppendToast helper（查重＋节流两宿主共用——日历路径不带查重沿现状）；Microcopy 四常量落盘。全量 219/0/0/0。
+
+- **段A 门禁状态**：全量 JVM 219 绿 ✓；TC-005/006/006b/050/060/061 真机回归未补（设备离线）。{'}
