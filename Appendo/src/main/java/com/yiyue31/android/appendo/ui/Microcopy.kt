@@ -222,6 +222,18 @@ internal object Microcopy {
     const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
     const val TOPIC_WORKSPACE_EMPTY_BODY = ""
 
+    // ---- 共享对话框词族（己批次 WA-2 抽取随入）----
+
+    /** 编辑/输入对话框标题（抽取常量化——原 MainScreen 直写）。 */
+    const val DLG_EDIT_TITLE = "编辑条目"
+    const val DLG_INPUT_TITLE = "手动输入内容"
+
+    /** 手动输入占位符（常量化——原直写「请输入要追加的内容」）。 */
+    const val PLACEHOLDER_INPUT = "请输入要追加的内容"
+
+    /** 「添加到日历」按钮（16.C 承接提醒；编辑/输入对话框主操作位共用）。 */
+    const val BTN_ADD_TO_CALENDAR = "添加到日历"
+
     // ---- 移出/转移（戊批次 T-26，设计 §21.2/§24.1；96/100 定稿字面）----
 
     /** 工作区多选 bar 钮一（96 钉死；禁裸「移入主题」——§21.2）。 */

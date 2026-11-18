@@ -991,138 +991,76 @@ fun MainScreen(
         )
     }
 
-    // Detail/edit dialog
+    // Detail/edit dialog（WA-2：对话框本体迁共享组件 EntryEditDialog——草稿/时序宿主持有）
     if (showDetailDialog && selectedEntry != null) {
-        val scrollState = rememberScrollState()
-
-        AlertDialog(
-            onDismissRequest = {
-                // 关窗不丢字（2026-11-11）：点外/返回仅关窗，编辑中内容保留（再次点开同条目可见）
+        /**
+         * 编辑保存核心（宿主单一保存路径，§2.3 消重——保存/日历两按钮共用）：
+         * 空→toast 保持开框；未变→关框清草稿；写成功→toast＋刷新＋关框清草稿；
+         * **写失败→toast 保持开框不清草稿**（WA-2 行为修正 1：原失败仍关框清草稿——修订⑤
+         * 「保存成功才清空」精神）。返回值＝是否已落盘可继续后续（日历跳转）。
+         */
+        fun performEditSaveCore(): Boolean {
+            if (editContent.isBlank()) {
+                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+                return false
+            }
+            val entry = selectedEntry ?: return false
+            if (editContent == entry.content) {
                 showDetailDialog = false
                 selectedEntry = null
-            },
-            title = {
-                Text(
-                    "编辑条目",
-                    fontWeight = FontWeight.SemiBold
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(scrollState)
-                ) {
-                    Text(
-                        text = selectedEntry!!.timestampDisplay,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = editContent,
-                        onValueChange = { editContent = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 5,
-                        maxLines = 10,
-                        placeholder = { Text(Microcopy.PLACEHOLDER_EDIT) }
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    // 添加到日历（主操作，R 批次 specs 16.C：自建提醒退役，日历承接提醒诉求）。
-                    // 需求 75"次级动作先落盘"语义保留：空校验 → 有修改先保存（失败 return，框保持）
-                    // → 关框+收键盘 → 跳日历；日历失败独立反馈、不回滚已保存内容
-                    OutlinedButton(
-                        onClick = {
-                            if (editContent.isBlank()) {
-                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                                return@OutlinedButton
-                            }
-                            if (editContent != selectedEntry!!.content) {
-                                try {
-                                    val mdFile = getCurrentMarkdownFile()
-                                    if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
-                                        fileRepository.setFileLastModified(System.currentTimeMillis())
-                                        refreshEntryCount()
-                                        showToast(context, Microcopy.TOAST_SAVED)
-                                    } else {
-                                        showToast(context, Microcopy.TOAST_SAVE_FAILED)
-                                        return@OutlinedButton // 保存失败不执行后续（须在关框之前 return）
-                                    }
-                                } catch (e: Exception) {
-                                    if (BuildConfig.DEBUG) {
-                                        android.util.Log.e("MainScreen", "Failed to update entry", e)
-                                    }
-                                    showToast(context, Microcopy.TOAST_SAVE_FAILED)
-                                    return@OutlinedButton
-                                }
-                            }
-                            val entry = CalendarEntryMapper.map(editContent)
-                            showDetailDialog = false
-                            selectedEntry = null
-                            editContent = ""
-                            lastEditedTs = null
-                            keyboardController?.hide()
-                            if (!CalendarLauncher.launch(context, entry)) {
-                                showToast(context, Microcopy.TOAST_NO_CALENDAR)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("添加到日历", fontWeight = FontWeight.Medium)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (editContent.isBlank()) {
-                            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                            return@TextButton
-                        }
-                        if (editContent == selectedEntry!!.content) {
-                            showDetailDialog = false
-                            selectedEntry = null
-                            editContent = ""
-                            lastEditedTs = null
-                            return@TextButton
-                        }
-                        try {
-                            val mdFile = getCurrentMarkdownFile()
-                            if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
-                                fileRepository.setFileLastModified(System.currentTimeMillis())
-                                refreshEntryCount()
-                                showToast(context, Microcopy.TOAST_SAVED)
-                            } else {
-                                showToast(context, Microcopy.TOAST_SAVE_FAILED)
-                            }
-                        } catch (e: Exception) {
-                            if (BuildConfig.DEBUG) {
-                                android.util.Log.e("MainScreen", "Failed to update entry", e)
-                            }
-                            showToast(context, Microcopy.TOAST_SAVE_FAILED)
-                        }
-                        showDetailDialog = false
-                        selectedEntry = null
-                        editContent = ""
-                        lastEditedTs = null
-                    }
-                ) {
-                    Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
-                }
-            },
-            dismissButton = {
-                // 「取消」＝仅关窗，编辑中内容保留（关窗不丢字，与点外/返回同语义）
-                TextButton(
-                    onClick = {
-                        showDetailDialog = false
-                        selectedEntry = null
-                    }
-                ) {
-                    Text("取消")
-                }
+                editContent = ""
+                lastEditedTs = null
+                return true
             }
+            return try {
+                val mdFile = getCurrentMarkdownFile()
+                if (mdFile.updateEntry(entry.timestamp, editContent)) {
+                    fileRepository.setFileLastModified(System.currentTimeMillis())
+                    refreshEntryCount()
+                    showToast(context, Microcopy.TOAST_SAVED)
+                    true
+                } else {
+                    showToast(context, Microcopy.TOAST_SAVE_FAILED)
+                    false
+                }
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.e("MainScreen", "Failed to update entry", e)
+                }
+                showToast(context, Microcopy.TOAST_SAVE_FAILED)
+                false
+            }
+        }
+
+        fun closeEditDialog() {
+            showDetailDialog = false
+            selectedEntry = null
+        }
+
+        EntryEditDialog(
+            entry = selectedEntry!!,
+            draft = editContent,
+            onDraftChange = { editContent = it },
+            onSave = {
+                if (performEditSaveCore()) {
+                    closeEditDialog()
+                    editContent = ""
+                    lastEditedTs = null
+                } // 失败保持开框（行为修正 1）——草稿保留可改后重存
+            },
+            onRequestCalendar = {
+                // 需求 75 先落盘：空校验→有修改先保存（失败 return 保持开框）→清草稿关框跳日历
+                if (!performEditSaveCore()) return@EntryEditDialog
+                val entry = CalendarEntryMapper.map(editContent.ifBlank { selectedEntry?.content ?: "" })
+                closeEditDialog()
+                editContent = ""
+                lastEditedTs = null
+                keyboardController?.hide()
+                if (!CalendarLauncher.launch(context, entry)) {
+                    showToast(context, Microcopy.TOAST_NO_CALENDAR)
+                }
+            },
+            onDismiss = { closeEditDialog() } // 点外/取消/返回三通道：仅关窗不清草稿（修订⑤）
         )
     }
 
@@ -1160,129 +1098,80 @@ fun MainScreen(
         )
     }
 
-    // 提醒时间选择
-    // Manual input dialog
+    // Manual input dialog（WA-2：对话框本体迁共享组件 EntryInputDialog——草稿宿主持有）
     if (showInputDialog) {
-        val focusRequester = remember { FocusRequester() }
-
-        LaunchedEffect(Unit) {
-            // Focus the text field and show keyboard when dialog opens
-            focusRequester.requestFocus()
-            keyboardController?.show()
+        /**
+         * 追加保存核心（保存路径——查重＋节流旁注经共享 helper [chooseAppendToast]，§2.3）：
+         * 空→toast 保持开框；成功→toast（含重复旁注）＋刷新；**失败→toast 保持开框**（行为修正 1）。
+         */
+        fun performAppendSave(): Boolean {
+            if (inputContent.isBlank()) {
+                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+                return false
+            }
+            return try {
+                val mdFile = getCurrentMarkdownFile()
+                // 追加前查重（按内容，忽略时间戳）
+                val existingSameCount = parseMarkdownEntries(mdFile.readAll())
+                    .count { it.content == inputContent }
+                if (mdFile.append(inputContent)) {
+                    fileRepository.setFileLastModified(System.currentTimeMillis())
+                    refreshEntryCount()
+                    showToast(context, chooseAppendToast(inputContent, existingSameCount))
+                    true
+                } else {
+                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                    false
+                }
+            } catch (_: Exception) {
+                showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                false
+            }
         }
 
-        AlertDialog(
-            onDismissRequest = {
-                // 关窗不丢字（2026-11-11 换机验证裁定）：点外/返回仅关窗，草稿保留至下次打开
-                //（沿 C5 命名框输入保留先例）；保存成功才清空——消除误触点外的整段丢失
-                showInputDialog = false
-                // Hide keyboard when dialog closes
-                keyboardController?.hide()
-            },
-            title = {
-                Text(
-                    "手动输入内容",
-                    fontWeight = FontWeight.SemiBold
-                )
-            },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = inputContent,
-                        onValueChange = { inputContent = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        minLines = 3,
-                        maxLines = 6,
-                        placeholder = { Text("请输入要追加的内容") }
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    // 添加到日历（主操作，R 批次 specs 16.C：提醒诉求由日历承接）。需求 75
-                    // "次级动作先落盘"语义保留：先追加落盘（toast"已追加"）→ 清空/关框/收键盘
-                    // → 跳日历；日历失败独立反馈、不回滚已追加内容
-                    OutlinedButton(
-                        onClick = {
-                            if (inputContent.isBlank()) {
-                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                                return@OutlinedButton
-                            }
-                            try {
-                                val mdFile = getCurrentMarkdownFile()
-                                if (mdFile.appendReturningTimestamp(inputContent) != null) {
-                                    fileRepository.setFileLastModified(System.currentTimeMillis())
-                                    refreshEntryCount()
-                                    val entry = CalendarEntryMapper.map(inputContent)
-                                    showToast(context, Microcopy.TOAST_APPENDED)
-                                    inputContent = ""
-                                    showInputDialog = false
-                                    keyboardController?.hide()
-                                    if (!CalendarLauncher.launch(context, entry)) {
-                                        showToast(context, Microcopy.TOAST_NO_CALENDAR)
-                                    }
-                                } else {
-                                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                                }
-                            } catch (_: Exception) {
-                                showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("添加到日历", fontWeight = FontWeight.Medium)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        // 空白校验（需求 76a）：toast 且不关框、不清输入；纯空白字符视同空（isBlank）
-                        if (inputContent.isBlank()) {
-                            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                            return@TextButton
-                        }
-                        try {
-                            val mdFile = getCurrentMarkdownFile()
-                            // 追加前查重（按内容，忽略时间戳）
-                            val existingSameCount = parseMarkdownEntries(mdFile.readAll())
-                                .count { it.content == inputContent }
-                            if (mdFile.append(inputContent)) {
-                                fileRepository.setFileLastModified(System.currentTimeMillis())
-                                refreshEntryCount()
-                                // 非阻塞提示：先确认成功，再旁注重复（5s 节流防刷屏，specs 42）
-                                val msg = if (existingSameCount > 0 &&
-                                    DuplicateHintThrottle.shouldShow(inputContent)
-                                ) {
-                                    Microcopy.toastAppendedWithDuplicates(existingSameCount)
-                                } else {
-                                    Microcopy.TOAST_APPENDED
-                                }
-                                showToast(context, msg)
-                            } else {
-                                showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                            }
-                        } catch (_: Exception) {
-                            showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                        }
-                        inputContent = ""
-                        showInputDialog = false
-                        keyboardController?.hide()
-                    }
-                ) {
-                    Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
-                }
-            },
-            dismissButton = {
-                // 「取消」＝仅关窗，草稿保留（与点外/返回同语义，关窗不丢字）
-                TextButton(onClick = {
-                    showInputDialog = false
-                    keyboardController?.hide()
-                }) {
-                    Text("取消")
-                }
+        /** 日历路径核心（75 先落盘）：追加成功 plain toast（**不带查重旁注**——沿现状）；
+         *  失败保持开框。返回新落盘内容供日历预填（未变场景不适用——输入恒有新内容）。 */
+        fun performAppendForCalendar(): String? {
+            if (inputContent.isBlank()) {
+                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+                return null
             }
+            return try {
+                val mdFile = getCurrentMarkdownFile()
+                if (mdFile.appendReturningTimestamp(inputContent) != null) {
+                    fileRepository.setFileLastModified(System.currentTimeMillis())
+                    refreshEntryCount()
+                    showToast(context, Microcopy.TOAST_APPENDED)
+                    inputContent
+                } else {
+                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                    null
+                }
+            } catch (_: Exception) {
+                showToast(context, Microcopy.TOAST_APPEND_FAILED)
+                null
+            }
+        }
+
+        EntryInputDialog(
+            draft = inputContent,
+            onDraftChange = { inputContent = it },
+            onAppend = {
+                if (performAppendSave()) {
+                    inputContent = ""
+                    showInputDialog = false
+                } // 失败保持开框（行为修正 1）——草稿保留
+            },
+            onRequestCalendar = {
+                val appended = performAppendForCalendar() ?: return@EntryInputDialog
+                val entry = CalendarEntryMapper.map(appended)
+                inputContent = ""
+                showInputDialog = false
+                if (!CalendarLauncher.launch(context, entry)) {
+                    showToast(context, Microcopy.TOAST_NO_CALENDAR)
+                }
+            },
+            onDismiss = { showInputDialog = false } // 仅关窗，草稿保留（修订⑤；键盘组件内收起）
         )
     }
 
