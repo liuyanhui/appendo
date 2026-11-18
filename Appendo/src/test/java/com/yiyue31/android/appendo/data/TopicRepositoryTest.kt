@@ -371,6 +371,65 @@ class TopicRepositoryTest {
 
 
 
+
+    // ---------- WB-4 改名（104/§6 三窗口＋原名无操作＋校验链） ----------
+
+    @Test
+    fun rename_success_preservesCreatedAt_renamesFile_swapsKey() {
+        putTopic("Old", docWithOneEntry())
+        prefs.edit().putLong(createdKey("Old"), 12345L).commit()
+        val t = repo.findTopic("Old")!!
+        val r = repo.renameTopic(t, "New")
+        assertEquals(TopicRenameResult.Renamed, r)
+        assertTrue(File(topicsDir(), "New.md").exists())
+        assertFalse(File(topicsDir(), "Old.md").exists())
+        assertEquals("createdAt 保留不重置", 12345L, prefs.getLong(createdKey("New"), -1L))
+        assertFalse("旧键删除", prefs.contains(createdKey("Old")))
+    }
+
+    @Test
+    fun rename_originalName_noOpSuccess() {
+        putTopic("Same", docWithOneEntry())
+        val t = repo.findTopic("Same")!!
+        assertEquals(TopicRenameResult.Renamed, repo.renameTopic(t, "Same"))
+        assertTrue(File(topicsDir(), "Same.md").exists())
+    }
+
+    @Test
+    fun rename_caseInsensitiveSelf_noOp() {
+        putTopic("Case", docWithOneEntry())
+        val t = repo.findTopic("Case")!!
+        assertEquals(TopicRenameResult.Renamed, repo.renameTopic(t, "case"))
+        assertTrue(File(topicsDir(), "Case.md").exists())
+    }
+
+    @Test
+    fun rename_empty_invalid() {
+        putTopic("V", docWithOneEntry())
+        val t = repo.findTopic("V")!!
+        val r = repo.renameTopic(t, "  ")
+        assertTrue(r is TopicRenameResult.Invalid)
+        assertEquals(TopicNameValidation.Empty, (r as TopicRenameResult.Invalid).validation)
+    }
+
+    @Test
+    fun rename_illegalChars_invalid() {
+        putTopic("V2", docWithOneEntry())
+        val t = repo.findTopic("V2")!!
+        val r = repo.renameTopic(t, "a/b")
+        assertTrue(r is TopicRenameResult.Invalid)
+        assertEquals(TopicNameValidation.IllegalChars, (r as TopicRenameResult.Invalid).validation)
+    }
+
+    @Test
+    fun rename_otherExisting_invalidExists() {
+        putTopic("A1", docWithOneEntry())
+        putTopic("B1", docWithOneEntry())
+        val t = repo.findTopic("A1")!!
+        val r = repo.renameTopic(t, "B1")
+        assertTrue(r is TopicRenameResult.Invalid)
+        assertTrue((r as TopicRenameResult.Invalid).validation is TopicNameValidation.Exists)
+    }
 }
 
 /**
@@ -478,5 +537,4 @@ private class WriteRecordingSharedPreferences(
             putBooleanCalls.add(key to value)
             return editor.putBoolean(key, value)
         }
-    }
-}
+    }}

@@ -222,6 +222,14 @@ internal object Microcopy {
     const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
     const val TOPIC_WORKSPACE_EMPTY_BODY = "点右上角“＋”添加条目"
 
+    // ---- 主题改名词族（己批次 WB-4，104/§24.1）----
+
+    const val DLG_TOPIC_RENAME_TITLE = "重命名主题"
+    fun dlgTopicRenameBody(current: String): String = "当前名称：$current"
+    const val TOAST_TOPIC_RENAMED = "已重命名"
+    const val TOAST_TOPIC_RENAME_FAILED = "重命名失败"
+    const val SWIPE_LABEL_RENAME = "改名"
+
     // ---- 条目删除词族（己批次 WB-2，102(b)(c)）----
 
     /** 单条删除确认（error 红＋振动，78 口径；主/题共用）。 */

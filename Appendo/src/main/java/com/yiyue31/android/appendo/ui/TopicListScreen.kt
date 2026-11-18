@@ -49,6 +49,8 @@ import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.data.TopicCreateResult
 import com.yiyue31.android.appendo.data.TopicDeleteResult
 import com.yiyue31.android.appendo.data.TopicDocument
+import com.yiyue31.android.appendo.data.TopicNameValidation
+import com.yiyue31.android.appendo.data.TopicRenameResult
 import com.yiyue31.android.appendo.data.TopicRepository
 import com.yiyue31.android.appendo.util.EntryParser
 import kotlinx.coroutines.Dispatchers
@@ -89,10 +91,10 @@ fun TopicListScreen(
     var isLoading by remember { mutableStateOf(true) }
     var showTopicDeleteDialog by remember { mutableStateOf(false) }
     var topicToDelete by remember { mutableStateOf<TopicDocument?>(null) }
-    var showRestoreDialog by remember { mutableStateOf(false) }
-    var restoreFile by remember { mutableStateOf<File?>(null) }
-    var restoreName by remember { mutableStateOf("") }
-    var restoreEntryCount by remember { mutableStateOf(0) }
+    // WB-4：左滑恢复退役→改名（99/104）；会话级一次性钳 0 指路
+    var renameTarget by remember { mutableStateOf<TopicDocument?>(null) }
+    var renameInput by remember { mutableStateOf("") }
+    var deleteGuideShown by remember { mutableStateOf(false) }
 
     // —— 页内新建状态机（§15.1 C5）：命名输入由本处持有——同名提示返回命名框时输入保留（可改名）——
     var createStep by remember { mutableStateOf<TopicCreateStep?>(null) }
@@ -230,12 +232,16 @@ fun TopicListScreen(
                                 topicToDelete = topic
                                 showTopicDeleteDialog = true
                             },
-                            onSwipeLeftRestore = {
+                            onSwipeLeftRename = {
                                 performVibration(context, VIBRATION_DURATION_SHORT_MS)
-                                restoreFile = topic.file
-                                restoreName = topic.displayName
-                                restoreEntryCount = topic.entryCount
-                                showRestoreDialog = true
+                                renameInput = topic.displayName
+                                renameTarget = topic
+                            },
+                            onSwipeAttemptWhenDisabled = {
+                                if (!deleteGuideShown) {
+                                    deleteGuideShown = true
+                                    showToast(context, Microcopy.TOAST_TOPIC_DELETE_GUIDE)
+                                }
                             }
                         )
                     }
@@ -302,26 +308,38 @@ fun TopicListScreen(
         )
     }
 
-    // 恢复确认（共用件零改动消费，T-07 语义：主题差异＝「主题」名词＋注明行；恢复后经 IO 重载）
-    if (showRestoreDialog && restoreFile != null) {
-        RestoreConfirmDialog(
-            file = restoreFile!!,
-            sourceLabel = "主题",
-            sourceName = restoreName,
-            entryCount = restoreEntryCount,
-            fileRepository = fileRepository,
-            restoreNote = Microcopy.TOPIC_RESTORE_NOTE,
-            onDismiss = {
-                showRestoreDialog = false
-                restoreFile = null
-                restoreEntryCount = 0
+    // 改名对话框（WB-4：左滑改名；校验链＋原名无操作归 renameTopic；成功重载列表）
+    renameTarget?.let { target ->
+        RenameTopicDialog(
+            currentName = target.displayName,
+            name = renameInput,
+            onNameChange = { renameInput = it },
+            onRename = {
+                coroutineScope.launch {
+                    when (val r = withContext(Dispatchers.IO) {
+                        topicRepository.renameTopic(target, renameInput)
+                    }) {
+                        is TopicRenameResult.Renamed -> {
+                            showToast(context, Microcopy.TOAST_TOPIC_RENAMED)
+                            renameTarget = null
+                            reloadTopics()
+                        }
+                        is TopicRenameResult.Invalid -> {
+                            // 校验失败分支 toast（沿新建校验链字面）；框保持输入保留
+                            when (r.validation) {
+                                TopicNameValidation.Empty -> showToast(context, Microcopy.TOAST_TOPIC_NAME_EMPTY)
+                                TopicNameValidation.Reserved -> showToast(context, Microcopy.TOAST_TOPIC_NAME_RESERVED)
+                                TopicNameValidation.IllegalChars -> showToast(context, Microcopy.TOAST_TOPIC_NAME_ILLEGAL)
+                                TopicNameValidation.TooLong -> showToast(context, Microcopy.TOAST_TOPIC_NAME_TOO_LONG)
+                                is TopicNameValidation.Exists -> showToast(context, Microcopy.dlgTopicPageSameNameBody(r.validation.displayName))
+                                is TopicNameValidation.Ok -> Unit
+                            }
+                        }
+                        TopicRenameResult.Failed -> showToast(context, Microcopy.TOAST_TOPIC_RENAME_FAILED)
+                    }
+                }
             },
-            onConfirmed = {
-                showRestoreDialog = false
-                restoreFile = null
-                restoreEntryCount = 0
-                reloadTopics()
-            }
+            onDismiss = { renameTarget = null }
         )
     }
 
@@ -389,17 +407,21 @@ private fun TopicCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSwipeToDelete: () -> Unit,
-    onSwipeLeftRestore: () -> Unit
+    onSwipeLeftRename: () -> Unit,
+    onSwipeAttemptWhenDisabled: () -> Unit = {}
 ) {
     // 取色链（§15.1 首字标规则）：deriveBadgePalette(primary, surface)[badgeIndex(displayName)]
     val badgeColor = badgePalette[badgeIndex(topic.displayName)]
     SwipeCard(
         // 85(a)：非空主题右滑删除钳 0 零响应（swipeToDeleteEnabled=false）；仅空主题（0 条）可右滑删除
         swipeToDeleteEnabled = topic.entryCount == 0,
+        // WB-4：左滑语义恢复→改名（99/104）
+        swipeLeftLabel = Microcopy.SWIPE_LABEL_RENAME,
         onClick = onClick,
         onLongClick = onLongClick,
         onSwipeToDelete = onSwipeToDelete,
-        onSwipeLeftRestore = onSwipeLeftRestore
+        onSwipeLeftRestore = onSwipeLeftRename,
+        onSwipeAttemptWhenDisabled = onSwipeAttemptWhenDisabled
     ) {
         Row(
             modifier = Modifier

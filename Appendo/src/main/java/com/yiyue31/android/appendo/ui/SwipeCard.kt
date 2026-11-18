@@ -64,6 +64,8 @@ internal fun SwipeCard(
     onLongClick: () -> Unit,
     onSwipeToDelete: () -> Unit,
     onSwipeLeftRestore: () -> Unit,
+    /** WB-4：右滑删除禁用时（非空主题钳 0）的「尝试」回调——宿主据此一次性指路（会话级）。 */
+    onSwipeAttemptWhenDisabled: () -> Unit = {},
     content: @Composable () -> Unit
 ) {
     var offsetX by remember { mutableStateOf(0f) }
@@ -140,8 +142,10 @@ internal fun SwipeCard(
                             val newOffset = offsetX + dragAmount
                             // Allow both positive and negative offset
                             // 右滑删除禁用时（非空主题，85(a) 零响应）：正向位移钳 0——卡片无滑动反馈，
-                            // onDragEnd 的 > 阈值分支不可达；负向（左滑恢复）不受限
+                            // onDragEnd 的 > 阈值分支不可达；负向（左滑恢复/改名）不受限
                             val maxPositive = if (swipeToDeleteEnabled) SWIPE_THRESHOLD_DP * 1.5f else 0f
+                            // WB-4：禁用态正向「尝试」上抛（指路 toast，会话级一次性由宿主控制）
+                            if (!swipeToDeleteEnabled && dragAmount > 0) onSwipeAttemptWhenDisabled()
                             offsetX = newOffset.coerceIn(-SWIPE_THRESHOLD_DP * 1.5f, maxPositive)
                         }
                     )

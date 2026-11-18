@@ -41,6 +41,13 @@ sealed interface TopicDeleteResult {
     object Failed : TopicDeleteResult
 }
 
+/** 改名结果（WB-4，104）：[Invalid] 携带校验失败态；原名提交/成功＝[Renamed]；IO 失败＝[Failed]。 */
+sealed interface TopicRenameResult {
+    object Renamed : TopicRenameResult
+    object Failed : TopicRenameResult
+    data class Invalid(val validation: TopicNameValidation) : TopicRenameResult
+}
+
 /** [TopicNameRules.validate] 结果（§5.3）。校验顺序固定：空名→保留字→非法字符→长度→同名检测。 */
 sealed interface TopicNameValidation {
     object Empty : TopicNameValidation
@@ -261,6 +268,37 @@ class TopicRepository(
         if (!deleted) return@synchronized TopicDeleteResult.Failed
         prefs.edit().remove(createdKey(topic.file.name)).commit()
         TopicDeleteResult.Deleted
+    }
+
+    /**
+     * 主题改名（WB-4，104/§23.1 蓝图剔除已退役缓存失效步）：校验链复用（调用方排除自身）；
+     * **原名提交＝无操作成功**；锁内三步＝先写新 created_ 键（保留旧 createdAt，防首见回写重置）
+     * commit 检查 → 同目录 renameTo → 删旧键；renameTo 失败回滚新键。三窗口语义见设计 §6。
+     */
+    fun renameTopic(topic: TopicDocument, rawName: String): TopicRenameResult = synchronized(FileOperationLock) {
+        val others = listTopics().map { it.displayName }.filter { !it.equals(topic.displayName, ignoreCase = true) }
+        when (val v = TopicNameRules.validate(rawName, others)) {
+            is TopicNameValidation.Ok -> {
+                val trimmed = v.trimmedName
+                if (trimmed.equals(topic.displayName, ignoreCase = true)) return@synchronized TopicRenameResult.Renamed
+                val newFile = File(topic.file.parentFile, trimmed + FILE_SUFFIX)
+                val createdAt = prefs.getLong(createdKey(topic.file.name), topic.createdAt)
+                // 步1：先写新键（保留 createdAt）commit 检查
+                if (!prefs.edit().putLong(createdKey(newFile.name), createdAt).commit()) {
+                    return@synchronized TopicRenameResult.Failed
+                }
+                // 步2：rename；失败回滚新键
+                val renamed = try { topic.file.renameTo(newFile) } catch (e: Exception) { false }
+                if (!renamed) {
+                    prefs.edit().remove(createdKey(newFile.name)).commit()
+                    return@synchronized TopicRenameResult.Failed
+                }
+                // 步3：删旧键
+                prefs.edit().remove(createdKey(topic.file.name)).commit()
+                TopicRenameResult.Renamed
+            }
+            else -> TopicRenameResult.Invalid(v)
+        }
     }
 
     /**

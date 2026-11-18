@@ -298,3 +298,61 @@ internal fun EntryPreviewDialog(entry: LinkEntry, onDismiss: () -> Unit) {
         }
     )
 }
+
+/**
+ * 主题改名对话框（WB-4，104）：NewTopicNameDialog 预填变体——标题「重命名主题」＋
+ * 当前名称语境行；输入由宿主持有（预填当前名）；「重命名」→ [onRename]；取消/点外→ [onDismiss]。
+ * 校验链＋原名无操作语义归宿主（TopicRepository.renameTopic）。
+ */
+@Composable
+internal fun RenameTopicDialog(
+    currentName: String,
+    name: String,
+    onNameChange: (String) -> Unit,
+    onRename: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+    AlertDialog(
+        onDismissRequest = {
+            keyboardController?.hide()
+            onDismiss()
+        },
+        title = { Text(Microcopy.DLG_TOPIC_RENAME_TITLE, fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column {
+                Text(
+                    Microcopy.dlgTopicRenameBody(currentName),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = onNameChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    singleLine = true,
+                    placeholder = { Text(Microcopy.PLACEHOLDER_TOPIC_NAME) }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onRename) {
+                Text(Microcopy.SWIPE_LABEL_RENAME, color = MaterialTheme.colorScheme.primary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                keyboardController?.hide()
+                onDismiss()
+            }) { Text("取消") }
+        }
+    )
+}
