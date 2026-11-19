@@ -1,8 +1,18 @@
-# 交接快照（v1.6.0 发布后 · 2026-11-19）
+# 交接快照（v1.6.0 发布后 · 2026-11-19 · 可续接入口）
 
-> **当前**：v1.6.0 已 tag＋push；Release 网页待用户。己批次（工作区同权/批量清理/主题归档/改名/共享架构）完成，计划归档 completed/。backlog：SAF 变体/秒级旧条目/双宿主等价全组/TD-051~056。
-
-> **当前状态**：v1.5.0 已 tag＋push（3271f0a）；GitHub Release 网页发布待用户执行（正文＝CHANGELOG v1.5.0 段，资产＝`Appendo/build/outputs/apk/debug/Appendo-v1.5.0-debug.apk`）。本周期大事记：戊批次 T-20~T-27（工作区/移出/转移）→ **specs 16.C 自建提醒退役（R 批次，系统日历承接）**——旧戊计划 T-28~T-34 作废，两计划已归档 completed/；拆除前完整态＝tag `archive/self-built-reminders-final`。待补：v1.5.0 装机终验（设备掉线延后，与冒烟包同配置）。历史交接内容见下文。
+> **新会话续接方式**：读本文件＋`docs/plans/active/v1.6.1-quality-plan.md`（后续批次任务清单）即可继续，无需旧会话上下文。判据唯一源＝`docs/test-cases.md`；债务＝`docs/plans/debt-tracker.md`；需求＝`docs/specs.md` 第 16 章；架构＝`docs/architecture.md`。
+>
+> **当前基线**：v1.6.0 已 tag＋push（main≈`f47bec8`）；**242 JVM 全绿**；工作区与主界面同权（编辑/删除/批量/新增/复制/分享/归档）＋批量清理＋主题归档件＋改名＋共享架构（EntrySaveOps/ArchiveFlow/MoveFlow/共享对话框）。AI 测试数据已清理（主文件仅真实笔记、topics 空）。
+>
+> **未完成／后续**（已立成 v1.6.1 质量批计划，见该文件 §1）：
+> - 外部阻塞：GitHub Release v1.5.0/v1.6.0 网页（gh/API 被网络挡，需用户手动）。
+> - 真机补测：SAF 变体组、09x 双宿主等价全组、秒级旧条目真机变体（设备需 `svc power stayon true` 保持解锁）。
+> - 债务：TD-051 uiMode 重建丢草稿（需先设计＋评审）、TD-052 打开文件 FileUriExposed、TD-053 executeMove 双宿主（条件触发）、TD-055 记录不修。
+> - 无真机可先行：N-1 append 写失败注入、N-6/N-8。
+>
+> **流程纪律**：SDLC（需求→设计→计划→编码→评审→测试→真机→发布），阶段评审自动执行；只问产物定稿/发布/真开放裁定。范围冻结：不新增功能。
+>
+> 历史交接内容见下文（v1.5.0/戊批次/16.C 提醒退役等，供追溯）。
 
 
 ---
