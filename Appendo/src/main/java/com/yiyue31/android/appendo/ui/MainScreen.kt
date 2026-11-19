@@ -941,31 +941,11 @@ fun MainScreen(
          * 「保存成功才清空」精神）。返回值＝是否已落盘可继续后续（日历跳转）。
          */
         fun performEditSaveCore(): Boolean {
-            if (editContent.isBlank()) {
-                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                return false
-            }
             val entry = selectedEntry ?: return false
-            // code-review 修：core 不清对话框状态（原"未变"分支提前清 selectedEntry/editContent
-            // 致日历路径读空——回归）；状态清理由调用方成功后统一做
-            if (editContent == entry.content) return true
-            return try {
-                val mdFile = getCurrentMarkdownFile()
-                if (mdFile.updateEntry(entry.timestamp, editContent)) {
-                    fileRepository.setFileLastModified(System.currentTimeMillis())
-                    refreshEntryCount()
-                    showToast(context, Microcopy.TOAST_SAVED)
-                    true
-                } else {
-                    showToast(context, Microcopy.TOAST_SAVE_FAILED)
-                    false
-                }
-            } catch (e: Exception) {
-                if (BuildConfig.DEBUG) {
-                    android.util.Log.e("MainScreen", "Failed to update entry", e)
-                }
-                showToast(context, Microcopy.TOAST_SAVE_FAILED)
-                false
+            // /simplify 收敛：核心逻辑共享 tryEditSave；core 不清对话框状态（调用方成功后统一清）
+            return tryEditSave(context, getCurrentMarkdownFile(), entry.timestamp, entry.content, editContent) {
+                fileRepository.setFileLastModified(System.currentTimeMillis())
+                refreshEntryCount()
             }
         }
 
@@ -1039,54 +1019,18 @@ fun MainScreen(
          * 追加保存核心（保存路径——查重＋节流旁注经共享 helper [chooseAppendToast]，§2.3）：
          * 空→toast 保持开框；成功→toast（含重复旁注）＋刷新；**失败→toast 保持开框**（行为修正 1）。
          */
-        fun performAppendSave(): Boolean {
-            if (inputContent.isBlank()) {
-                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                return false
-            }
-            return try {
-                val mdFile = getCurrentMarkdownFile()
-                // 追加前查重（按内容，忽略时间戳）
-                val existingSameCount = parseMarkdownEntries(mdFile.readAll())
-                    .count { it.content == inputContent }
-                if (mdFile.append(inputContent)) {
-                    fileRepository.setFileLastModified(System.currentTimeMillis())
-                    refreshEntryCount()
-                    showToast(context, chooseAppendToast(inputContent, existingSameCount))
-                    true
-                } else {
-                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                    false
-                }
-            } catch (_: Exception) {
-                showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                false
-            }
-        }
+        fun performAppendSave(): Boolean =
+            tryAppend(context, getCurrentMarkdownFile(), inputContent, Microcopy.TOAST_APPENDED, true) {
+                fileRepository.setFileLastModified(System.currentTimeMillis())
+                refreshEntryCount()
+            } != null
 
-        /** 日历路径核心（75 先落盘）：追加成功 plain toast（**不带查重旁注**——沿现状）；
-         *  失败保持开框。返回新落盘内容供日历预填（未变场景不适用——输入恒有新内容）。 */
-        fun performAppendForCalendar(): String? {
-            if (inputContent.isBlank()) {
-                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                return null
+        /** 日历路径核心（75 先落盘；不带查重旁注沿现状）。返回落盘内容供预填。 */
+        fun performAppendForCalendar(): String? =
+            tryAppend(context, getCurrentMarkdownFile(), inputContent, Microcopy.TOAST_APPENDED, false) {
+                fileRepository.setFileLastModified(System.currentTimeMillis())
+                refreshEntryCount()
             }
-            return try {
-                val mdFile = getCurrentMarkdownFile()
-                if (mdFile.appendReturningTimestamp(inputContent) != null) {
-                    fileRepository.setFileLastModified(System.currentTimeMillis())
-                    refreshEntryCount()
-                    showToast(context, Microcopy.TOAST_APPENDED)
-                    inputContent
-                } else {
-                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                    null
-                }
-            } catch (_: Exception) {
-                showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                null
-            }
-        }
 
         EntryInputDialog(
             draft = inputContent,

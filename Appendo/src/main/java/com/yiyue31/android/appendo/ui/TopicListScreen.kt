@@ -325,15 +325,9 @@ fun TopicListScreen(
                             reloadTopics()
                         }
                         is TopicRenameResult.Invalid -> {
-                            // 校验失败分支 toast（沿新建校验链字面）；框保持输入保留
-                            when (r.validation) {
-                                TopicNameValidation.Empty -> showToast(context, Microcopy.TOAST_TOPIC_NAME_EMPTY)
-                                TopicNameValidation.Reserved -> showToast(context, Microcopy.TOAST_TOPIC_NAME_RESERVED)
-                                TopicNameValidation.IllegalChars -> showToast(context, Microcopy.TOAST_TOPIC_NAME_ILLEGAL)
-                                TopicNameValidation.TooLong -> showToast(context, Microcopy.TOAST_TOPIC_NAME_TOO_LONG)
-                                is TopicNameValidation.Exists -> showToast(context, Microcopy.dlgTopicPageSameNameBody(r.validation.displayName))
-                                is TopicNameValidation.Ok -> Unit
-                            }
+                            // /simplify 收敛：校验→toast 单源 validationToast；框保持输入保留
+                            val t = validationToast(r.validation)
+                            if (t.isNotEmpty()) showToast(context, t)
                         }
                         TopicRenameResult.Failed -> showToast(context, Microcopy.TOAST_TOPIC_RENAME_FAILED)
                     }

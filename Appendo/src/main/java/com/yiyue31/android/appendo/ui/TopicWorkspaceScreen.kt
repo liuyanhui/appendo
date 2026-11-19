@@ -39,9 +39,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,7 +49,6 @@ import com.yiyue31.android.appendo.data.TopicRepository
 import com.yiyue31.android.appendo.util.EntryKey
 import com.yiyue31.android.appendo.util.CalendarEntryMapper
 import com.yiyue31.android.appendo.util.CalendarLauncher
-import com.yiyue31.android.appendo.util.DuplicateHintThrottle
 import com.yiyue31.android.appendo.util.EntryParser
 import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
 import com.yiyue31.android.appendo.util.MarkdownFileFactory
@@ -147,70 +143,39 @@ fun TopicWorkspaceScreen(
         }
     }
 
-    /** 编辑保存核心（§2.3：失败保持开框不清草稿——行为修正 1；updateEntry 按 ts 首条）。
-     *  code-review 修：不清对话框状态（调用方成功后统一清），防日历路径读空。 */
+    /** 编辑保存核心（/simplify 收敛共享 tryEditSave；不清对话框状态，调用方成功后清）。 */
     fun performEditSave(): Boolean {
         val entry = editEntry ?: return false
-        if (editDraft.isBlank()) {
-            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-            return false
-        }
-        if (editDraft == entry.content) return true
-        return try {
-            val md = FileBasedMarkdownFile(context, topicFile)
-            if (md.updateEntry(entry.timestamp, editDraft)) {
-                showToast(context, Microcopy.TOAST_SAVED)
-                reloadKey++
-                true
-            } else {
-                showToast(context, Microcopy.TOAST_SAVE_FAILED); false
-            }
-        } catch (e: Exception) {
-            showToast(context, Microcopy.TOAST_SAVE_FAILED); false
+        return tryEditSave(context, FileBasedMarkdownFile(context, topicFile), entry.timestamp, entry.content, editDraft) {
+            reloadKey++
         }
     }
 
-    /** 追加保存核心（code-review 消重：onAppend 共用；查重旁注经 chooseAppendToast 主题基句）。 */
-    fun performAppendSave(): Boolean {
-        if (inputDraft.isBlank()) {
-            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-            return false
-        }
-        return try {
-            val md = FileBasedMarkdownFile(context, topicFile)
-            val existing = EntryParser.parse(md.readAll()).count { it.content == inputDraft }
-            if (md.appendReturningTimestamp(inputDraft) != null) {
-                showToast(context, chooseAppendToast(inputDraft, existing, Microcopy.toastAppendedToTopic(topicName)))
-                scrollAfterAdd = true
-                reloadKey++
-                true
-            } else {
-                showToast(context, Microcopy.TOAST_APPEND_FAILED); false
-            }
-        } catch (e: Exception) {
-            showToast(context, Microcopy.TOAST_APPEND_FAILED); false
-        }
-    }
+    /** 追加保存核心（共享 tryAppend；查重旁注经主题基句）。 */
+    fun performAppendSave(): Boolean =
+        tryAppend(context, FileBasedMarkdownFile(context, topicFile), inputDraft, Microcopy.toastAppendedToTopic(topicName), true) {
+            scrollAfterAdd = true
+            reloadKey++
+        } != null
 
-    /** 追加供日历核心（75 先落盘；不带查重旁注沿现状）。返回落盘内容供预填，失败 null。 */
-    fun performAppendForCalendar(): String? {
-        if (inputDraft.isBlank()) {
-            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-            return null
+    /** 追加供日历核心（75 先落盘；不带查重旁注）。返回落盘内容供预填，失败 null。 */
+    fun performAppendForCalendar(): String? =
+        tryAppend(context, FileBasedMarkdownFile(context, topicFile), inputDraft, Microcopy.toastAppendedToTopic(topicName), false) {
+            scrollAfterAdd = true
+            reloadKey++
         }
-        return try {
-            val md = FileBasedMarkdownFile(context, topicFile)
-            if (md.appendReturningTimestamp(inputDraft) != null) {
-                showToast(context, Microcopy.toastAppendedToTopic(topicName))
-                scrollAfterAdd = true
-                reloadKey++
-                inputDraft
-            } else {
-                showToast(context, Microcopy.TOAST_APPEND_FAILED); null
-            }
-        } catch (e: Exception) {
-            showToast(context, Microcopy.TOAST_APPEND_FAILED); null
-        }
+
+    /** 归档二选一共享编排（/simplify 收敛：两回调仅 path 不同）。 */
+    fun archiveWith(path: ArchivePath) {
+        showArchiveDialog = false
+        runArchive(
+            context = context, scope = coroutineScope,
+            sourceMd = FileBasedMarkdownFile(context, topicFile),
+            getTarget = { fileRepository.getArchiveFile(topicName) },
+            wordbook = topicArchiveWordbook(topicName),
+            path = path,
+            onCompleted = { _, _ -> reloadKey++ }
+        )
     }
 
     /** 同 key 全删（102(b)；deleteEntries 按 EntryKey 寻址）。 */
@@ -471,9 +436,7 @@ fun TopicWorkspaceScreen(
                         // WB-3：长按单条复制（102(e)；出口干净——parse 产物无 ZWSP）
                         onEntryLongClick = { content ->
                             performVibration(context, VIBRATION_DURATION_SHORT_MS)
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("entry", content))
-                            showToast(context, Microcopy.TOAST_COPIED)
+                            copyToClipboard(context, content)
                         }
                     )
                 }
@@ -596,28 +559,8 @@ fun TopicWorkspaceScreen(
         ArchiveChoiceDialog(
             entryCount = entries?.size ?: 0,
             topicName = topicName,
-            onArchiveAndClear = {
-                showArchiveDialog = false
-                runArchive(
-                    context = context, scope = coroutineScope,
-                    sourceMd = FileBasedMarkdownFile(context, topicFile),
-                    getTarget = { fileRepository.getArchiveFile(topicName) },
-                    wordbook = topicArchiveWordbook(topicName),
-                    path = ArchivePath.ARCHIVE_AND_CLEAR,
-                    onCompleted = { _, _ -> reloadKey++ }
-                )
-            },
-            onArchiveOnly = {
-                showArchiveDialog = false
-                runArchive(
-                    context = context, scope = coroutineScope,
-                    sourceMd = FileBasedMarkdownFile(context, topicFile),
-                    getTarget = { fileRepository.getArchiveFile(topicName) },
-                    wordbook = topicArchiveWordbook(topicName),
-                    path = ArchivePath.ARCHIVE_ONLY,
-                    onCompleted = { _, _ -> reloadKey++ }
-                )
-            },
+            onArchiveAndClear = { archiveWith(ArchivePath.ARCHIVE_AND_CLEAR) },
+            onArchiveOnly = { archiveWith(ArchivePath.ARCHIVE_ONLY) },
             onDismiss = { showArchiveDialog = false }
         )
     }

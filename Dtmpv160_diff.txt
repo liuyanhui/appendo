@@ -1,0 +1,2740 @@
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/MainActivity.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/MainActivity.kt
+index bf4b59e..71a29ac 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/MainActivity.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/MainActivity.kt
+@@ -155,9 +155,11 @@ fun AppendoNavHost(
+             val file = File(filePath ?: "")
+ 
+             if (file.exists()) {
+-                val timestamp = parseTimestampFromFileName(file.name)
+-                val entryCount = countEntries(file)
+-                val archive = ArchiveFile(file, file.name, timestamp ?: java.util.Date(), entryCount)
++                // WB-1：时间戳/来源解析收敛 ArchiveRepository 单点（新式名带 sourceTopic，
++                // 旧私有 parseTimestampFromFileName 对新式名会误兜底为打开时刻——已退役）
++                val archive = androidx.compose.ui.platform.LocalContext.current.let { ctx ->
++                    com.yiyue31.android.appendo.data.ArchiveRepository(ctx).archiveFileFor(file)
++                } ?: ArchiveFile(file, file.name, java.util.Date(), countEntries(file))
+ 
+                 ArchiveDetailScreen(
+                     archive = archive,
+@@ -172,17 +174,6 @@ fun AppendoNavHost(
+     }
+ }
+ 
+-private fun parseTimestampFromFileName(filename: String): java.util.Date? {
+-    return try {
+-        val timestampStr = filename
+-            .removePrefix("Appendo_")
+-            .removeSuffix(".md")
+-        java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).parse(timestampStr)
+-    } catch (e: Exception) {
+-        null
+-    }
+-}
+-
+ private fun countEntries(file: File): Int {
+     // 行为等价消重（T-01）：计数收敛到 EntryParser.countEntries（宽松正则，TD-010）；本包装保留读失败返回 0
+     return try {
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/data/ArchiveRepository.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/data/ArchiveRepository.kt
+index f7ea88b..1b65cc8 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/data/ArchiveRepository.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/data/ArchiveRepository.kt
+@@ -14,7 +14,9 @@ data class ArchiveFile(
+     val file: File,
+     val name: String,
+     val timestamp: Date,
+-    val entryCount: Int
++    val entryCount: Int,
++    /** WB-1：来源主题名（新式 `Appendo_<主题名>_<ts>.md`）；旧式/主界面归档＝null。 */
++    val sourceTopic: String? = null
+ )
+ 
+ /**
+@@ -26,6 +28,10 @@ class ArchiveRepository(private val context: Context) {
+         private const val ARCHIVE_PREFIX = "Appendo_"
+         private const val ARCHIVE_SUFFIX = ".md"
+         private val DATE_FORMAT = SimpleDateFormat(MarkdownFormatter.ARCHIVE_TIMESTAMP_FORMAT, Locale.getDefault())
++        /** WB-1 旧式：Appendo_<yyyyMMdd_HHmmss>[_n].md */
++        private val OLD_NAME_REGEX = Regex("^Appendo_(\\d{8}_\\d{6})(?:_\\d+)?\\.md$")
++        /** WB-1 新式：Appendo_<主题名>_<yyyyMMdd_HHmmss>[_n].md（主题名非贪婪前置、时间戳尾部锚定） */
++        private val NEW_NAME_REGEX = Regex("^Appendo_(.+)_(\\d{8}_\\d{6})(?:_\\d+)?\\.md$")
+     }
+ 
+     /**
+@@ -56,30 +62,48 @@ class ArchiveRepository(private val context: Context) {
+     /**
+      * Parse archive file metadata
+      */
+-    private fun parseArchiveFile(file: File): ArchiveFile? {
+-        val timestamp = parseTimestampFromFileName(file.name) ?: return null
+-        val entryCount = countEntries(file)
++    private fun parseArchiveFile(file: File): ArchiveFile? = archiveFileFor(file)
+ 
++    /**
++     * WB-1：单文件元数据解析公开入口（时间戳解析收敛单点——MainActivity 路由消费，
++     * 替代其私有 parseTimestampFromFileName；新式名带 sourceTopic）。
++     */
++    fun archiveFileFor(file: File): ArchiveFile? {
++        val parsed = parseArchiveName(file.name) ?: return null
+         return ArchiveFile(
+             file = file,
+             name = file.name,
+-            timestamp = timestamp,
+-            entryCount = entryCount
++            timestamp = parsed.first,
++            entryCount = countEntries(file),
++            sourceTopic = parsed.second
+         )
+     }
+ 
+     /**
+-     * Parse timestamp from filename (e.g., "Appendo_20260417_143022.md")
++     * WB-1：尾部锚定解析三类形态（主题名可含下划线/纯数字，只能从尾部匹配时间戳，
++     * 不能首段判式）；同秒后缀 `_n` 两式皆含（缺此后缀件列表不可见、恢复失联）。
++     * 旧式先试：`Appendo_<ts>[_n].md`→sourceTopic=null；
++     * 新式：`Appendo_<主题名>_<ts>[_n].md`→sourceTopic=主题名。
++     * 返回 (timestamp, sourceTopic)；不匹配返 null（mapNotNull 剔除）。
+      */
+-    private fun parseTimestampFromFileName(filename: String): Date? {
+-        return try {
+-            val timestampStr = filename
+-                .removePrefix(ARCHIVE_PREFIX)
+-                .removeSuffix(ARCHIVE_SUFFIX)
+-            DATE_FORMAT.parse(timestampStr)
+-        } catch (e: Exception) {
+-            null
++    private fun parseArchiveName(filename: String): Pair<Date, String?>? {
++        val oldMatch = OLD_NAME_REGEX.matchEntire(filename)
++        if (oldMatch != null) {
++            val ts = parseTs(oldMatch.groupValues[1]) ?: return null
++            return ts to null
+         }
++        val newMatch = NEW_NAME_REGEX.matchEntire(filename)
++        if (newMatch != null) {
++            val ts = parseTs(newMatch.groupValues[2]) ?: return null
++            return ts to newMatch.groupValues[1]
++        }
++        return null
++    }
++
++    private fun parseTs(ts: String): Date? = try {
++        DATE_FORMAT.parse(ts)
++    } catch (e: Exception) {
++        null
+     }
+ 
+     /**
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/data/FileRepository.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/data/FileRepository.kt
+index bb1ccad..cce080a 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/data/FileRepository.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/data/FileRepository.kt
+@@ -15,6 +15,8 @@ class FileRepository(private val context: Context) {
+         context.getSharedPreferences(APPENDO_PREFS, Context.MODE_PRIVATE)
+ 
+     companion object {
++        /** WB-1：同秒归档后缀上限（超限放弃不覆盖）。 */
++        private const val ARCHIVE_SUFFIX_MAX = 100
+         /** `appendo` SP 文件名（历史沿革，见 architecture.md §3.6）；ThemePreferences 等共享。 */
+         const val APPENDO_PREFS = "appendo"
+         private const val KEY_USE_SAF = "use_saf"
+@@ -139,20 +141,30 @@ class FileRepository(private val context: Context) {
+     }
+ 
+     /**
+-     * Generate archive filename with timestamp
++     * Generate archive filename with timestamp（WB-1：主题归档件带主题名——
++     * `Appendo_<主题名>_<ts>.md`；主界面 sourceTopic=null 沿旧式 `Appendo_<ts>.md`）。
+      */
+-    fun generateArchiveFilename(): String {
++    fun generateArchiveFilename(sourceTopic: String? = null): String {
+         val timestamp = java.text.SimpleDateFormat(MarkdownFormatter.ARCHIVE_TIMESTAMP_FORMAT, java.util.Locale.getDefault())
+             .format(java.util.Date())
+-        return "Appendo_$timestamp.md"
++        return if (sourceTopic != null) "Appendo_${sourceTopic}_$timestamp.md" else "Appendo_$timestamp.md"
+     }
+ 
+     /**
+-     * Get archive file in default directory
++     * Get archive file in default directory（WB-1：同秒冲突加 `_n` 递增后缀——存在性检查
++     * 循环上限 [ARCHIVE_SUFFIX_MAX]，超限返 null＝放弃不覆盖，数据安全优先；主/题双消费方
++     * 统一，消除两套归档命名行为）。
+      */
+-    fun getArchiveFile(): File {
++    fun getArchiveFile(sourceTopic: String? = null): File? {
+         val appDir = context.getExternalFilesDir(null) ?: context.filesDir
+-        return File(appDir, generateArchiveFilename())
++        val base = generateArchiveFilename(sourceTopic).removeSuffix(".md")
++        var candidate = File(appDir, "$base.md")
++        if (!candidate.exists()) return candidate
++        for (n in 1..ARCHIVE_SUFFIX_MAX) {
++            candidate = File(appDir, "${base}_$n.md")
++            if (!candidate.exists()) return candidate
++        }
++        return null // 同秒 100 件已满——不覆盖，调用方按归档失败处置
+     }
+ 
+     fun getFileLastModified(): Long = prefs.getLong(KEY_FILE_LAST_MODIFIED, 0L)
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/data/TopicRepository.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/data/TopicRepository.kt
+index 02fc047..0d9e75b 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/data/TopicRepository.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/data/TopicRepository.kt
+@@ -41,6 +41,13 @@ sealed interface TopicDeleteResult {
+     object Failed : TopicDeleteResult
+ }
+ 
++/** 改名结果（WB-4，104）：[Invalid] 携带校验失败态；原名提交/成功＝[Renamed]；IO 失败＝[Failed]。 */
++sealed interface TopicRenameResult {
++    object Renamed : TopicRenameResult
++    object Failed : TopicRenameResult
++    data class Invalid(val validation: TopicNameValidation) : TopicRenameResult
++}
++
+ /** [TopicNameRules.validate] 结果（§5.3）。校验顺序固定：空名→保留字→非法字符→长度→同名检测。 */
+ sealed interface TopicNameValidation {
+     object Empty : TopicNameValidation
+@@ -263,6 +270,37 @@ class TopicRepository(
+         TopicDeleteResult.Deleted
+     }
+ 
++    /**
++     * 主题改名（WB-4，104/§23.1 蓝图剔除已退役缓存失效步）：校验链复用（调用方排除自身）；
++     * **原名提交＝无操作成功**；锁内三步＝先写新 created_ 键（保留旧 createdAt，防首见回写重置）
++     * commit 检查 → 同目录 renameTo → 删旧键；renameTo 失败回滚新键。三窗口语义见设计 §6。
++     */
++    fun renameTopic(topic: TopicDocument, rawName: String): TopicRenameResult = synchronized(FileOperationLock) {
++        val others = listTopics().map { it.displayName }.filter { !it.equals(topic.displayName, ignoreCase = true) }
++        when (val v = TopicNameRules.validate(rawName, others)) {
++            is TopicNameValidation.Ok -> {
++                val trimmed = v.trimmedName
++                if (trimmed.equals(topic.displayName, ignoreCase = true)) return@synchronized TopicRenameResult.Renamed
++                val newFile = File(topic.file.parentFile, trimmed + FILE_SUFFIX)
++                val createdAt = prefs.getLong(createdKey(topic.file.name), topic.createdAt)
++                // 步1：先写新键（保留 createdAt）commit 检查
++                if (!prefs.edit().putLong(createdKey(newFile.name), createdAt).commit()) {
++                    return@synchronized TopicRenameResult.Failed
++                }
++                // 步2：rename；失败回滚新键
++                val renamed = try { topic.file.renameTo(newFile) } catch (e: Exception) { false }
++                if (!renamed) {
++                    prefs.edit().remove(createdKey(newFile.name)).commit()
++                    return@synchronized TopicRenameResult.Failed
++                }
++                // 步3：删旧键
++                prefs.edit().remove(createdKey(topic.file.name)).commit()
++                TopicRenameResult.Renamed
++            }
++            else -> TopicRenameResult.Invalid(v)
++        }
++    }
++
+     /**
+      * 消费首次「移入主题」指路旗标（§15.4 U1；A-1 改道落点——旗标读写通道归 data 层，ui 不直写本 SP）：
+      * 读 [KEY_FIRST_MOVE_GUIDE]——未展示过 → 置位 `commit()` 后返回 true（调用方据此在成功
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/ArchiveFlow.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/ArchiveFlow.kt
+new file mode 100644
+index 0000000..b37c92e
+--- /dev/null
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/ArchiveFlow.kt
+@@ -0,0 +1,224 @@
++package com.yiyue31.android.appendo.ui
++
++import android.content.Context
++import androidx.compose.foundation.BorderStroke
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.Button
++import androidx.compose.material3.ButtonDefaults
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedButton
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.remember
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.focus.FocusRequester
++import androidx.compose.ui.focus.focusRequester
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.unit.dp
++import com.yiyue31.android.appendo.BuildConfig
++import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
++import com.yiyue31.android.appendo.util.MarkdownFileOperations
++import com.yiyue31.android.appendo.util.MarkdownFormatter
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.withContext
++import java.io.File
++
++/**
++ * 归档共享编排（己批次 WB-1 自 MainScreen 抽取，设计 §3）：ArchiveOutcome/Path/Action/
++ * 决策映射/archiveFile 单源＋参数化 [runArchive]＋词族 [ArchiveWordbook]＋二选一框
++ * [ArchiveChoiceDialog]。MainScreen 与工作区两消费方（102(g)/106）。
++ */
++
++/** 归档执行结果（修订二 93 ④：写盘段逐字节等价，仅返回值与 toast 通道变更）。 */
++sealed interface ArchiveOutcome {
++    data class Archived(val file: File) : ArchiveOutcome
++    object NothingToArchive : ArchiveOutcome
++    object Failed : ArchiveOutcome
++}
++
++/** 归档清空二选一路径（修订二 93 方案 X）。 */
++enum class ArchivePath { ARCHIVE_AND_CLEAR, ARCHIVE_ONLY }
++
++/** 二选一决策映射产物（§17.1 M1）。 */
++data class ArchiveAction(
++    val toast: String?,
++    val shouldClear: Boolean,
++)
++
++/**
++ * 归档词族（WB-1：单 lambda 表达不了四分支矩阵——成功两态按目的地分文案；
++ * Failed/NothingToArchive 复用既有常量）。主界面传归档文件名；主题侧传主题名。
++ */
++data class ArchiveWordbook(
++    val archivedAndCleared: (String) -> String,
++    val archivedOnly: (String) -> String,
++)
++
++internal fun mainArchiveWordbook(): ArchiveWordbook = ArchiveWordbook(
++    archivedAndCleared = { Microcopy.toastArchivedAndCleared(it) },
++    archivedOnly = { Microcopy.toastArchivedTo(it) },
++)
++
++internal fun topicArchiveWordbook(topic: String): ArchiveWordbook = ArchiveWordbook(
++    archivedAndCleared = { Microcopy.toastTopicArchivedAndCleared(topic) },
++    archivedOnly = { Microcopy.toastTopicArchived(topic) },
++)
++
++/**
++ * 归档二选一决策映射（§17.1 M1，纯函数 JVM 可测；WB-1 增 wordbook 参数缺省主界面）。
++ */
++internal fun archiveActionFor(
++    outcome: ArchiveOutcome,
++    path: ArchivePath,
++    archiveName: String,
++    wordbook: ArchiveWordbook = mainArchiveWordbook()
++): ArchiveAction = when (outcome) {
++    is ArchiveOutcome.Archived -> when (path) {
++        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(wordbook.archivedAndCleared(archiveName), true)
++        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(wordbook.archivedOnly(archiveName), false)
++    }
++    ArchiveOutcome.Failed -> when (path) {
++        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED_CLEAR_KEPT, false)
++        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED, false)
++    }
++    ArchiveOutcome.NothingToArchive -> ArchiveAction(Microcopy.TOAST_NOTHING_TO_ARCHIVE, false)
++}
++
++internal fun clearFailedAction(): ArchiveAction =
++    ArchiveAction(Microcopy.TOAST_CLEAR_FAILED_ARCHIVED, shouldClear = false)
++
++/**
++ * 参数化归档编排（WB-1，设计 §3）：归档段＋清空段＋toast 全留共享编排；
++ * [onCompleted] 仅宿主善后（主界面＝resync＋clearFileLastModified＋refresh；工作区＝reloadKey++，
++ * 不触碰 fileRepository 三态与主文件 mtime 键）。[getTarget] 返 null＝同秒后缀满→Failed 不覆盖。
++ */
++internal fun runArchive(
++    context: Context,
++    scope: CoroutineScope,
++    sourceMd: MarkdownFileOperations,
++    getTarget: () -> File?,
++    wordbook: ArchiveWordbook,
++    path: ArchivePath,
++    onCompleted: (shouldClear: Boolean, outcome: ArchiveOutcome) -> Unit
++) {
++    scope.launch {
++        val outcome = withContext(Dispatchers.IO) {
++            val target = getTarget()
++            if (target == null) ArchiveOutcome.Failed
++            else runCatching { archiveFile(context, sourceMd, target) }.getOrDefault(ArchiveOutcome.Failed)
++        }
++        val archiveName = (outcome as? ArchiveOutcome.Archived)?.file?.name ?: ""
++        val action = archiveActionFor(outcome, path, archiveName, wordbook)
++
++        if (outcome is ArchiveOutcome.Archived && action.shouldClear) {
++            val cleared = withContext(Dispatchers.IO) {
++                runCatching { sourceMd.clear() }.getOrDefault(false)
++            }
++            if (!cleared) {
++                showToast(context, clearFailedAction().toast!!)
++                onCompleted(false, outcome)
++                return@launch
++            }
++        }
++        action.toast?.let { showToast(context, it) }
++        onCompleted(action.shouldClear && outcome is ArchiveOutcome.Archived, outcome)
++    }
++}
++
++/**
++ * Archive current content to a new file（writeAll 写盘段逐字节等价；调用方负责 IO 线程）。
++ */
++private fun archiveFile(
++    context: Context,
++    currentMdFile: MarkdownFileOperations,
++    archiveFile: File
++): ArchiveOutcome {
++    return try {
++        val currentContent = currentMdFile.readAll()
++        if (currentContent.isBlank() || !currentContent.contains("## ")) {
++            return ArchiveOutcome.NothingToArchive
++        }
++        val contentWithoutHeader = if (currentContent.startsWith(MarkdownFormatter.FILE_HEADER)) {
++            currentContent.substring(MarkdownFormatter.FILE_HEADER.length)
++        } else {
++            currentContent
++        }
++        val archiveMdFile = FileBasedMarkdownFile(context, archiveFile)
++        if (!archiveMdFile.writeAll(MarkdownFormatter.FILE_HEADER + contentWithoutHeader)) {
++            return ArchiveOutcome.Failed
++        }
++        ArchiveOutcome.Archived(archiveFile)
++    } catch (e: Exception) {
++        if (BuildConfig.DEBUG) {
++            android.util.Log.e("ArchiveFlow", "Archive failed", e)
++        }
++        ArchiveOutcome.Failed
++    }
++}
++
++/**
++ * 归档二选一共享对话框（WB-1 自 MainScreen 内联抽取——防第三份复制）。
++ * [topicName] 非 null＝主题侧：正文一层明示作用域（§5.2，不叠第二层确认）。
++ */
++@Composable
++internal fun ArchiveChoiceDialog(
++    entryCount: Int,
++    onArchiveAndClear: () -> Unit,
++    onArchiveOnly: () -> Unit,
++    onDismiss: () -> Unit,
++    topicName: String? = null
++) {
++    val archiveAndClearFocus = remember { FocusRequester() }
++    LaunchedEffect(Unit) { archiveAndClearFocus.requestFocus() } // 93：默认焦点落「归档并清空」
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text(Microcopy.DLG_ARCHIVE_TITLE, fontWeight = FontWeight.SemiBold) },
++        text = {
++            Column {
++                Text(
++                    if (topicName != null) Microcopy.dlgTopicArchiveBody(entryCount, topicName)
++                    else Microcopy.dlgArchiveBody(entryCount)
++                )
++                Spacer(modifier = Modifier.height(16.dp))
++                Button(
++                    onClick = onArchiveAndClear,
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .focusRequester(archiveAndClearFocus),
++                    shape = RoundedCornerShape(16.dp),
++                    colors = ButtonDefaults.buttonColors(
++                        containerColor = MaterialTheme.colorScheme.error,
++                        contentColor = MaterialTheme.colorScheme.onError
++                    )
++                ) {
++                    Text(Microcopy.BTN_ARCHIVE_AND_CLEAR)
++                }
++                Spacer(modifier = Modifier.height(8.dp))
++                OutlinedButton(
++                    onClick = onArchiveOnly,
++                    modifier = Modifier.fillMaxWidth(),
++                    shape = RoundedCornerShape(16.dp),
++                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
++                    colors = ButtonDefaults.outlinedButtonColors(
++                        contentColor = MaterialTheme.colorScheme.primary
++                    )
++                ) {
++                    Text(Microcopy.BTN_ARCHIVE_ONLY)
++                }
++            }
++        },
++        confirmButton = {},
++        dismissButton = {
++            TextButton(onClick = onDismiss) { Text("取消") }
++        }
++    )
++}
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/ArchiveListScreen.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/ArchiveListScreen.kt
+index f716e37..b43251e 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/ArchiveListScreen.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/ArchiveListScreen.kt
+@@ -171,7 +171,9 @@ fun ArchiveListScreen(
+                     ) { archive ->
+                         ArchiveCard(
+                             title = archive.name.removeSuffix(".md"),
+-                            subtitle = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条",
++                            // WB-1：主题归档件标注来源（旧式/主界面归档无来源标注）
++                            subtitle = "${archiveRepository.formatTimestamp(archive.timestamp)} · ${archive.entryCount} 条" +
++                                (archive.sourceTopic?.let { " · 来源：$it" } ?: ""),
+                             onClick = { onArchiveClick(archive.file) },
+                             onLongClick = {
+                                 performVibration(context, VIBRATION_DURATION_SHORT_MS)
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/EntryEditDialog.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/EntryEditDialog.kt
+new file mode 100644
+index 0000000..a62f7e7
+--- /dev/null
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/EntryEditDialog.kt
+@@ -0,0 +1,95 @@
++package com.yiyue31.android.appendo.ui
++
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.foundation.BorderStroke
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.ButtonDefaults
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedButton
++import androidx.compose.material3.OutlinedTextField
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.unit.dp
++
++/**
++ * 条目编辑对话框共享组件（己批次 WA-2 自 MainScreen 抽取，设计 §2.1 契约）：**无状态渲染**——
++ * 草稿（editDraft＋lastEditedTs 归属标记）由宿主持有并镜像（§2.2 三件套纪律），本组件只渲染
++ * 传入值＋转发回调；MainScreen 与工作区两消费方（102(a)/106）。
++ *
++ * 渲染面（抽取时逐项钉死）：标题「编辑条目」；时间戳行（labelSmall/primary，派生自 [entry]）；
++ * 输入框 minLines 5/maxLines 10、占位符 [Microcopy.PLACEHOLDER_EDIT]、内容区 verticalScroll；
++ * 「添加到日历」OutlinedButton（主操作位——16.C 提醒承接，75 先落盘时序归宿主回调）；
++ * 「保存」/「取消」。空校验、保存/日历时序、关窗清草稿均归宿主（§2.3）。
++ *
++ * @param onSave 空校验与「内容未变直接关框」判断归宿主；失败保持开框（行为修正 1，修订⑤）
++ * @param onRequestCalendar 空校验→有修改先保存（失败 return 保持开框）→清草稿关框跳日历，归宿主
++ * @param onDismiss 点外/「取消」/系统返回三通道同路——仅关窗不清草稿（修订⑤；键盘收起组件内处理）
++ */
++@Composable
++internal fun EntryEditDialog(
++    entry: LinkEntry,
++    draft: String,
++    onDraftChange: (String) -> Unit,
++    onSave: () -> Unit,
++    onRequestCalendar: () -> Unit,
++    onDismiss: () -> Unit
++) {
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = {
++            Text(Microcopy.DLG_EDIT_TITLE, fontWeight = FontWeight.SemiBold)
++        },
++        text = {
++            Column(
++                modifier = Modifier
++                    .fillMaxWidth()
++                    .verticalScroll(rememberScrollState())
++            ) {
++                Text(
++                    text = entry.timestampDisplay,
++                    style = MaterialTheme.typography.labelSmall,
++                    color = MaterialTheme.colorScheme.primary
++                )
++                Spacer(modifier = Modifier.height(12.dp))
++                OutlinedTextField(
++                    value = draft,
++                    onValueChange = onDraftChange,
++                    modifier = Modifier.fillMaxWidth(),
++                    minLines = 5,
++                    maxLines = 10,
++                    placeholder = { Text(Microcopy.PLACEHOLDER_EDIT) }
++                )
++                Spacer(modifier = Modifier.height(12.dp))
++                OutlinedButton(
++                    onClick = onRequestCalendar,
++                    modifier = Modifier.fillMaxWidth(),
++                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
++                    colors = ButtonDefaults.outlinedButtonColors(
++                        contentColor = MaterialTheme.colorScheme.primary
++                    )
++                ) {
++                    Text(Microcopy.BTN_ADD_TO_CALENDAR, fontWeight = FontWeight.Medium)
++                }
++            }
++        },
++        confirmButton = {
++            TextButton(onClick = onSave) {
++                Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
++            }
++        },
++        dismissButton = {
++            // 「取消」＝仅关窗，编辑中内容保留（关窗不丢字，与点外/返回同语义）
++            TextButton(onClick = onDismiss) {
++                Text("取消")
++            }
++        }
++    )
++}
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/EntryInputDialog.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/EntryInputDialog.kt
+new file mode 100644
+index 0000000..7455090
+--- /dev/null
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/EntryInputDialog.kt
+@@ -0,0 +1,119 @@
++package com.yiyue31.android.appendo.ui
++
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.BorderStroke
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.ButtonDefaults
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedButton
++import androidx.compose.material3.OutlinedTextField
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.remember
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.focus.FocusRequester
++import androidx.compose.ui.focus.focusRequester
++import androidx.compose.ui.platform.LocalSoftwareKeyboardController
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.unit.dp
++import com.yiyue31.android.appendo.util.DuplicateHintThrottle
++
++/**
++ * 手动输入对话框共享组件（己批次 WA-2 自 MainScreen 抽取，设计 §2.1 契约）：无状态渲染，
++ * 草稿（inputDraft）宿主持有；MainScreen 与工作区两消费方（102(d)/106）。
++ *
++ * 渲染面：标题「手动输入内容」；输入框 minLines 3/maxLines 6、占位符 [Microcopy.PLACEHOLDER_INPUT]
++ * （常量化——原直写）、打开自动聚焦弹键盘（组件内自取键盘控制器，沿现状先例）；「添加到日历」
++ * OutlinedButton（主操作位）；「保存」/「取消」。键盘收起在组件内所有关闭路径统一处理。
++ *
++ * @param onAppend 空校验归宿主；查重＋节流旁注**仅保存路径**（[chooseAppendToast]，§2.3——
++ *   日历路径不带查重沿现状）；失败保持开框（行为修正 1）
++ * @param onRequestCalendar 先追加落盘→清草稿关框→跳日历，归宿主
++ */
++@Composable
++internal fun EntryInputDialog(
++    draft: String,
++    onDraftChange: (String) -> Unit,
++    onAppend: () -> Unit,
++    onRequestCalendar: () -> Unit,
++    onDismiss: () -> Unit
++) {
++    val focusRequester = remember { FocusRequester() }
++    val keyboardController = LocalSoftwareKeyboardController.current
++
++    LaunchedEffect(Unit) {
++        // 打开即聚焦输入框并弹键盘（沿手动输入对话框先例）
++        focusRequester.requestFocus()
++        keyboardController?.show()
++    }
++
++    AlertDialog(
++        onDismissRequest = {
++            keyboardController?.hide()
++            onDismiss()
++        },
++        title = {
++            Text(Microcopy.DLG_INPUT_TITLE, fontWeight = FontWeight.SemiBold)
++        },
++        text = {
++            Column {
++                OutlinedTextField(
++                    value = draft,
++                    onValueChange = onDraftChange,
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .focusRequester(focusRequester),
++                    minLines = 3,
++                    maxLines = 6,
++                    placeholder = { Text(Microcopy.PLACEHOLDER_INPUT) }
++                )
++                Spacer(modifier = Modifier.height(12.dp))
++                OutlinedButton(
++                    onClick = onRequestCalendar,
++                    modifier = Modifier.fillMaxWidth(),
++                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
++                    colors = ButtonDefaults.outlinedButtonColors(
++                        contentColor = MaterialTheme.colorScheme.primary
++                    )
++                ) {
++                    Text(Microcopy.BTN_ADD_TO_CALENDAR, fontWeight = FontWeight.Medium)
++                }
++            }
++        },
++        confirmButton = {
++            TextButton(onClick = onAppend) {
++                Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
++            }
++        },
++        dismissButton = {
++            // 「取消」＝仅关窗，草稿保留（与点外/返回同语义，关窗不丢字）
++            TextButton(onClick = {
++                keyboardController?.hide()
++                onDismiss()
++            }) {
++                Text("取消")
++            }
++        }
++    )
++}
++
++/**
++ * 追加成功 toast 选句 helper（WA-2 消重，设计 §2.3）：非阻塞重复旁注——同内容已存在且节流窗口
++ * 放行时用重复计数句式，否则普通成功句（specs 42，5s 节流防刷屏）。两宿主共用；
++ * **仅输入场景保存路径消费**（日历路径不带查重旁注，沿现状）。
++ */
++internal fun chooseAppendToast(
++    content: String,
++    existingSameCount: Int,
++    baseToast: String = Microcopy.TOAST_APPENDED
++): String =
++    if (existingSameCount > 0 && DuplicateHintThrottle.shouldShow(content)) {
++        baseToast + Microcopy.duplicateSuffix(existingSameCount)
++    } else {
++        baseToast
++    }
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/MainScreen.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/MainScreen.kt
+index e1c682a..6d3c81b 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/MainScreen.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/MainScreen.kt
+@@ -161,16 +161,11 @@ fun MainScreen(
+         selectedKeys = emptySet()
+     }
+ 
+-    // —— 「移入主题」流程（T-06，§8.1）：对话框栈状态（1 目标选择 / 2 新建命名 / 2b 同名指路 / 3 确认）——
+-    var moveFlowStep by remember { mutableStateOf<MoveFlowStep?>(null) }
++    // —— 「移入主题」流程（WA-1 迁 MoveFlowHolder：三动词单一状态机，工作区同款）——
++    // 宿主自持：目标列表快照/同名指路对象/长按预览条目（Holder 持流程态与命名草稿）
++    val moveFlow = remember { MoveFlowHolder() }
+     var moveTopics by remember { mutableStateOf(emptyList<TopicDocument>()) }
+-    var moveTarget by remember { mutableStateOf<TopicDocument?>(null) }
+     var sameNameExisting by remember { mutableStateOf<TopicDocument?>(null) }
+-    // 对话框 2 输入由本处持有：2b「取消」返回对话框 2 时输入保留（§8.1）
+-    var newTopicInput by remember { mutableStateOf("") }
+-    // 对话框 3 执行/失败态（§8.1）：执行中按钮禁用＋「移入中…」；失败对话框保持变「重试」
+-    var moveExecuting by remember { mutableStateOf(false) }
+-    var moveFailed by remember { mutableStateOf(false) }
+     // 多选态长按预览（§7.4）：持有预览条目，对话框本体＝TopicMoveDialogs.EntryPreviewDialog
+     var previewEntry by remember { mutableStateOf<LinkEntry?>(null) }
+ 
+@@ -178,22 +173,18 @@ fun MainScreen(
+ 
+     /**
+      * 关闭移入流程全部对话框（§8.1「取消」路径：**保持多选态与选中集**——用户可换目标重来；
+-     * 本流程新建的空主题保留，可删可复用，§6.5 创建时机取舍）。
++     * 本流程新建的空主题保留，可删可复用，§6.5）。Holder.close() 保留命名草稿（修订⑤）。
+      */
+     fun closeMoveFlow() {
+-        moveFlowStep = null
+-        moveTarget = null
++        moveFlow.close()
+         sameNameExisting = null
+-        // newTopicInput 不清（关窗不丢字，2026-11-11）：命名草稿保留，创建成功才清空
+-        moveExecuting = false
+-        moveFailed = false
+     }
+ 
+     /** 打开对话框 1：主题列表 createdAt 倒序；每主题实时读文件计数，加载下放 [Dispatchers.IO]。 */
+     fun openMoveFlow() {
+         coroutineScope.launch {
+             moveTopics = withContext(Dispatchers.IO) { topicRepository.listTopics() }
+-            moveFlowStep = MoveFlowStep.SELECT_TARGET
++            moveFlow.start(MoveVerb.MOVE_IN, MoveFlowStep.SELECT_TARGET)
+         }
+     }
+ 
+@@ -265,7 +256,7 @@ fun MainScreen(
+      *   例外同时刷新（源可能已部分移除，即刻如实反映，§6.6），其余失败态源未动不刷新。
+      */
+     fun executeMove() {
+-        val target = moveTarget ?: return
++        val target = moveFlow.transferTarget ?: return
+         val keys = selectedKeys
+         if (keys.isEmpty()) {
+             // 防御：确认停留期间选中集被清空（轮询剔除/SAF 失效退出）——无条目可移，关流程保多选语义
+@@ -274,67 +265,45 @@ fun MainScreen(
+         }
+         val source = getCurrentMarkdownFile()
+         val targetMd = FileBasedMarkdownFile(context, target.file)
+-        moveExecuting = true
++        moveFlow.markExecuting(true)
+         coroutineScope.launch {
+             var firstMoveGuide = false
+             val result = withContext(Dispatchers.IO) {
+                 val r = TopicMoveTransaction.move(source, targetMd, keys)
+                 if (r is MoveResult.Success) {
+-                    // 首次指路（§15.4 U1）：仅 moved>0 的 Success 消耗旗标（N=0 不消耗不展示）
+-                    // （提醒联动与缓存失效随自建提醒退役删除——R 批次，specs 16.C）
++                    // 首次指路（§15.4 U1）：仅 moved>0 的 Success 消耗旗标（N=0 不消耗不展示）——
++                    // 旗标判定归宿主（WA-1：经 Mapping.guideSuffix 拼装，防迁移丢失）
+                     if (r.moved > 0) {
+                         firstMoveGuide = topicRepository.consumeFirstMoveGuide()
+                     }
+                 }
+                 r
+             }
+-            moveExecuting = false
++            moveFlow.markExecuting(false)
++            // 产出映射（WA-1：全动词统一经 MoveOutcomeMapping——移入组合随 Holder 迁入）
++            val outcome = MoveOutcomeMapping.map(
++                result = result,
++                verb = MoveVerb.MOVE_IN,
++                useSAF = useSAF,
++                sourceName = "主列表",
++                targetName = target.displayName,
++                guideSuffix = if (firstMoveGuide) Microcopy.firstMoveGuideSuffix else null
++            )
+             when (result) {
+                 is MoveResult.Success -> {
+                     closeMoveFlow()
+                     exitSelectionMode()
+-                    // toast 三态（§9.1；N＝moved 实写数）＋首次指路后缀（§15.4 U1：拼接序末位，
+-                    // 单 toast 原则；moved=0 不展示不消耗）。提醒附注退役（95(e)/§20.3——
+-                    // 提醒随条目保留，不再取消，无取消数可报）
+-                    val base = when {
+-                        result.moved == 0 -> Microcopy.toastMovedAllExisting(result.skippedExisting)
+-                        result.skippedExisting > 0 ->
+-                            Microcopy.toastMovedCountSkipped(result.moved, result.skippedExisting)
+-                        else -> Microcopy.toastMovedCount(result.moved)
+-                    }
+-                    var msg = base
+-                    if (firstMoveGuide) msg += Microcopy.firstMoveGuideSuffix
+-                    showToast(context, msg)
+-                    // §6.6：立即主动刷新（mtime 双保险，不等 2 秒轮询）
+-                    fileRepository.setFileLastModified(System.currentTimeMillis())
+-                    refreshEntryCount()
+-                }
+-                is MoveResult.SourceDeleteFailed -> {
+-                    moveFailed = true // 对话框 3 保持变「重试」、保持勾选与目标（84(b)）
+-                    showToast(context, Microcopy.toastMoveFailedSourceDelete())
+-                    // §6.6 例外：源可能已部分移除，即刻如实反映；其余失败态不刷新（见下）
+-                    fileRepository.setFileLastModified(System.currentTimeMillis())
+-                    refreshEntryCount()
+-                }
+-                is MoveResult.SourceReadFailed -> {
+-                    moveFailed = true
+-                    showToast(
+-                        context,
+-                        // SAF 失效场景叠加 TD-021 句式（§9.1）；默认模式源读失败用统一兜底句式
+-                        if (useSAF) Microcopy.TOAST_MOVE_FAILED_SAF_REVOKED
+-                        else Microcopy.TOAST_MOVE_FAILED
+-                    )
+-                }
+-                is MoveResult.TargetReadFailed, is MoveResult.TargetWriteFailed -> {
+-                    moveFailed = true
+-                    showToast(context, Microcopy.toastMoveFailedTargetWrite())
+-                }
+-                is MoveResult.SameDocument -> {
+-                    // 防御分支（96，T-20）：正常 UI 不可达（目标列表不含当前文档）——只提示，
+-                    // 不设失败重试态、不动选择上下文
+-                    showToast(context, Microcopy.toastSameTopicGuard())
+                 }
++                is MoveResult.SameDocument -> Unit // 防御（96）：只提示，不动选择上下文
++                else -> if (outcome.keepRetryState) moveFlow.markFailed() // 对话框 3 保持变「重试」（84(b)）
+             }
++            if (outcome.refreshMain) {
++                // §6.6：主文件条目增减→立即主动刷新（mtime 双保险，不等 2 秒轮询）；
++                // 移入 SourceDeleteFailed 例外同理（源可能已部分移除，即刻如实反映）
++                fileRepository.setFileLastModified(System.currentTimeMillis())
++                refreshEntryCount()
++            }
++            showToast(context, outcome.toast ?: return@launch)
+         }
+     }
+ 
+@@ -352,40 +321,23 @@ fun MainScreen(
+      */
+     fun runArchiveAction(path: ArchivePath) {
+         val mdFile = getCurrentMarkdownFile()
+-        coroutineScope.launch {
+-            // 归档段（异常 → Failed，E-1）
+-            val outcome = withContext(Dispatchers.IO) {
+-                runCatching {
+-                    archiveFile(context, mdFile, fileRepository.getArchiveFile())
+-                }.getOrDefault(ArchiveOutcome.Failed)
+-            }
+-            val archiveName = (outcome as? ArchiveOutcome.Archived)?.file?.name ?: ""
+-            val action = archiveActionFor(outcome, path, archiveName)
+-
+-            if (outcome is ArchiveOutcome.Archived && action.shouldClear) {
+-                // 清空段（异常/返回 false → 清空失败文案，归档已保存；E-1）
+-                val cleared = withContext(Dispatchers.IO) {
+-                    runCatching { mdFile.clear() }.getOrDefault(false)
+-                }
+-                if (!cleared) {
+-                    showToast(context, clearFailedAction().toast!!)
+-                    resyncArchiveState()
+-                    return@launch
++        runArchive(
++            context = context,
++            scope = coroutineScope,
++            sourceMd = mdFile,
++            getTarget = { fileRepository.getArchiveFile() },
++            wordbook = mainArchiveWordbook(),
++            path = path,
++            onCompleted = { shouldClear, _ ->
++                // A-2 onComplete 等价动作：两路径共用重同步三状态；归档并清空另加
++                // clearFileLastModified＋refreshEntryCount（主文件 mtime 键仅主界面触碰）
++                resyncArchiveState()
++                if (shouldClear) {
++                    fileRepository.clearFileLastModified()
++                    refreshEntryCount()
+                 }
+             }
+-
+-            action.toast?.let { showToast(context, it) }
+-
+-            // onComplete 等价动作（A-2）：两路径共用重同步三状态；归档并清空另加
+-            // clearFileLastModified（替换口径：原 setFileLastModified 改清键——同驱动轮询刷新，
+-            // 清空后文件已空、清键语义更准）＋refreshEntryCount（承接原计数清零）；
+-            // 只归档丢弃 clearFileLastModified（主文件未动，remove key 为无害 no-op，A-2 附由）。
+-            resyncArchiveState()
+-            if (action.shouldClear) {
+-                fileRepository.clearFileLastModified()
+-                refreshEntryCount()
+-            }
+-        }
++        )
+     }
+ 
+     // File selection launcher for changing to SAF mode
+@@ -964,196 +916,86 @@ fun MainScreen(
+         )
+     }
+ 
+-    // 归档清空二选一对话框（修订二 93 方案 X：替换旧清空确认框；旧框标题/正文/直写族随之退役）
++    // 归档清空二选一对话框（WB-1：本体迁共享 ArchiveChoiceDialog）
+     if (showArchiveDialog) {
+-        val archiveAndClearFocus = remember { FocusRequester() }
+-        LaunchedEffect(Unit) { archiveAndClearFocus.requestFocus() } // 93：默认焦点落「归档并清空」
+-        AlertDialog(
+-            onDismissRequest = { showArchiveDialog = false },
+-            title = {
+-                // 路径选择非破坏（§15.3 C6）：标题默认色；破坏性警示下沉到「归档并清空」按钮
+-                Text(Microcopy.DLG_ARCHIVE_TITLE, fontWeight = FontWeight.SemiBold)
++        ArchiveChoiceDialog(
++            entryCount = entryCount,
++            onArchiveAndClear = {
++                showArchiveDialog = false
++                runArchiveAction(ArchivePath.ARCHIVE_AND_CLEAR)
+             },
+-            text = {
+-                Column {
+-                    Text(Microcopy.dlgArchiveBody(entryCount))
+-                    Spacer(modifier = Modifier.height(16.dp))
+-                    // 路径一（78(a)：清空属破坏类＝error 红填充；＝原「清空」语义——需求 13 先备份后清空）
+-                    Button(
+-                        onClick = {
+-                            showArchiveDialog = false
+-                            runArchiveAction(ArchivePath.ARCHIVE_AND_CLEAR)
+-                        },
+-                        modifier = Modifier
+-                            .fillMaxWidth()
+-                            .focusRequester(archiveAndClearFocus),
+-                        shape = RoundedCornerShape(16.dp),
+-                        colors = ButtonDefaults.buttonColors(
+-                            containerColor = MaterialTheme.colorScheme.error,
+-                            contentColor = MaterialTheme.colorScheme.onError
+-                        )
+-                    ) {
+-                        Text(Microcopy.BTN_ARCHIVE_AND_CLEAR)
+-                    }
+-                    Spacer(modifier = Modifier.height(8.dp))
+-                    // 路径二（78(b)：备份非破坏＝primary；＝原菜单「归档」语义——需求 12 快照不清空）
+-                    OutlinedButton(
+-                        onClick = {
+-                            showArchiveDialog = false
+-                            runArchiveAction(ArchivePath.ARCHIVE_ONLY)
+-                        },
+-                        modifier = Modifier.fillMaxWidth(),
+-                        shape = RoundedCornerShape(16.dp),
+-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+-                        colors = ButtonDefaults.outlinedButtonColors(
+-                            contentColor = MaterialTheme.colorScheme.primary
+-                        )
+-                    ) {
+-                        Text(Microcopy.BTN_ARCHIVE_ONLY)
+-                    }
+-                }
++            onArchiveOnly = {
++                showArchiveDialog = false
++                runArchiveAction(ArchivePath.ARCHIVE_ONLY)
+             },
+-            confirmButton = {},
+-            dismissButton = {
+-                TextButton(onClick = { showArchiveDialog = false }) {
+-                    Text("取消")
+-                }
+-            }
++            onDismiss = { showArchiveDialog = false }
+         )
+     }
+ 
+-    // Detail/edit dialog
++    // Detail/edit dialog（WA-2：对话框本体迁共享组件 EntryEditDialog——草稿/时序宿主持有）
+     if (showDetailDialog && selectedEntry != null) {
+-        val scrollState = rememberScrollState()
+-
+-        AlertDialog(
+-            onDismissRequest = {
+-                // 关窗不丢字（2026-11-11）：点外/返回仅关窗，编辑中内容保留（再次点开同条目可见）
+-                showDetailDialog = false
+-                selectedEntry = null
+-            },
+-            title = {
+-                Text(
+-                    "编辑条目",
+-                    fontWeight = FontWeight.SemiBold
+-                )
+-            },
+-            text = {
+-                Column(
+-                    modifier = Modifier
+-                        .fillMaxWidth()
+-                        .verticalScroll(scrollState)
+-                ) {
+-                    Text(
+-                        text = selectedEntry!!.timestampDisplay,
+-                        style = MaterialTheme.typography.labelSmall,
+-                        color = MaterialTheme.colorScheme.primary
+-                    )
+-                    Spacer(modifier = Modifier.height(12.dp))
+-                    OutlinedTextField(
+-                        value = editContent,
+-                        onValueChange = { editContent = it },
+-                        modifier = Modifier.fillMaxWidth(),
+-                        minLines = 5,
+-                        maxLines = 10,
+-                        placeholder = { Text(Microcopy.PLACEHOLDER_EDIT) }
+-                    )
+-                    Spacer(modifier = Modifier.height(12.dp))
+-                    // 添加到日历（主操作，R 批次 specs 16.C：自建提醒退役，日历承接提醒诉求）。
+-                    // 需求 75"次级动作先落盘"语义保留：空校验 → 有修改先保存（失败 return，框保持）
+-                    // → 关框+收键盘 → 跳日历；日历失败独立反馈、不回滚已保存内容
+-                    OutlinedButton(
+-                        onClick = {
+-                            if (editContent.isBlank()) {
+-                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+-                                return@OutlinedButton
+-                            }
+-                            if (editContent != selectedEntry!!.content) {
+-                                try {
+-                                    val mdFile = getCurrentMarkdownFile()
+-                                    if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
+-                                        fileRepository.setFileLastModified(System.currentTimeMillis())
+-                                        refreshEntryCount()
+-                                        showToast(context, Microcopy.TOAST_SAVED)
+-                                    } else {
+-                                        showToast(context, Microcopy.TOAST_SAVE_FAILED)
+-                                        return@OutlinedButton // 保存失败不执行后续（须在关框之前 return）
+-                                    }
+-                                } catch (e: Exception) {
+-                                    if (BuildConfig.DEBUG) {
+-                                        android.util.Log.e("MainScreen", "Failed to update entry", e)
+-                                    }
+-                                    showToast(context, Microcopy.TOAST_SAVE_FAILED)
+-                                    return@OutlinedButton
+-                                }
+-                            }
+-                            val entry = CalendarEntryMapper.map(editContent)
+-                            showDetailDialog = false
+-                            selectedEntry = null
+-                            editContent = ""
+-                            lastEditedTs = null
+-                            keyboardController?.hide()
+-                            if (!CalendarLauncher.launch(context, entry)) {
+-                                showToast(context, Microcopy.TOAST_NO_CALENDAR)
+-                            }
+-                        },
+-                        modifier = Modifier.fillMaxWidth(),
+-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+-                    ) {
+-                        Text("添加到日历", fontWeight = FontWeight.Medium)
+-                    }
++        /**
++         * 编辑保存核心（宿主单一保存路径，§2.3 消重——保存/日历两按钮共用）：
++         * 空→toast 保持开框；未变→关框清草稿；写成功→toast＋刷新＋关框清草稿；
++         * **写失败→toast 保持开框不清草稿**（WA-2 行为修正 1：原失败仍关框清草稿——修订⑤
++         * 「保存成功才清空」精神）。返回值＝是否已落盘可继续后续（日历跳转）。
++         */
++        fun performEditSaveCore(): Boolean {
++            if (editContent.isBlank()) {
++                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
++                return false
++            }
++            val entry = selectedEntry ?: return false
++            // code-review 修：core 不清对话框状态（原"未变"分支提前清 selectedEntry/editContent
++            // 致日历路径读空——回归）；状态清理由调用方成功后统一做
++            if (editContent == entry.content) return true
++            return try {
++                val mdFile = getCurrentMarkdownFile()
++                if (mdFile.updateEntry(entry.timestamp, editContent)) {
++                    fileRepository.setFileLastModified(System.currentTimeMillis())
++                    refreshEntryCount()
++                    showToast(context, Microcopy.TOAST_SAVED)
++                    true
++                } else {
++                    showToast(context, Microcopy.TOAST_SAVE_FAILED)
++                    false
+                 }
+-            },
+-            confirmButton = {
+-                TextButton(
+-                    onClick = {
+-                        if (editContent.isBlank()) {
+-                            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+-                            return@TextButton
+-                        }
+-                        if (editContent == selectedEntry!!.content) {
+-                            showDetailDialog = false
+-                            selectedEntry = null
+-                            editContent = ""
+-                            lastEditedTs = null
+-                            return@TextButton
+-                        }
+-                        try {
+-                            val mdFile = getCurrentMarkdownFile()
+-                            if (mdFile.updateEntry(selectedEntry!!.timestamp, editContent)) {
+-                                fileRepository.setFileLastModified(System.currentTimeMillis())
+-                                refreshEntryCount()
+-                                showToast(context, Microcopy.TOAST_SAVED)
+-                            } else {
+-                                showToast(context, Microcopy.TOAST_SAVE_FAILED)
+-                            }
+-                        } catch (e: Exception) {
+-                            if (BuildConfig.DEBUG) {
+-                                android.util.Log.e("MainScreen", "Failed to update entry", e)
+-                            }
+-                            showToast(context, Microcopy.TOAST_SAVE_FAILED)
+-                        }
+-                        showDetailDialog = false
+-                        selectedEntry = null
+-                        editContent = ""
+-                        lastEditedTs = null
+-                    }
+-                ) {
+-                    Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
++            } catch (e: Exception) {
++                if (BuildConfig.DEBUG) {
++                    android.util.Log.e("MainScreen", "Failed to update entry", e)
+                 }
++                showToast(context, Microcopy.TOAST_SAVE_FAILED)
++                false
++            }
++        }
++
++        fun closeEditDialog() {
++            showDetailDialog = false
++            selectedEntry = null
++            editContent = ""
++            lastEditedTs = null
++        }
++
++        EntryEditDialog(
++            entry = selectedEntry!!,
++            draft = editContent,
++            onDraftChange = { editContent = it },
++            onSave = {
++                if (performEditSaveCore()) closeEditDialog() // 失败保持开框（行为修正 1）
+             },
+-            dismissButton = {
+-                // 「取消」＝仅关窗，编辑中内容保留（关窗不丢字，与点外/返回同语义）
+-                TextButton(
+-                    onClick = {
+-                        showDetailDialog = false
+-                        selectedEntry = null
+-                    }
+-                ) {
+-                    Text("取消")
++            onRequestCalendar = {
++                // 需求 75 先落盘；**先捕获草稿内容**再保存（防 core 后状态被清读空——code-review 修）
++                val content = editContent
++                if (!performEditSaveCore()) return@EntryEditDialog
++                val entry = CalendarEntryMapper.map(content)
++                closeEditDialog()
++                keyboardController?.hide()
++                if (!CalendarLauncher.launch(context, entry)) {
++                    showToast(context, Microcopy.TOAST_NO_CALENDAR)
+                 }
+-            }
++            },
++            // 点外/取消/返回三通道：仅关窗不清草稿（修订⑤；不走 closeEditDialog 因其清草稿）
++            onDismiss = { showDetailDialog = false; selectedEntry = null }
+         )
+     }
+ 
+@@ -1191,173 +1033,124 @@ fun MainScreen(
+         )
+     }
+ 
+-    // 提醒时间选择
+-    // Manual input dialog
++    // Manual input dialog（WA-2：对话框本体迁共享组件 EntryInputDialog——草稿宿主持有）
+     if (showInputDialog) {
+-        val focusRequester = remember { FocusRequester() }
+-
+-        LaunchedEffect(Unit) {
+-            // Focus the text field and show keyboard when dialog opens
+-            focusRequester.requestFocus()
+-            keyboardController?.show()
++        /**
++         * 追加保存核心（保存路径——查重＋节流旁注经共享 helper [chooseAppendToast]，§2.3）：
++         * 空→toast 保持开框；成功→toast（含重复旁注）＋刷新；**失败→toast 保持开框**（行为修正 1）。
++         */
++        fun performAppendSave(): Boolean {
++            if (inputContent.isBlank()) {
++                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
++                return false
++            }
++            return try {
++                val mdFile = getCurrentMarkdownFile()
++                // 追加前查重（按内容，忽略时间戳）
++                val existingSameCount = parseMarkdownEntries(mdFile.readAll())
++                    .count { it.content == inputContent }
++                if (mdFile.append(inputContent)) {
++                    fileRepository.setFileLastModified(System.currentTimeMillis())
++                    refreshEntryCount()
++                    showToast(context, chooseAppendToast(inputContent, existingSameCount))
++                    true
++                } else {
++                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
++                    false
++                }
++            } catch (_: Exception) {
++                showToast(context, Microcopy.TOAST_APPEND_FAILED)
++                false
++            }
+         }
+ 
+-        AlertDialog(
+-            onDismissRequest = {
+-                // 关窗不丢字（2026-11-11 换机验证裁定）：点外/返回仅关窗，草稿保留至下次打开
+-                //（沿 C5 命名框输入保留先例）；保存成功才清空——消除误触点外的整段丢失
+-                showInputDialog = false
+-                // Hide keyboard when dialog closes
+-                keyboardController?.hide()
+-            },
+-            title = {
+-                Text(
+-                    "手动输入内容",
+-                    fontWeight = FontWeight.SemiBold
+-                )
+-            },
+-            text = {
+-                Column {
+-                    OutlinedTextField(
+-                        value = inputContent,
+-                        onValueChange = { inputContent = it },
+-                        modifier = Modifier
+-                            .fillMaxWidth()
+-                            .focusRequester(focusRequester),
+-                        minLines = 3,
+-                        maxLines = 6,
+-                        placeholder = { Text("请输入要追加的内容") }
+-                    )
+-                    Spacer(modifier = Modifier.height(12.dp))
+-                    // 添加到日历（主操作，R 批次 specs 16.C：提醒诉求由日历承接）。需求 75
+-                    // "次级动作先落盘"语义保留：先追加落盘（toast"已追加"）→ 清空/关框/收键盘
+-                    // → 跳日历；日历失败独立反馈、不回滚已追加内容
+-                    OutlinedButton(
+-                        onClick = {
+-                            if (inputContent.isBlank()) {
+-                                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+-                                return@OutlinedButton
+-                            }
+-                            try {
+-                                val mdFile = getCurrentMarkdownFile()
+-                                if (mdFile.appendReturningTimestamp(inputContent) != null) {
+-                                    fileRepository.setFileLastModified(System.currentTimeMillis())
+-                                    refreshEntryCount()
+-                                    val entry = CalendarEntryMapper.map(inputContent)
+-                                    showToast(context, Microcopy.TOAST_APPENDED)
+-                                    inputContent = ""
+-                                    showInputDialog = false
+-                                    keyboardController?.hide()
+-                                    if (!CalendarLauncher.launch(context, entry)) {
+-                                        showToast(context, Microcopy.TOAST_NO_CALENDAR)
+-                                    }
+-                                } else {
+-                                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
+-                                }
+-                            } catch (_: Exception) {
+-                                showToast(context, Microcopy.TOAST_APPEND_FAILED)
+-                            }
+-                        },
+-                        modifier = Modifier.fillMaxWidth(),
+-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+-                    ) {
+-                        Text("添加到日历", fontWeight = FontWeight.Medium)
+-                    }
++        /** 日历路径核心（75 先落盘）：追加成功 plain toast（**不带查重旁注**——沿现状）；
++         *  失败保持开框。返回新落盘内容供日历预填（未变场景不适用——输入恒有新内容）。 */
++        fun performAppendForCalendar(): String? {
++            if (inputContent.isBlank()) {
++                showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
++                return null
++            }
++            return try {
++                val mdFile = getCurrentMarkdownFile()
++                if (mdFile.appendReturningTimestamp(inputContent) != null) {
++                    fileRepository.setFileLastModified(System.currentTimeMillis())
++                    refreshEntryCount()
++                    showToast(context, Microcopy.TOAST_APPENDED)
++                    inputContent
++                } else {
++                    showToast(context, Microcopy.TOAST_APPEND_FAILED)
++                    null
+                 }
++            } catch (_: Exception) {
++                showToast(context, Microcopy.TOAST_APPEND_FAILED)
++                null
++            }
++        }
++
++        EntryInputDialog(
++            draft = inputContent,
++            onDraftChange = { inputContent = it },
++            onAppend = {
++                if (performAppendSave()) {
++                    inputContent = ""
++                    showInputDialog = false
++                } // 失败保持开框（行为修正 1）——草稿保留
+             },
+-            confirmButton = {
+-                TextButton(
+-                    onClick = {
+-                        // 空白校验（需求 76a）：toast 且不关框、不清输入；纯空白字符视同空（isBlank）
+-                        if (inputContent.isBlank()) {
+-                            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+-                            return@TextButton
+-                        }
+-                        try {
+-                            val mdFile = getCurrentMarkdownFile()
+-                            // 追加前查重（按内容，忽略时间戳）
+-                            val existingSameCount = parseMarkdownEntries(mdFile.readAll())
+-                                .count { it.content == inputContent }
+-                            if (mdFile.append(inputContent)) {
+-                                fileRepository.setFileLastModified(System.currentTimeMillis())
+-                                refreshEntryCount()
+-                                // 非阻塞提示：先确认成功，再旁注重复（5s 节流防刷屏，specs 42）
+-                                val msg = if (existingSameCount > 0 &&
+-                                    DuplicateHintThrottle.shouldShow(inputContent)
+-                                ) {
+-                                    Microcopy.toastAppendedWithDuplicates(existingSameCount)
+-                                } else {
+-                                    Microcopy.TOAST_APPENDED
+-                                }
+-                                showToast(context, msg)
+-                            } else {
+-                                showToast(context, Microcopy.TOAST_APPEND_FAILED)
+-                            }
+-                        } catch (_: Exception) {
+-                            showToast(context, Microcopy.TOAST_APPEND_FAILED)
+-                        }
+-                        inputContent = ""
+-                        showInputDialog = false
+-                        keyboardController?.hide()
+-                    }
+-                ) {
+-                    Text(Microcopy.BTN_SAVE, color = MaterialTheme.colorScheme.primary)
++            onRequestCalendar = {
++                val appended = performAppendForCalendar() ?: return@EntryInputDialog
++                val entry = CalendarEntryMapper.map(appended)
++                inputContent = ""
++                showInputDialog = false
++                if (!CalendarLauncher.launch(context, entry)) {
++                    showToast(context, Microcopy.TOAST_NO_CALENDAR)
+                 }
+             },
+-            dismissButton = {
+-                // 「取消」＝仅关窗，草稿保留（与点外/返回同语义，关窗不丢字）
+-                TextButton(onClick = {
+-                    showInputDialog = false
+-                    keyboardController?.hide()
+-                }) {
+-                    Text("取消")
+-                }
+-            }
++            onDismiss = { showInputDialog = false } // 仅关窗，草稿保留（修订⑤；键盘组件内收起）
+         )
+     }
+ 
+     // —— 「移入主题」流程对话框栈（T-06，§8.1；对话框本体在 TopicMoveDialogs.kt）——
+-    when (moveFlowStep) {
++    when (moveFlow.step) {
+         MoveFlowStep.SELECT_TARGET -> TopicSelectDialog(
+             topics = moveTopics, // createdAt 倒序（TopicRepository.listTopics 序）
+             onSelect = { topic ->
+                 // 点选已有主题 → 对话框 3（§8.1）
+-                moveTarget = topic
+-                moveFailed = false
+-                moveFlowStep = MoveFlowStep.CONFIRM
++                moveFlow.selectTarget(topic)
++                moveFlow.clearFailed()
++                moveFlow.goTo(MoveFlowStep.CONFIRM)
+             },
+-            onNewTopic = { moveFlowStep = MoveFlowStep.NEW_TOPIC },
++            onNewTopic = { moveFlow.goTo(MoveFlowStep.NEW_TOPIC) },
+             // 点外/返回关全部——保持多选态与选中集（与对话框 3「取消」同处置）
+             onDismiss = ::closeMoveFlow
+         )
+         MoveFlowStep.NEW_TOPIC -> NewTopicNameDialog(
+-            name = newTopicInput,
+-            onNameChange = { newTopicInput = it },
++            name = moveFlow.newTopicInput,
++            onNameChange = { moveFlow.newTopicInput = it },
+             onCreate = {
+                 // 校验链＋创建一体经 createEmptyTopic（原子，无「先校验后创建」间隙）；
+                 // 校验各失败分支 → 对应 toast 且对话框保持（§8.1）；取消留空文档不回收（§6.5）
+                 coroutineScope.launch {
+                     val created = withContext(Dispatchers.IO) {
+-                        topicRepository.createEmptyTopic(newTopicInput)
++                        topicRepository.createEmptyTopic(moveFlow.newTopicInput)
+                     }
+                     when (created) {
+                         is TopicCreateResult.Created -> {
+                             // 进确认框前已建空文档（§6.5 创建时机取舍）：确认框取消留空文档，可删可复用
+-                            moveTarget = TopicDocument(
++                            moveFlow.selectTarget(TopicDocument(
+                                 file = created.file,
+-                                displayName = newTopicInput.trim(),
++                                displayName = moveFlow.newTopicInput.trim(),
+                                 createdAt = System.currentTimeMillis(),
+                                 entryCount = 0
+-                            )
+-                            moveFailed = false
+-                            newTopicInput = "" // 名称已消费进 moveTarget（关窗不丢字口径：此处清）
+-                            moveFlowStep = MoveFlowStep.CONFIRM
++                            ))
++                            moveFlow.clearFailed()
++                            moveFlow.newTopicInput = "" // 名称已消费进目标（关窗不丢字口径：此处清）
++                            moveFlow.goTo(MoveFlowStep.CONFIRM)
+                         }
+                         is TopicCreateResult.NameExists -> {
+                             // 同名 → 对话框 2b 指路（83 修订 c）
+                             sameNameExisting = created.existing
+-                            moveFlowStep = MoveFlowStep.SAME_NAME
++                            moveFlow.goTo(MoveFlowStep.SAME_NAME)
+                         }
+                         TopicCreateResult.NameEmpty -> showToast(context, Microcopy.TOAST_TOPIC_NAME_EMPTY)
+                         TopicCreateResult.NameReserved -> showToast(context, Microcopy.TOAST_TOPIC_NAME_RESERVED)
+@@ -1371,25 +1164,24 @@ fun MainScreen(
+                     }
+                 }
+             },
+-            onDismiss = { moveFlowStep = MoveFlowStep.SELECT_TARGET } // 「取消」→ 回对话框 1（§8.1）
++            onDismiss = { moveFlow.goTo(MoveFlowStep.SELECT_TARGET) } // 「取消」→ 回对话框 1（§8.1）
+         )
+         MoveFlowStep.SAME_NAME -> SameNameDialog(
+             existingName = sameNameExisting?.displayName ?: "",
+             onMoveToExisting = {
+                 // 「移入该主题」→ 目标切该已有主题，直达对话框 3（§8.1）
+-                moveTarget = sameNameExisting
++                moveFlow.selectTarget(sameNameExisting)
+                 sameNameExisting = null
+-                moveFailed = false
+-                moveFlowStep = MoveFlowStep.CONFIRM
++                moveFlow.clearFailed()
++                moveFlow.goTo(MoveFlowStep.CONFIRM)
+             },
+-            onDismiss = { moveFlowStep = MoveFlowStep.NEW_TOPIC } // 「取消」→ 回对话框 2，输入保留（§8.1）
++            onDismiss = { moveFlow.goTo(MoveFlowStep.NEW_TOPIC) } // 「取消」→ 回对话框 2，输入保留（§8.1）
+         )
+         MoveFlowStep.CONFIRM -> MoveConfirmDialog(
+             count = selectedKeys.size, // N＝所选条数（84(d)/88 口径）
+-            topicName = moveTarget?.displayName ?: "",
+-            // K 预览（§8.2 ②：执行取消在成功回调内重算，此处仅确认框前置告知）
+-            executing = moveExecuting,
+-            failed = moveFailed,
++            topicName = moveFlow.transferTarget?.displayName ?: "",
++            executing = moveFlow.executing,
++            failed = moveFlow.failed,
+             onConfirm = { executeMove() }, // 失败重试同入口（move 幂等收敛）
+             onDismiss = ::closeMoveFlow // 「取消」关全部对话框，保持多选态与选中集（§8.1）
+         )
+@@ -1482,7 +1274,7 @@ private fun ThemeOptionButton(
+     }
+ }
+ 
+-private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
++internal fun copyContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
+     try {
+         // 出口格式化（v1.3，specs 68~70）：经 parse 产物构建，无结构标记、无 ZWSP、秒级时间戳
+         val entries = EntryParser.parse(mdFile.readAll())
+@@ -1502,7 +1294,7 @@ private fun copyContent(context: android.content.Context, mdFile: MarkdownFileOp
+     }
+ }
+ 
+-private fun shareContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
++internal fun shareContent(context: android.content.Context, mdFile: MarkdownFileOperations) {
+     try {
+         // 出口格式化（v1.3，specs 68~70）：经 parse 产物构建，无结构标记、无 ZWSP、秒级时间戳
+         val entries = EntryParser.parse(mdFile.readAll())
+@@ -1543,100 +1335,3 @@ private fun openFile(context: android.content.Context, useSAF: Boolean, fileUri:
+         showToast(context, "打开失败，请安装 Markdown 查看器")
+     }
+ }
+-
+-/** 归档执行结果（修订二 93 ④：archiveFile 重构返回通道——写盘段逐字节等价，仅返回值与 toast 通道变更）。 */
+-sealed interface ArchiveOutcome {
+-    /** 归档副本已生成。 */
+-    data class Archived(val file: File) : ArchiveOutcome
+-
+-    /**
+-     * 空内容（仅文件头）。**行为变更（A-3/T-3）**：现状（重构前）返 true 且调用方继续清空；
+-     * 重构后语义＝不清空，由调用方按决策映射提示（入口守卫配套防呆，R15 陈旧窗口下可达）。
+-     */
+-    object NothingToArchive : ArchiveOutcome
+-
+-    /** 归档失败（含异常；TD-017：调用方不得清空）。 */
+-    object Failed : ArchiveOutcome
+-}
+-
+-/** 归档清空二选一路径（修订二 93 方案 X）。 */
+-enum class ArchivePath { ARCHIVE_AND_CLEAR, ARCHIVE_ONLY }
+-
+-/** 二选一决策映射产物（§17.1 M1：编排层只执行决定，不自行判断）。 */
+-data class ArchiveAction(
+-    val toast: String?,
+-    val shouldClear: Boolean,
+-)
+-
+-/**
+- * 归档二选一决策映射（§17.1 M1 ①~④，纯函数 JVM 可测）：
+- * Archived×归档并清空→归并 toast＋清空＋取消全部提醒；Archived×只归档→只报备不清空不动提醒；
+- * Failed×两路径→两失败字面且均不清空（TD-017）；NothingToArchive×两路径→守卫字面无动作。
+- */
+-internal fun archiveActionFor(
+-    outcome: ArchiveOutcome,
+-    path: ArchivePath,
+-    archiveName: String
+-): ArchiveAction = when (outcome) {
+-    is ArchiveOutcome.Archived -> when (path) {
+-        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(
+-            toast = Microcopy.toastArchivedAndCleared(archiveName),
+-            shouldClear = true
+-        )
+-        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(
+-            toast = Microcopy.toastArchivedTo(archiveName),
+-            shouldClear = false
+-        )
+-    }
+-    ArchiveOutcome.Failed -> when (path) {
+-        // TD-017：归档失败不得清空——归档并清空路径明示「未清空」
+-        ArchivePath.ARCHIVE_AND_CLEAR -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED_CLEAR_KEPT, shouldClear = false)
+-        ArchivePath.ARCHIVE_ONLY -> ArchiveAction(Microcopy.TOAST_ARCHIVE_FAILED, shouldClear = false)
+-    }
+-    ArchiveOutcome.NothingToArchive -> ArchiveAction(Microcopy.TOAST_NOTHING_TO_ARCHIVE, shouldClear = false)
+-}
+-
+-/** 清空段失败映射（§17.1 M1 ⑤：两路径同字面——归档已保存，仅清空未完成）。 */
+-internal fun clearFailedAction(): ArchiveAction =
+-    ArchiveAction(Microcopy.TOAST_CLEAR_FAILED_ARCHIVED, shouldClear = false)
+-
+-/**
+- * Archive current content to a new file（修订二 93 ④ 重构）。
+- * **writeAll 写盘段与重构前逐字节等价**（等价宣称限于写盘段，A-3/T-3）；
+- * toast 全部上移调用方（经 [archiveActionFor] 决策映射）；onComplete 通道改为调用方
+- * 编排（runArchiveAction 的 resyncArchiveState 等价动作）；
+- * 未使用的 fileRepository 参数已删除（E-1）；调用方负责 IO 线程（A-9）。
+- */
+-private fun archiveFile(
+-    context: android.content.Context,
+-    currentMdFile: MarkdownFileOperations,
+-    archiveFile: File
+-): ArchiveOutcome {
+-    return try {
+-        // Read current content BEFORE creating new archive file
+-        val currentContent = currentMdFile.readAll()
+-
+-        // Check if content is empty (only has header, no actual entries)
+-        if (currentContent.isBlank() || !currentContent.contains("## ")) {
+-            return ArchiveOutcome.NothingToArchive
+-        }
+-
+-        // 通过 MarkdownFileOperations.writeAll 写归档（v1.1 CB6：享 atomicWrite + 锁 + 同源同格式 ZWSP）
+-        val contentWithoutHeader = if (currentContent.startsWith(MarkdownFormatter.FILE_HEADER)) {
+-            currentContent.substring(MarkdownFormatter.FILE_HEADER.length)
+-        } else {
+-            currentContent
+-        }
+-        val archiveMdFile = FileBasedMarkdownFile(context, archiveFile)
+-        if (!archiveMdFile.writeAll(MarkdownFormatter.FILE_HEADER + contentWithoutHeader)) {
+-            return ArchiveOutcome.Failed // TD-017：失败上抛，调用方不得继续清空
+-        }
+-
+-        ArchiveOutcome.Archived(archiveFile)
+-    } catch (e: Exception) {
+-        if (BuildConfig.DEBUG) {
+-            android.util.Log.e("MainScreen", "Archive failed", e)
+-        }
+-        ArchiveOutcome.Failed
+-    }
+-}
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/Microcopy.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/Microcopy.kt
+index 9f77c32..642a5bb 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/Microcopy.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/Microcopy.kt
+@@ -30,7 +30,10 @@ internal object Microcopy {
+     const val TOAST_APPEND_FAILED = "追加失败"
+ 
+     /** 追加成功 + 重复旁注（需求 42 语义不变；仅手动输入确认按钮路径使用）。 */
+-    fun toastAppendedWithDuplicates(count: Int): String = "已追加（已有相同内容 $count 条）"
++    fun toastAppendedWithDuplicates(count: Int): String = "已追加" + duplicateSuffix(count)
++
++    /** 重复计数旁注（code-review 收敛：主/题共用，防硬编码漂移）。 */
++    fun duplicateSuffix(count: Int): String = "（已有相同内容 $count 条）"
+ 
+     /** 归档恢复成功（无跳过，specs 43：Y=0 不显示跳过后缀）。 */
+     fun toastAppendedCount(added: Int): String = "已追加 $added 条"
+@@ -220,7 +223,58 @@ internal object Microcopy {
+      * BODY 留空不渲染；T-31 落地后切「暂无条目／点右上角“＋”添加条目」终句（§25.4）。
+      */
+     const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
+-    const val TOPIC_WORKSPACE_EMPTY_BODY = ""
++    const val TOPIC_WORKSPACE_EMPTY_BODY = "点右上角“＋”添加条目"
++
++    // ---- 主题改名词族（己批次 WB-4，104/§24.1）----
++
++    const val DLG_TOPIC_RENAME_TITLE = "重命名主题"
++    fun dlgTopicRenameBody(current: String): String = "当前名称：$current"
++    const val TOAST_TOPIC_RENAMED = "已重命名"
++    const val TOAST_TOPIC_RENAME_FAILED = "重命名失败"
++    const val SWIPE_LABEL_RENAME = "改名"
++
++    // ---- 条目删除词族（己批次 WB-2，102(b)(c)）----
++
++    /** 单条删除确认（error 红＋振动，78 口径；主/题共用）。 */
++    const val DLG_ENTRY_DELETE_TITLE = "删除条目"
++    const val DLG_ENTRY_DELETE_BODY = "确定要删除这条内容吗？此操作无法撤销。"
++    const val TOAST_ENTRY_DELETED = "已删除"
++    const val TOAST_ENTRY_DELETE_FAILED = "删除失败"
++
++    /** 批量删除确认（明示 N，97(d)/102(c)）。 */
++    fun dlgBatchDeleteBody(n: Int): String = "将删除所选 $n 条条目。"
++
++    // ---- 主题归档词族（己批次 WB-1，设计 §7 定稿）----
++
++    /** 主题二选一框正文（一层明示作用域，§5.2）。 */
++    fun dlgTopicArchiveBody(n: Int, topic: String): String = "将备份主题「$topic」的 $n 条。"
++
++    /** 主题归档并清空成功（含指路，§7）。 */
++    fun toastTopicArchivedAndCleared(topic: String): String = "已备份并清空主题「$topic」，可在归档管理查看"
++
++    /** 主题新增成功（目的地标识，102(d)/97(c)）。 */
++    fun toastAppendedToTopic(name: String): String = "已追加到「$name」"
++
++    /** 主题只归档成功。 */
++    fun toastTopicArchived(topic: String): String = "已备份主题「$topic」"
++
++    /** 清空成功指路（会话级）。 */
++    const val TOAST_TOPIC_CLEAR_GUIDE = "已清空，可删除空主题"
++
++    /** 非空主题右滑钳 0 指路（会话级一次性）。 */
++    const val TOAST_TOPIC_DELETE_GUIDE = "清空主题后方可删除"
++
++    // ---- 共享对话框词族（己批次 WA-2 抽取随入）----
++
++    /** 编辑/输入对话框标题（抽取常量化——原 MainScreen 直写）。 */
++    const val DLG_EDIT_TITLE = "编辑条目"
++    const val DLG_INPUT_TITLE = "手动输入内容"
++
++    /** 手动输入占位符（常量化——原直写「请输入要追加的内容」）。 */
++    const val PLACEHOLDER_INPUT = "请输入要追加的内容"
++
++    /** 「添加到日历」按钮（16.C 承接提醒；编辑/输入对话框主操作位共用）。 */
++    const val BTN_ADD_TO_CALENDAR = "添加到日历"
+ 
+     // ---- 移出/转移（戊批次 T-26，设计 §21.2/§24.1；96/100 定稿字面）----
+ 
+@@ -292,5 +346,6 @@ internal object Microcopy {
+     const val TOAST_NOTHING_TO_ARCHIVE = "暂无内容可归档"
+ 
+     /** 首次指路后缀（§15.4 U1：拼接序末位——基础→提醒附注→本后缀，单 toast 原则）。 */
+-    const val firstMoveGuideSuffix = "，可在顶栏『主题』查看"
++    // 复审#7：首次移入指路兼告知「复制全部」不含已移入条目（发现性，会话级一次性）
++    const val firstMoveGuideSuffix = "，可在顶栏『主题』查看；复制全部需在各主题内操作"
+ }
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/MoveFlow.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/MoveFlow.kt
+index d979fdc..e4c4b48 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/MoveFlow.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/MoveFlow.kt
+@@ -10,22 +10,23 @@ import com.yiyue31.android.appendo.util.MoveResult
+  * 移出/移入/转移共享流程（戊批次 T-26，设计 §21.2/§22.6 评审 E7）：[MoveFlowHolder] 状态
+  * ＋[MoveOutcomeMapping] 决策映射纯函数。
+  *
+- * **两步走过渡态（§25.4 复核三方收敛）**：L1 期本 holder 供工作区屏单消费——MainScreen
+- * 暂持旧 executeMove 编排（移入），L2 T-28 抽取提交时统一迁入（Mapping 补「移入」组合）。
++ * **统一迁移（己批次 WA-1，2026-11-18）**：MainScreen 移入流程迁入本 holder——三动词
++ * （移入/移出/转移）单一状态机＋Mapping 全组合；MainScreen 与工作区两消费方。
+  *
+  * 执行编排纪律（沿 MainScreen.executeMove 先例）：事务在 Dispatchers.IO；成功→统一失效
+  * 规则 invalidate(源＋目标)（§20.2）＋本页重载；失败→对话框保持变「重试」、保持勾选与目标
+  * （84(b) 幂等收敛）；SameDocument＝防御路径只提示不动上下文（96）。
+  */
+ 
+-/** 流程动词（T-26：移出/转移；移入随 T-28 迁入补）。 */
+-internal enum class MoveVerb { MOVE_OUT, TRANSFER }
++/** 流程动词（WA-1 起三动词全量：移入/移出/转移）。 */
++internal enum class MoveVerb { MOVE_IN, MOVE_OUT, TRANSFER }
+ 
+ /**
+  * 流程状态 holder（对话框栈驱动见 [MoveFlowStep]）：
+  * [step] null＝未开启；[verb] 记录发起动词（确认句/产出映射分场景）；[transferTarget]＝
+- * 转移目标主题（移出方向恒 null——目标＝主文件无选择对话框）；新建子流程输入 [newTopicInput]
+- * 由本 holder 持有（D2：创建成功即为目标；取消路径输入保留——草稿保全先例）。
++ * 目标主题（**移入/转移**共用——移入＝所选主题；移出方向恒 null，目标＝主文件无选择对话框）；
++ * 新建子流程输入 [newTopicInput] 由本 holder 持有（D2：创建成功即为目标；取消路径输入保留
++ * ——草稿保全先例，修订⑤）。
+  */
+ internal class MoveFlowHolder {
+     var step by mutableStateOf<MoveFlowStep?>(null)
+@@ -62,12 +63,20 @@ internal class MoveFlowHolder {
+         failed = true
+     }
+ 
+-    /** 关闭流程（成功/取消）：清全部状态与新建草稿；多选态与选中集由宿主决定去留。 */
++    /** 进确认框前清失败态（换目标/重开时重置「重试」面貌）。 */
++    fun clearFailed() {
++        failed = false
++    }
++
++    /**
++     * 关闭流程（成功/取消）：清流程态；**newTopicInput 不清**（关窗不丢字，2026-11-11 修订⑤
++     * ——WA-1 纠偏：原清空与 MainScreen 先例相悖，命名草稿保留、创建成功才清）。
++     * 多选态与选中集由宿主决定去留。
++     */
+     fun close() {
+         step = null
+         verb = null
+         transferTarget = null
+-        newTopicInput = ""
+         executing = false
+         failed = false
+     }
+@@ -79,8 +88,11 @@ internal data class MoveOutcome(
+     val toast: String?,
+     /** true＝对话框保持变「重试」（失败态；SameDocument 等防御态 false 只提示） */
+     val keepRetryState: Boolean,
+-    /** true＝成功且条目进了主文件（移出方向）→宿主 setFileLastModified（评审 A12：主列表经轮询自刷） */
+-    val refreshMain: Boolean
++    /** true＝条目经主文件增减需刷新信号（移出成功/移入成功/移入 SourceDeleteFailed）→宿主
++     *  setFileLastModified＋refresh（A12：主列表经轮询/显式刷新自刷；工作区侧恒 reloadKey） */
++    val refreshMain: Boolean,
++    /** 仅 MOVE_IN 成功非 null：首次移入指路后缀（§15.4 U1——旗标判定归宿主，映射只拼装） */
++    val guideSuffix: String? = null
+ )
+ 
+ /**
+@@ -102,32 +114,41 @@ internal object MoveOutcomeMapping {
+         verb: MoveVerb,
+         useSAF: Boolean,
+         sourceName: String,
+-        targetName: String
++        targetName: String,
++        /** 仅 MOVE_IN：宿主判定「首次有效移入」后传入指路后缀（§15.4 U1）——映射只拼装不判旗标 */
++        guideSuffix: String? = null
+     ): MoveOutcome = when (result) {
+         is MoveResult.Success -> MoveOutcome(
+-            toast = when {
+-                result.moved == 0 && verb == MoveVerb.MOVE_OUT ->
+-                    Microcopy.toastMovedOutAllExisting(result.skippedExisting)
+-                result.moved == 0 -> Microcopy.toastMovedAllExistingTransfer(
+-                    result.skippedExisting, targetName, sourceName
+-                )
+-                result.skippedExisting > 0 && verb == MoveVerb.MOVE_OUT ->
+-                    Microcopy.toastMovedOutSkipped(result.moved, result.skippedExisting)
+-                result.skippedExisting > 0 ->
+-                    Microcopy.toastMovedCountSkipped(result.moved, result.skippedExisting)
+-                verb == MoveVerb.MOVE_OUT -> Microcopy.toastMovedOutCount(result.moved)
+-                else -> Microcopy.toastMovedCount(result.moved)
+-            },
++            toast = successToast(result, verb, sourceName, targetName) + (guideSuffix?.takeIf { verb == MoveVerb.MOVE_IN } ?: ""),
+             keepRetryState = false,
+-            refreshMain = verb == MoveVerb.MOVE_OUT
++            // 移入＝条目离开主文件、移出＝条目进入主文件——两者均需主列表刷新信号；转移不动主文件
++            refreshMain = verb != MoveVerb.TRANSFER,
++            guideSuffix = guideSuffix?.takeIf { verb == MoveVerb.MOVE_IN }
+         )
+-        MoveResult.SourceReadFailed -> fail(Microcopy.TOAST_MOVE_OUT_FAILED)
++        // 移入：源＝主文件（SAF 授权失效典型）；移出/转移：源＝FileBased 主题，与 SAF 无关
++        MoveResult.SourceReadFailed -> fail(
++            if (verb == MoveVerb.MOVE_IN && useSAF) Microcopy.TOAST_MOVE_FAILED_SAF_REVOKED
++            else if (verb == MoveVerb.MOVE_IN) Microcopy.TOAST_MOVE_FAILED
++            else Microcopy.TOAST_MOVE_OUT_FAILED
++        )
++        // 移入目标恒 FileBased 主题（无 SAF 变体）；移出目标＝主文件（useSAF→冒号变体，§21.2）
+         MoveResult.TargetReadFailed -> fail(
+-            if (verb == MoveVerb.MOVE_OUT && useSAF) Microcopy.TOAST_MOVE_OUT_FAILED_SAF
++            when {
++                verb == MoveVerb.MOVE_IN -> Microcopy.toastMoveFailedTargetWrite()
++                verb == MoveVerb.MOVE_OUT && useSAF -> Microcopy.TOAST_MOVE_OUT_FAILED_SAF
++                else -> Microcopy.TOAST_MOVE_OUT_FAILED
++            }
++        )
++        MoveResult.TargetWriteFailed -> fail(
++            if (verb == MoveVerb.MOVE_IN) Microcopy.toastMoveFailedTargetWrite()
+             else Microcopy.TOAST_MOVE_OUT_FAILED
+         )
+-        MoveResult.TargetWriteFailed -> fail(Microcopy.TOAST_MOVE_OUT_FAILED)
+-        is MoveResult.SourceDeleteFailed -> fail(Microcopy.TOAST_MOVE_OUT_FAILED)
++        // 移入方向特例：源＝主文件已部分移除（「两边都有」软中间态）——保持重试＋即刻如实刷新（§6.6）
++        is MoveResult.SourceDeleteFailed -> fail(
++            if (verb == MoveVerb.MOVE_IN) Microcopy.toastMoveFailedSourceDelete()
++            else Microcopy.TOAST_MOVE_OUT_FAILED,
++            refreshMain = verb == MoveVerb.MOVE_IN
++        )
+         MoveResult.SameDocument -> MoveOutcome(
+             toast = Microcopy.toastSameTopicGuard(),
+             keepRetryState = false,
+@@ -135,5 +156,26 @@ internal object MoveOutcomeMapping {
+         )
+     }
+ 
+-    private fun fail(toast: String) = MoveOutcome(toast = toast, keepRetryState = true, refreshMain = false)
++    /** 成功三态（moved=0／skipped>0／其余）按动词分文案（§24.1/§24.2）。 */
++    private fun successToast(
++        result: MoveResult.Success,
++        verb: MoveVerb,
++        sourceName: String,
++        targetName: String
++    ): String = when {
++        result.moved == 0 && verb == MoveVerb.MOVE_OUT ->
++            Microcopy.toastMovedOutAllExisting(result.skippedExisting)
++        result.moved == 0 && verb == MoveVerb.TRANSFER ->
++            Microcopy.toastMovedAllExistingTransfer(result.skippedExisting, targetName, sourceName)
++        result.moved == 0 -> Microcopy.toastMovedAllExisting(result.skippedExisting)
++        result.skippedExisting > 0 && verb == MoveVerb.MOVE_OUT ->
++            Microcopy.toastMovedOutSkipped(result.moved, result.skippedExisting)
++        result.skippedExisting > 0 ->
++            Microcopy.toastMovedCountSkipped(result.moved, result.skippedExisting)
++        verb == MoveVerb.MOVE_OUT -> Microcopy.toastMovedOutCount(result.moved)
++        else -> Microcopy.toastMovedCount(result.moved)
++    }
++
++    private fun fail(toast: String, refreshMain: Boolean = false) =
++        MoveOutcome(toast = toast, keepRetryState = true, refreshMain = refreshMain)
+ }
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/SwipeCard.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/SwipeCard.kt
+index 9eda19b..3a6d2e6 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/SwipeCard.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/SwipeCard.kt
+@@ -64,6 +64,8 @@ internal fun SwipeCard(
+     onLongClick: () -> Unit,
+     onSwipeToDelete: () -> Unit,
+     onSwipeLeftRestore: () -> Unit,
++    /** WB-4：右滑删除禁用时（非空主题钳 0）的「尝试」回调——宿主据此一次性指路（会话级）。 */
++    onSwipeAttemptWhenDisabled: () -> Unit = {},
+     content: @Composable () -> Unit
+ ) {
+     var offsetX by remember { mutableStateOf(0f) }
+@@ -140,8 +142,10 @@ internal fun SwipeCard(
+                             val newOffset = offsetX + dragAmount
+                             // Allow both positive and negative offset
+                             // 右滑删除禁用时（非空主题，85(a) 零响应）：正向位移钳 0——卡片无滑动反馈，
+-                            // onDragEnd 的 > 阈值分支不可达；负向（左滑恢复）不受限
++                            // onDragEnd 的 > 阈值分支不可达；负向（左滑恢复/改名）不受限
+                             val maxPositive = if (swipeToDeleteEnabled) SWIPE_THRESHOLD_DP * 1.5f else 0f
++                            // WB-4：禁用态正向「尝试」上抛（指路 toast，会话级一次性由宿主控制）
++                            if (!swipeToDeleteEnabled && dragAmount > 0) onSwipeAttemptWhenDisabled()
+                             offsetX = newOffset.coerceIn(-SWIPE_THRESHOLD_DP * 1.5f, maxPositive)
+                         }
+                     )
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicListScreen.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicListScreen.kt
+index 5383b28..fcdfd14 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicListScreen.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicListScreen.kt
+@@ -49,6 +49,8 @@ import com.yiyue31.android.appendo.data.FileRepository
+ import com.yiyue31.android.appendo.data.TopicCreateResult
+ import com.yiyue31.android.appendo.data.TopicDeleteResult
+ import com.yiyue31.android.appendo.data.TopicDocument
++import com.yiyue31.android.appendo.data.TopicNameValidation
++import com.yiyue31.android.appendo.data.TopicRenameResult
+ import com.yiyue31.android.appendo.data.TopicRepository
+ import com.yiyue31.android.appendo.util.EntryParser
+ import kotlinx.coroutines.Dispatchers
+@@ -89,10 +91,10 @@ fun TopicListScreen(
+     var isLoading by remember { mutableStateOf(true) }
+     var showTopicDeleteDialog by remember { mutableStateOf(false) }
+     var topicToDelete by remember { mutableStateOf<TopicDocument?>(null) }
+-    var showRestoreDialog by remember { mutableStateOf(false) }
+-    var restoreFile by remember { mutableStateOf<File?>(null) }
+-    var restoreName by remember { mutableStateOf("") }
+-    var restoreEntryCount by remember { mutableStateOf(0) }
++    // WB-4：左滑恢复退役→改名（99/104）；会话级一次性钳 0 指路
++    var renameTarget by remember { mutableStateOf<TopicDocument?>(null) }
++    var renameInput by remember { mutableStateOf("") }
++    var deleteGuideShown by remember { mutableStateOf(false) }
+ 
+     // —— 页内新建状态机（§15.1 C5）：命名输入由本处持有——同名提示返回命名框时输入保留（可改名）——
+     var createStep by remember { mutableStateOf<TopicCreateStep?>(null) }
+@@ -230,12 +232,16 @@ fun TopicListScreen(
+                                 topicToDelete = topic
+                                 showTopicDeleteDialog = true
+                             },
+-                            onSwipeLeftRestore = {
++                            onSwipeLeftRename = {
+                                 performVibration(context, VIBRATION_DURATION_SHORT_MS)
+-                                restoreFile = topic.file
+-                                restoreName = topic.displayName
+-                                restoreEntryCount = topic.entryCount
+-                                showRestoreDialog = true
++                                renameInput = topic.displayName
++                                renameTarget = topic
++                            },
++                            onSwipeAttemptWhenDisabled = {
++                                if (!deleteGuideShown) {
++                                    deleteGuideShown = true
++                                    showToast(context, Microcopy.TOAST_TOPIC_DELETE_GUIDE)
++                                }
+                             }
+                         )
+                     }
+@@ -302,26 +308,38 @@ fun TopicListScreen(
+         )
+     }
+ 
+-    // 恢复确认（共用件零改动消费，T-07 语义：主题差异＝「主题」名词＋注明行；恢复后经 IO 重载）
+-    if (showRestoreDialog && restoreFile != null) {
+-        RestoreConfirmDialog(
+-            file = restoreFile!!,
+-            sourceLabel = "主题",
+-            sourceName = restoreName,
+-            entryCount = restoreEntryCount,
+-            fileRepository = fileRepository,
+-            restoreNote = Microcopy.TOPIC_RESTORE_NOTE,
+-            onDismiss = {
+-                showRestoreDialog = false
+-                restoreFile = null
+-                restoreEntryCount = 0
++    // 改名对话框（WB-4：左滑改名；校验链＋原名无操作归 renameTopic；成功重载列表）
++    renameTarget?.let { target ->
++        RenameTopicDialog(
++            currentName = target.displayName,
++            name = renameInput,
++            onNameChange = { renameInput = it },
++            onRename = {
++                coroutineScope.launch {
++                    when (val r = withContext(Dispatchers.IO) {
++                        topicRepository.renameTopic(target, renameInput)
++                    }) {
++                        is TopicRenameResult.Renamed -> {
++                            showToast(context, Microcopy.TOAST_TOPIC_RENAMED)
++                            renameTarget = null
++                            reloadTopics()
++                        }
++                        is TopicRenameResult.Invalid -> {
++                            // 校验失败分支 toast（沿新建校验链字面）；框保持输入保留
++                            when (r.validation) {
++                                TopicNameValidation.Empty -> showToast(context, Microcopy.TOAST_TOPIC_NAME_EMPTY)
++                                TopicNameValidation.Reserved -> showToast(context, Microcopy.TOAST_TOPIC_NAME_RESERVED)
++                                TopicNameValidation.IllegalChars -> showToast(context, Microcopy.TOAST_TOPIC_NAME_ILLEGAL)
++                                TopicNameValidation.TooLong -> showToast(context, Microcopy.TOAST_TOPIC_NAME_TOO_LONG)
++                                is TopicNameValidation.Exists -> showToast(context, Microcopy.dlgTopicPageSameNameBody(r.validation.displayName))
++                                is TopicNameValidation.Ok -> Unit
++                            }
++                        }
++                        TopicRenameResult.Failed -> showToast(context, Microcopy.TOAST_TOPIC_RENAME_FAILED)
++                    }
++                }
+             },
+-            onConfirmed = {
+-                showRestoreDialog = false
+-                restoreFile = null
+-                restoreEntryCount = 0
+-                reloadTopics()
+-            }
++            onDismiss = { renameTarget = null }
+         )
+     }
+ 
+@@ -389,17 +407,21 @@ private fun TopicCard(
+     onClick: () -> Unit,
+     onLongClick: () -> Unit,
+     onSwipeToDelete: () -> Unit,
+-    onSwipeLeftRestore: () -> Unit
++    onSwipeLeftRename: () -> Unit,
++    onSwipeAttemptWhenDisabled: () -> Unit = {}
+ ) {
+     // 取色链（§15.1 首字标规则）：deriveBadgePalette(primary, surface)[badgeIndex(displayName)]
+     val badgeColor = badgePalette[badgeIndex(topic.displayName)]
+     SwipeCard(
+         // 85(a)：非空主题右滑删除钳 0 零响应（swipeToDeleteEnabled=false）；仅空主题（0 条）可右滑删除
+         swipeToDeleteEnabled = topic.entryCount == 0,
++        // WB-4：左滑语义恢复→改名（99/104）
++        swipeLeftLabel = Microcopy.SWIPE_LABEL_RENAME,
+         onClick = onClick,
+         onLongClick = onLongClick,
+         onSwipeToDelete = onSwipeToDelete,
+-        onSwipeLeftRestore = onSwipeLeftRestore
++        onSwipeLeftRestore = onSwipeLeftRename,
++        onSwipeAttemptWhenDisabled = onSwipeAttemptWhenDisabled
+     ) {
+         Row(
+             modifier = Modifier
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicMoveDialogs.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicMoveDialogs.kt
+index 287611e..af41abd 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicMoveDialogs.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicMoveDialogs.kt
+@@ -298,3 +298,61 @@ internal fun EntryPreviewDialog(entry: LinkEntry, onDismiss: () -> Unit) {
+         }
+     )
+ }
++
++/**
++ * 主题改名对话框（WB-4，104）：NewTopicNameDialog 预填变体——标题「重命名主题」＋
++ * 当前名称语境行；输入由宿主持有（预填当前名）；「重命名」→ [onRename]；取消/点外→ [onDismiss]。
++ * 校验链＋原名无操作语义归宿主（TopicRepository.renameTopic）。
++ */
++@Composable
++internal fun RenameTopicDialog(
++    currentName: String,
++    name: String,
++    onNameChange: (String) -> Unit,
++    onRename: () -> Unit,
++    onDismiss: () -> Unit
++) {
++    val focusRequester = remember { FocusRequester() }
++    val keyboardController = LocalSoftwareKeyboardController.current
++    LaunchedEffect(Unit) {
++        focusRequester.requestFocus()
++        keyboardController?.show()
++    }
++    AlertDialog(
++        onDismissRequest = {
++            keyboardController?.hide()
++            onDismiss()
++        },
++        title = { Text(Microcopy.DLG_TOPIC_RENAME_TITLE, fontWeight = FontWeight.SemiBold) },
++        text = {
++            Column {
++                Text(
++                    Microcopy.dlgTopicRenameBody(currentName),
++                    style = MaterialTheme.typography.bodySmall,
++                    color = MaterialTheme.colorScheme.onSurfaceVariant
++                )
++                Spacer(modifier = Modifier.height(8.dp))
++                OutlinedTextField(
++                    value = name,
++                    onValueChange = onNameChange,
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .focusRequester(focusRequester),
++                    singleLine = true,
++                    placeholder = { Text(Microcopy.PLACEHOLDER_TOPIC_NAME) }
++                )
++            }
++        },
++        confirmButton = {
++            TextButton(onClick = onRename) {
++                Text(Microcopy.SWIPE_LABEL_RENAME, color = MaterialTheme.colorScheme.primary)
++            }
++        },
++        dismissButton = {
++            TextButton(onClick = {
++                keyboardController?.hide()
++                onDismiss()
++            }) { Text("取消") }
++        }
++    )
++}
+diff --git a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicWorkspaceScreen.kt b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicWorkspaceScreen.kt
+index f41d49c..41e13cd 100644
+--- a/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicWorkspaceScreen.kt
++++ b/Appendo/src/main/java/com/yiyue31/android/appendo/ui/TopicWorkspaceScreen.kt
+@@ -11,7 +11,13 @@ import androidx.compose.foundation.layout.width
+ import androidx.compose.foundation.lazy.rememberLazyListState
+ import androidx.compose.material.icons.Icons
+ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
++import androidx.compose.material.icons.filled.AddCircle
+ import androidx.compose.material.icons.filled.CheckCircle
++import androidx.compose.material.icons.filled.MoreVert
++import androidx.compose.material.icons.filled.Share
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.DropdownMenu
++import androidx.compose.material3.DropdownMenuItem
+ import androidx.compose.material3.Button
+ import androidx.compose.material3.ButtonDefaults
+ import androidx.compose.material3.ExperimentalMaterial3Api
+@@ -33,6 +39,9 @@ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import android.content.ClipData
++import android.content.ClipboardManager
++import android.content.Context
+ import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.unit.dp
+@@ -41,6 +50,9 @@ import com.yiyue31.android.appendo.data.TopicCreateResult
+ import com.yiyue31.android.appendo.data.TopicDocument
+ import com.yiyue31.android.appendo.data.TopicRepository
+ import com.yiyue31.android.appendo.util.EntryKey
++import com.yiyue31.android.appendo.util.CalendarEntryMapper
++import com.yiyue31.android.appendo.util.CalendarLauncher
++import com.yiyue31.android.appendo.util.DuplicateHintThrottle
+ import com.yiyue31.android.appendo.util.EntryParser
+ import com.yiyue31.android.appendo.util.FileBasedMarkdownFile
+ import com.yiyue31.android.appendo.util.MarkdownFileFactory
+@@ -89,6 +101,21 @@ fun TopicWorkspaceScreen(
+     var selectedKeys by remember { mutableStateOf<Set<EntryKey>>(emptySet()) }
+     var previewEntry by remember { mutableStateOf<LinkEntry?>(null) }
+ 
++    // —— 编辑/删除（WB-2，102(a)(b)(c)；草稿三件套宿主镜像 §2.2）——
++    var editEntry by remember { mutableStateOf<LinkEntry?>(null) }
++    var editDraft by remember { mutableStateOf("") }
++    var lastEditedTs by remember { mutableStateOf<String?>(null) }
++    var deleteTargetTs by remember { mutableStateOf<String?>(null) }
++    var showBatchDelete by remember { mutableStateOf(false) }
++
++    // —— 新增/归档/溢出菜单（WB-3，102(d)(e)(g)）——
++    var showInputDialog by remember { mutableStateOf(false) }
++    var inputDraft by remember { mutableStateOf("") }
++    var showArchiveDialog by remember { mutableStateOf(false) }
++    var showOverflow by remember { mutableStateOf(false) }
++    // code-review 修：仅新增后定位顶部（编辑/删除重载不跳顶，保留滚动位置）
++    var scrollAfterAdd by remember { mutableStateOf(false) }
++
+     // —— 移出/转移流程（MoveFlowHolder，T-26）——
+     val moveFlow = remember { MoveFlowHolder() }
+     var topics by remember { mutableStateOf<List<TopicDocument>>(emptyList()) }
+@@ -110,11 +137,97 @@ fun TopicWorkspaceScreen(
+         } else {
+             val loaded = EntryParser.parse(result.content).map { LinkEntry.from(it) }
+             entries = loaded
++            // code-review 修：仅新增后定位顶部（倒序新条恒 index 0）；编辑/删除保留滚动位置
++            if (scrollAfterAdd) {
++                scrollAfterAdd = false
++                if (loaded.isNotEmpty()) listState.scrollToItem(0)
++            }
+             // 重载后保留仍存在的选中项（§22.4：retainedSelection 复用——被删剔除、新插入未选）
+             selectedKeys = retainedSelection(selectedKeys, loaded)
+         }
+     }
+ 
++    /** 编辑保存核心（§2.3：失败保持开框不清草稿——行为修正 1；updateEntry 按 ts 首条）。
++     *  code-review 修：不清对话框状态（调用方成功后统一清），防日历路径读空。 */
++    fun performEditSave(): Boolean {
++        val entry = editEntry ?: return false
++        if (editDraft.isBlank()) {
++            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
++            return false
++        }
++        if (editDraft == entry.content) return true
++        return try {
++            val md = FileBasedMarkdownFile(context, topicFile)
++            if (md.updateEntry(entry.timestamp, editDraft)) {
++                showToast(context, Microcopy.TOAST_SAVED)
++                reloadKey++
++                true
++            } else {
++                showToast(context, Microcopy.TOAST_SAVE_FAILED); false
++            }
++        } catch (e: Exception) {
++            showToast(context, Microcopy.TOAST_SAVE_FAILED); false
++        }
++    }
++
++    /** 追加保存核心（code-review 消重：onAppend 共用；查重旁注经 chooseAppendToast 主题基句）。 */
++    fun performAppendSave(): Boolean {
++        if (inputDraft.isBlank()) {
++            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
++            return false
++        }
++        return try {
++            val md = FileBasedMarkdownFile(context, topicFile)
++            val existing = EntryParser.parse(md.readAll()).count { it.content == inputDraft }
++            if (md.appendReturningTimestamp(inputDraft) != null) {
++                showToast(context, chooseAppendToast(inputDraft, existing, Microcopy.toastAppendedToTopic(topicName)))
++                scrollAfterAdd = true
++                reloadKey++
++                true
++            } else {
++                showToast(context, Microcopy.TOAST_APPEND_FAILED); false
++            }
++        } catch (e: Exception) {
++            showToast(context, Microcopy.TOAST_APPEND_FAILED); false
++        }
++    }
++
++    /** 追加供日历核心（75 先落盘；不带查重旁注沿现状）。返回落盘内容供预填，失败 null。 */
++    fun performAppendForCalendar(): String? {
++        if (inputDraft.isBlank()) {
++            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
++            return null
++        }
++        return try {
++            val md = FileBasedMarkdownFile(context, topicFile)
++            if (md.appendReturningTimestamp(inputDraft) != null) {
++                showToast(context, Microcopy.toastAppendedToTopic(topicName))
++                scrollAfterAdd = true
++                reloadKey++
++                inputDraft
++            } else {
++                showToast(context, Microcopy.TOAST_APPEND_FAILED); null
++            }
++        } catch (e: Exception) {
++            showToast(context, Microcopy.TOAST_APPEND_FAILED); null
++        }
++    }
++
++    /** 同 key 全删（102(b)；deleteEntries 按 EntryKey 寻址）。 */
++    fun deleteKeys(keys: Set<EntryKey>) {
++        try {
++            val md = FileBasedMarkdownFile(context, topicFile)
++            if (md.deleteEntries(keys) != null) {
++                showToast(context, Microcopy.TOAST_ENTRY_DELETED)
++                reloadKey++
++            } else {
++                showToast(context, Microcopy.TOAST_ENTRY_DELETE_FAILED)
++            }
++        } catch (e: Exception) {
++            showToast(context, Microcopy.TOAST_ENTRY_DELETE_FAILED)
++        }
++    }
++
+     fun exitSelectionMode() {
+         selectionMode = false
+         selectedKeys = emptySet()
+@@ -200,6 +313,16 @@ fun TopicWorkspaceScreen(
+                         ) {
+                             Text(Microcopy.BTN_MOVE_TO_OTHER)
+                         }
++                        // WB-2 第三钮「删除」（102(c)；确认框明示 N）
++                        TextButton(
++                            onClick = { showBatchDelete = true },
++                            enabled = selectedKeys.isNotEmpty(),
++                            colors = ButtonDefaults.textButtonColors(
++                                contentColor = MaterialTheme.colorScheme.error
++                            )
++                        ) {
++                            Text("删除")
++                        }
+                     }
+                 )
+             } else {
+@@ -230,8 +353,27 @@ fun TopicWorkspaceScreen(
+                         }
+                     },
+                     actions = {
+-                        // 多选入口（§7.1 方案 A 沿 MainScreen 先例）：浏览态常驻、条目数为 0
+-                        // 时隐藏（空列表无从选择）；contentDescription 直写沿惯例
++                        // WB-3 顶栏三动作「＋/复制全部/分享」（102(e)；归档收溢出菜单）
++                        IconButton(onClick = { showInputDialog = true }) {
++                            Icon(Icons.Default.AddCircle, contentDescription = "新增")
++                        }
++                        TextButton(onClick = {
++                            copyContent(context, FileBasedMarkdownFile(context, topicFile))
++                        }) { Text("复制全部") }
++                        IconButton(onClick = {
++                            shareContent(context, FileBasedMarkdownFile(context, topicFile))
++                        }) { Icon(Icons.Default.Share, contentDescription = "分享全部") }
++                        // 溢出菜单：归档二选一入口（102(g)）
++                        IconButton(onClick = { showOverflow = true }) {
++                            Icon(Icons.Default.MoreVert, contentDescription = "更多")
++                        }
++                        DropdownMenu(expanded = showOverflow, onDismissRequest = { showOverflow = false }) {
++                            DropdownMenuItem(
++                                text = { Text("归档…") },
++                                onClick = { showOverflow = false; showArchiveDialog = true }
++                            )
++                        }
++                        // 多选入口（§7.1 方案 A）：条目数为 0 时隐藏
+                         if (!entries.isNullOrEmpty()) {
+                             IconButton(onClick = { selectionMode = true }) {
+                                 Icon(Icons.Default.CheckCircle, contentDescription = "多选")
+@@ -317,7 +459,22 @@ fun TopicWorkspaceScreen(
+                             val key = entry.entryKey
+                             selectedKeys = if (key in selectedKeys) selectedKeys - key else selectedKeys + key
+                         },
+-                        onPreview = { previewEntry = it }
++                        onPreview = { previewEntry = it },
++                        // WB-2：编辑入口（102(a)；草稿同条目保留/换条目重置 §2.2）
++                        onEntryClick = { entry ->
++                            if (lastEditedTs != entry.timestamp) editDraft = entry.content
++                            lastEditedTs = entry.timestamp
++                            editEntry = entry
++                        },
++                        // WB-2：右滑删除（102(b)/105——指示与动作一致）
++                        onEntrySwipeToDelete = { ts -> deleteTargetTs = ts },
++                        // WB-3：长按单条复制（102(e)；出口干净——parse 产物无 ZWSP）
++                        onEntryLongClick = { content ->
++                            performVibration(context, VIBRATION_DURATION_SHORT_MS)
++                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
++                            clipboard.setPrimaryClip(ClipData.newPlainText("entry", content))
++                            showToast(context, Microcopy.TOAST_COPIED)
++                        }
+                     )
+                 }
+             }
+@@ -335,7 +492,8 @@ fun TopicWorkspaceScreen(
+                 MoveVerb.TRANSFER -> Microcopy.dlgTransferConfirmBody(
+                     n, moveFlow.transferTarget?.displayName.orEmpty(), topicName
+                 )
+-                null -> Microcopy.dlgMoveConfirmBody(n, topicName)
++                // MOVE_IN 工作区不可达（主列表专属动词）——防御兜底沿移入确认句
++                MoveVerb.MOVE_IN, null -> Microcopy.dlgMoveConfirmBody(n, topicName)
+             }
+             MoveConfirmDialog(
+                 count = n,
+@@ -410,6 +568,120 @@ fun TopicWorkspaceScreen(
+         null -> Unit
+     }
+ 
++    // —— 新增对话框（WB-3：共享 EntryInputDialog；toast 含主题名＋定位顶部）——
++    if (showInputDialog) {
++        EntryInputDialog(
++            draft = inputDraft,
++            onDraftChange = { inputDraft = it },
++            onAppend = {
++                if (performAppendSave()) {
++                    inputDraft = ""
++                    showInputDialog = false
++                } // 失败保持开框（行为修正 1）
++            },
++            onRequestCalendar = {
++                val content = performAppendForCalendar() ?: return@EntryInputDialog
++                inputDraft = ""
++                showInputDialog = false
++                if (!CalendarLauncher.launch(context, CalendarEntryMapper.map(content))) {
++                    showToast(context, Microcopy.TOAST_NO_CALENDAR)
++                }
++            },
++            onDismiss = { showInputDialog = false }
++        )
++    }
++
++    // —— 归档二选一（WB-3：共享 ArchiveChoiceDialog；主题词族＋onCompleted 仅 reloadKey）——
++    if (showArchiveDialog) {
++        ArchiveChoiceDialog(
++            entryCount = entries?.size ?: 0,
++            topicName = topicName,
++            onArchiveAndClear = {
++                showArchiveDialog = false
++                runArchive(
++                    context = context, scope = coroutineScope,
++                    sourceMd = FileBasedMarkdownFile(context, topicFile),
++                    getTarget = { fileRepository.getArchiveFile(topicName) },
++                    wordbook = topicArchiveWordbook(topicName),
++                    path = ArchivePath.ARCHIVE_AND_CLEAR,
++                    onCompleted = { _, _ -> reloadKey++ }
++                )
++            },
++            onArchiveOnly = {
++                showArchiveDialog = false
++                runArchive(
++                    context = context, scope = coroutineScope,
++                    sourceMd = FileBasedMarkdownFile(context, topicFile),
++                    getTarget = { fileRepository.getArchiveFile(topicName) },
++                    wordbook = topicArchiveWordbook(topicName),
++                    path = ArchivePath.ARCHIVE_ONLY,
++                    onCompleted = { _, _ -> reloadKey++ }
++                )
++            },
++            onDismiss = { showArchiveDialog = false }
++        )
++    }
++
++    // —— 编辑对话框（WB-2：共享 EntryEditDialog，草稿/时序宿主）——
++    editEntry?.let { entry ->
++        EntryEditDialog(
++            entry = entry,
++            draft = editDraft,
++            onDraftChange = { editDraft = it },
++            onSave = {
++                if (performEditSave()) {
++                    editEntry = null; editDraft = ""; lastEditedTs = null
++                }
++            },
++            onRequestCalendar = {
++                val content = editDraft // 先捕获（code-review 一致性：防 core 后状态变化读空）
++                if (!performEditSave()) return@EntryEditDialog
++                editEntry = null; editDraft = ""; lastEditedTs = null
++                if (!CalendarLauncher.launch(context, CalendarEntryMapper.map(content))) {
++                    showToast(context, Microcopy.TOAST_NO_CALENDAR)
++                }
++            },
++            onDismiss = { editEntry = null } // 仅关窗不清草稿（修订⑤）
++        )
++    }
++
++    // —— 单条删除确认（WB-2：error 红＋振动；同 key 全删）——
++    deleteTargetTs?.let { ts ->
++        AlertDialog(
++            onDismissRequest = { deleteTargetTs = null },
++            title = { Text(Microcopy.DLG_ENTRY_DELETE_TITLE, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error) },
++            text = { Text(Microcopy.DLG_ENTRY_DELETE_BODY) },
++            confirmButton = {
++                TextButton(onClick = {
++                    performVibration(context, VIBRATION_DURATION_SHORT_MS)
++                    val target = entries?.firstOrNull { it.timestamp == ts }
++                    deleteTargetTs = null
++                    if (target != null) deleteKeys(setOf(target.entryKey))
++                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
++            },
++            dismissButton = { TextButton(onClick = { deleteTargetTs = null }) { Text("取消") } }
++        )
++    }
++
++    // —— 批量删除确认（WB-2：明示 N；删后退出多选）——
++    if (showBatchDelete) {
++        AlertDialog(
++            onDismissRequest = { showBatchDelete = false },
++            title = { Text(Microcopy.DLG_ENTRY_DELETE_TITLE, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error) },
++            text = { Text(Microcopy.dlgBatchDeleteBody(selectedKeys.size)) },
++            confirmButton = {
++                TextButton(onClick = {
++                    performVibration(context, VIBRATION_DURATION_SHORT_MS)
++                    val keys = selectedKeys
++                    showBatchDelete = false
++                    exitSelectionMode()
++                    deleteKeys(keys)
++                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
++            },
++            dismissButton = { TextButton(onClick = { showBatchDelete = false }) { Text("取消") } }
++        )
++    }
++
+     // 多选态长按预览（§22.4——预览含复制动作，「长按复制不被占用」）
+     previewEntry?.let { entry ->
+         EntryPreviewDialog(entry = entry, onDismiss = { previewEntry = null })
+diff --git a/Appendo/src/test/java/com/yiyue31/android/appendo/data/ArchiveNameParseTest.kt b/Appendo/src/test/java/com/yiyue31/android/appendo/data/ArchiveNameParseTest.kt
+new file mode 100644
+index 0000000..8f208be
+--- /dev/null
++++ b/Appendo/src/test/java/com/yiyue31/android/appendo/data/ArchiveNameParseTest.kt
+@@ -0,0 +1,120 @@
++package com.yiyue31.android.appendo.data
++
++import android.content.Context
++import android.content.SharedPreferences
++import com.yiyue31.android.appendo.util.MarkdownFormatter
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Rule
++import org.junit.Test
++import org.junit.rules.TemporaryFolder
++import org.mockito.kotlin.mock
++import org.mockito.kotlin.whenever
++import java.io.File
++
++/**
++ * WB-1 归档命名/解析 JVM 测试：尾部锚定三类形态（旧式/新式/同秒后缀）＋主题名含下划线/纯数字
++ * 边界＋后缀件可见可恢复＋getArchiveFile 同秒递增不覆盖（上限放弃）。
++ */
++class ArchiveNameParseTest {
++
++    @get:Rule
++    val tmp = TemporaryFolder()
++
++    private val context: Context = mock()
++
++    private fun repo(): ArchiveRepository {
++        whenever(context.getExternalFilesDir(null)).thenReturn(tmp.root)
++        return ArchiveRepository(context)
++    }
++
++    private fun write(name: String): File {
++        val f = File(tmp.root, name)
++        f.writeText(MarkdownFormatter.FILE_HEADER + "\n## 2026-01-01 10:00:00.000\n\n内容\n")
++        return f
++    }
++
++    @Test
++    fun oldForm_sourceTopicNull() {
++        val f = write("Appendo_20260417_143022.md")
++        val a = repo().archiveFileFor(f)
++        assertNotNull(a)
++        assertNull(a!!.sourceTopic)
++    }
++
++    @Test
++    fun newForm_sourceTopicExtracted() {
++        val f = write("Appendo_购物清单_20260417_143022.md")
++        val a = repo().archiveFileFor(f)
++        assertNotNull(a)
++        assertEquals("购物清单", a!!.sourceTopic)
++    }
++
++    @Test
++    fun newForm_topicWithUnderscore_tailAnchored() {
++        val f = write("Appendo_note_2024_20260417_143022.md")
++        val a = repo().archiveFileFor(f)
++        assertNotNull(a)
++        assertEquals("note_2024", a!!.sourceTopic)
++    }
++
++    @Test
++    fun newForm_numericTopic_notMisreadAsOld() {
++        val f = write("Appendo_123_20260417_143022.md")
++        val a = repo().archiveFileFor(f)
++        assertNotNull(a)
++        assertEquals("123", a!!.sourceTopic)
++    }
++
++    @Test
++    fun suffixForm_oldAndNew_visible() {
++        val old = write("Appendo_20260417_143022_1.md")
++        val new = write("Appendo_购物_20260417_143022_2.md")
++        val r = repo()
++        assertNotNull("旧式后缀件不被剔除", r.archiveFileFor(old))
++        val na = r.archiveFileFor(new)
++        assertNotNull("新式后缀件不被剔除", na)
++        assertEquals("购物", na!!.sourceTopic)
++    }
++
++    @Test
++    fun listIncludesSuffixAndNewForms() {
++        write("Appendo_20260417_143022.md")
++        write("Appendo_购物_20260417_143022_1.md")
++        val list = repo().listArchiveFiles()
++        assertEquals(2, list.size)
++        assertTrue(list.any { it.sourceTopic == "购物" })
++    }
++
++    @Test
++    fun nonArchiveName_rejected() {
++        val f = write("random.md")
++        assertNull(repo().archiveFileFor(f))
++    }
++
++    @Test
++    fun getArchiveFile_sameSecond_suffixNoOverwrite() {
++        whenever(context.getExternalFilesDir(null)).thenReturn(tmp.root)
++        whenever(context.getSharedPreferences(org.mockito.kotlin.any(), org.mockito.kotlin.any())).thenReturn(mock<SharedPreferences>())
++        val fr = FileRepository(context)
++        val first = fr.getArchiveFile()
++        assertNotNull(first)
++        first!!.writeText("x") // 占位使第二件同秒冲突
++        val second = fr.getArchiveFile()
++        assertNotNull(second)
++        assertTrue("同秒第二件带 _1 后缀", second!!.name.endsWith("_1.md"))
++        assertTrue(first.name != second.name)
++    }
++
++    @Test
++    fun getArchiveFile_topicVariant_namedWithTopic() {
++        whenever(context.getExternalFilesDir(null)).thenReturn(tmp.root)
++        whenever(context.getSharedPreferences(org.mockito.kotlin.any(), org.mockito.kotlin.any())).thenReturn(mock<SharedPreferences>())
++        val fr = FileRepository(context)
++        val f = fr.getArchiveFile("购物清单")
++        assertNotNull(f)
++        assertTrue(f!!.name.startsWith("Appendo_购物清单_"))
++    }
++}
+diff --git a/Appendo/src/test/java/com/yiyue31/android/appendo/data/TopicRepositoryTest.kt b/Appendo/src/test/java/com/yiyue31/android/appendo/data/TopicRepositoryTest.kt
+index e59dbfc..52c7ad0 100644
+--- a/Appendo/src/test/java/com/yiyue31/android/appendo/data/TopicRepositoryTest.kt
++++ b/Appendo/src/test/java/com/yiyue31/android/appendo/data/TopicRepositoryTest.kt
+@@ -371,6 +371,81 @@ class TopicRepositoryTest {
+ 
+ 
+ 
++
++    // ---------- WB-4 改名（104/§6 三窗口＋原名无操作＋校验链） ----------
++
++    @Test
++    fun rename_success_preservesCreatedAt_renamesFile_swapsKey() {
++        putTopic("Old", docWithOneEntry())
++        prefs.edit().putLong(createdKey("Old"), 12345L).commit()
++        val t = repo.findTopic("Old")!!
++        val r = repo.renameTopic(t, "New")
++        assertEquals(TopicRenameResult.Renamed, r)
++        assertTrue(File(topicsDir(), "New.md").exists())
++        assertFalse(File(topicsDir(), "Old.md").exists())
++        assertEquals("createdAt 保留不重置", 12345L, prefs.getLong(createdKey("New"), -1L))
++        assertFalse("旧键删除", prefs.contains(createdKey("Old")))
++    }
++
++    @Test
++    fun rename_originalName_noOpSuccess() {
++        putTopic("Same", docWithOneEntry())
++        val t = repo.findTopic("Same")!!
++        assertEquals(TopicRenameResult.Renamed, repo.renameTopic(t, "Same"))
++        assertTrue(File(topicsDir(), "Same.md").exists())
++    }
++
++    @Test
++    fun rename_caseInsensitiveSelf_noOp() {
++        putTopic("Case", docWithOneEntry())
++        val t = repo.findTopic("Case")!!
++        assertEquals(TopicRenameResult.Renamed, repo.renameTopic(t, "case"))
++        assertTrue(File(topicsDir(), "Case.md").exists())
++    }
++
++    @Test
++    fun rename_empty_invalid() {
++        putTopic("V", docWithOneEntry())
++        val t = repo.findTopic("V")!!
++        val r = repo.renameTopic(t, "  ")
++        assertTrue(r is TopicRenameResult.Invalid)
++        assertEquals(TopicNameValidation.Empty, (r as TopicRenameResult.Invalid).validation)
++    }
++
++    @Test
++    fun rename_illegalChars_invalid() {
++        putTopic("V2", docWithOneEntry())
++        val t = repo.findTopic("V2")!!
++        val r = repo.renameTopic(t, "a/b")
++        assertTrue(r is TopicRenameResult.Invalid)
++        assertEquals(TopicNameValidation.IllegalChars, (r as TopicRenameResult.Invalid).validation)
++    }
++
++    @Test
++    fun rename_renameToFailure_rollsBackNewKey_keepsOldFile() {
++        putTopic("Src", docWithOneEntry())
++        prefs.edit().putLong(createdKey("Src"), 777L).commit()
++        // 窗2：预占新文件名为非空目录 → renameTo 失败 → 回滚新键
++        val occupy = File(topicsDir(), "Dst.md")
++        occupy.mkdirs()
++        File(occupy, "child").writeText("x")
++        val t = repo.findTopic("Src")!!
++        val r = repo.renameTopic(t, "Dst")
++        assertEquals(TopicRenameResult.Failed, r)
++        assertTrue("旧文件保留", File(topicsDir(), "Src.md").exists())
++        assertFalse("新键回滚", prefs.contains(createdKey("Dst")))
++        assertEquals("旧键不动", 777L, prefs.getLong(createdKey("Src"), -1L))
++    }
++
++    @Test
++    fun rename_otherExisting_invalidExists() {
++        putTopic("A1", docWithOneEntry())
++        putTopic("B1", docWithOneEntry())
++        val t = repo.findTopic("A1")!!
++        val r = repo.renameTopic(t, "B1")
++        assertTrue(r is TopicRenameResult.Invalid)
++        assertTrue((r as TopicRenameResult.Invalid).validation is TopicNameValidation.Exists)
++    }
+ }
+ 
+ /**
+@@ -478,5 +553,4 @@ private class WriteRecordingSharedPreferences(
+             putBooleanCalls.add(key to value)
+             return editor.putBoolean(key, value)
+         }
+-    }
+-}
++    }}
+diff --git a/Appendo/src/test/java/com/yiyue31/android/appendo/ui/ChooseAppendToastTest.kt b/Appendo/src/test/java/com/yiyue31/android/appendo/ui/ChooseAppendToastTest.kt
+new file mode 100644
+index 0000000..dd53743
+--- /dev/null
++++ b/Appendo/src/test/java/com/yiyue31/android/appendo/ui/ChooseAppendToastTest.kt
+@@ -0,0 +1,23 @@
++package com.yiyue31.android.appendo.ui
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++/** code-review 收敛：chooseAppendToast 基句参数化＋重复旁注经 Microcopy（防硬编码漂移）。 */
++class ChooseAppendToastTest {
++
++    @Test
++    fun noDuplicate_returnsBase() {
++        assertEquals("已追加", chooseAppendToast("x", 0))
++        assertEquals("已追加到「T」", chooseAppendToast("x", 0, "已追加到「T」"))
++    }
++
++    @Test
++    fun duplicate_basePlusSuffix() {
++        // 节流窗口放行时旁注＝基句＋Microcopy.duplicateSuffix（主/题共用）
++        val main = chooseAppendToast("dupA", 2)
++        val topic = chooseAppendToast("dupB", 2, "已追加到「T」")
++        assertEquals("已追加" + Microcopy.duplicateSuffix(2), main)
++        assertEquals("已追加到「T」" + Microcopy.duplicateSuffix(2), topic)
++    }
++}
+diff --git a/Appendo/src/test/java/com/yiyue31/android/appendo/ui/MoveOutcomeMappingTest.kt b/Appendo/src/test/java/com/yiyue31/android/appendo/ui/MoveOutcomeMappingTest.kt
+index 2483462..8bafd9a 100644
+--- a/Appendo/src/test/java/com/yiyue31/android/appendo/ui/MoveOutcomeMappingTest.kt
++++ b/Appendo/src/test/java/com/yiyue31/android/appendo/ui/MoveOutcomeMappingTest.kt
+@@ -103,6 +103,77 @@ class MoveOutcomeMappingTest {
+         assertTrue(o.keepRetryState)
+     }
+ 
++    // ---------- MOVE_IN 组合（WA-1：MainScreen 迁移随入） ----------
++
++    @Test
++    fun success_moveIn_reusesFamilyAndRefreshesMain() {
++        val o = MoveOutcomeMapping.map(MoveResult.Success(3, 0, 0), MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
++        assertEquals(Microcopy.toastMovedCount(3), o.toast)
++        assertFalse(o.keepRetryState)
++        assertTrue("移入成功＝条目离开主文件→刷新信号", o.refreshMain)
++    }
++
++    @Test
++    fun success_moveIn_allExisting_dedicatedToast() {
++        val o = MoveOutcomeMapping.map(MoveResult.Success(0, 5, 0), MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
++        assertEquals(Microcopy.toastMovedAllExisting(5), o.toast)
++    }
++
++    @Test
++    fun success_moveIn_guideSuffixAppended_onlyForMoveIn() {
++        val withGuide = MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T", guideSuffix = Microcopy.firstMoveGuideSuffix)
++        assertEquals(Microcopy.toastMovedCount(1) + Microcopy.firstMoveGuideSuffix, withGuide.toast)
++        assertEquals(Microcopy.firstMoveGuideSuffix, withGuide.guideSuffix)
++        val notForOut = MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.MOVE_OUT, useSAF = false, sourceName = "S", targetName = "T", guideSuffix = Microcopy.firstMoveGuideSuffix)
++        assertEquals("指路仅移入动词（§15.4）", Microcopy.toastMovedOutCount(1), notForOut.toast)
++    }
++
++    @Test
++    fun sourceReadFailed_moveIn_safVariant() {
++        val o = MoveOutcomeMapping.map(MoveResult.SourceReadFailed, MoveVerb.MOVE_IN, useSAF = true, sourceName = "主列表", targetName = "T")
++        assertEquals("移入源＝主文件，SAF 授权失效变体", Microcopy.TOAST_MOVE_FAILED_SAF_REVOKED, o.toast)
++        assertTrue(o.keepRetryState)
++    }
++
++    @Test
++    fun sourceReadFailed_moveIn_default_plain() {
++        val o = MoveOutcomeMapping.map(MoveResult.SourceReadFailed, MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
++        assertEquals(Microcopy.TOAST_MOVE_FAILED, o.toast)
++    }
++
++    @Test
++    fun targetFailures_moveIn_targetWriteFamily() {
++        for (r in listOf(MoveResult.TargetReadFailed, MoveResult.TargetWriteFailed)) {
++            val o = MoveOutcomeMapping.map(r, MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
++            assertEquals("移入目标恒 FileBased 主题——沿目标写句式：$r", Microcopy.toastMoveFailedTargetWrite(), o.toast)
++            assertTrue(o.keepRetryState)
++            assertFalse(o.refreshMain)
++        }
++    }
++
++    @Test
++    fun sourceDeleteFailed_moveIn_retryAndRefresh() {
++        val o = MoveOutcomeMapping.map(MoveResult.SourceDeleteFailed(1, 0, 0), MoveVerb.MOVE_IN, useSAF = false, sourceName = "主列表", targetName = "T")
++        assertEquals(Microcopy.toastMoveFailedSourceDelete(), o.toast)
++        assertTrue("对话框保持重试（84(b)）", o.keepRetryState)
++        assertTrue("移入源删失败＝主文件已部分移除→即刻如实刷新（§6.6）", o.refreshMain)
++    }
++
++    @Test
++    fun sourceDeleteFailed_moveOut_noRefresh() {
++        val o = MoveOutcomeMapping.map(MoveResult.SourceDeleteFailed(1, 0, 0), MoveVerb.MOVE_OUT, useSAF = false, sourceName = "S", targetName = "主列表")
++        assertEquals(Microcopy.TOAST_MOVE_OUT_FAILED, o.toast)
++        assertTrue(o.keepRetryState)
++        assertFalse("移出源删失败＝主题侧部分移除，主文件未动不刷新", o.refreshMain)
++    }
++
++    @Test
++    fun success_refreshMain_byVerb() {
++        assertTrue(MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.MOVE_IN, false, "s", "t").refreshMain)
++        assertTrue(MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.MOVE_OUT, false, "s", "t").refreshMain)
++        assertFalse("转移不动主文件", MoveOutcomeMapping.map(MoveResult.Success(1, 0, 0), MoveVerb.TRANSFER, false, "s", "t").refreshMain)
++    }
++
+     // ---------- SameDocument 防御 ----------
+ 
+     @Test
