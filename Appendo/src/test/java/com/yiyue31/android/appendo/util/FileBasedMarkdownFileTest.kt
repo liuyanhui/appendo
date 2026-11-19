@@ -322,4 +322,82 @@ class FileBasedMarkdownFileTest {
         assertEquals(2, md.deleteEntries(keys))
         assertEquals("全删归一化：文件恰为 # Appendo\\n（89(m)，无残留 ---）", "# Appendo\n", md.readAll())
     }
+
+    // ==================== N-1：append 写失败专项注入（v1.6.1 质量批，TC-010 措辞还原）====================
+    // 注入配方沿 deleteEntries_writeFailure 先例：源文件置只读（renameTo 只读目标被拒 + fallback
+    // 直接覆写被拒 → atomicWrite false）＋ assumeTrue 门控。注：POSIX 上 rename 可替换只读目标、
+    // 此注入不生效；真机目录级 chmod（89(c)）与 SAF 变体（N-2）另行覆盖。
+
+    @Test
+    fun append_writeFailure_returnsFalse_contentIntact_thenRetrySucceeds() {
+        md.initHeader()
+        md.appendEntry("2026-07-20 09:00:00.000", "x")
+        md.appendEntry("2026-07-20 10:00:00.000", "y")
+        val before = file.readText()
+        assumeTrue("本环境可将文件置只读", file.setWritable(false))
+        try {
+            assertFalse("写失败返回 false", md.append("z"))
+            assertEquals("写未发生：内容原样（temp+fsync+rename 失败不破坏原文件）", before, file.readText())
+            val orphans = file.parentFile!!.listFiles { f -> f.name.startsWith(file.name + ".tmp") }
+            assertTrue("失败后不残留孤儿 tmp", orphans?.isEmpty() ?: true)
+        } finally {
+            file.setWritable(true) // 恢复权限（teardown 需可删）
+        }
+        // 恢复权限后重试：成功且旧条目无损（失败时操作未发生，从原内容追加起）
+        assertTrue("恢复后重试成功", md.append("z"))
+        val entries = EntryParser.parse(md.readAll())
+        assertEquals(3, entries.size)
+        assertEquals("z", entries.last().content)
+    }
+
+    @Test
+    fun appendReturningTimestamp_writeFailure_returnsNull_contentIntact_thenRetrySucceeds() {
+        md.initHeader()
+        md.appendEntry("2026-07-20 09:00:00.000", "x")
+        val before = file.readText()
+        assumeTrue("本环境可将文件置只读", file.setWritable(false))
+        try {
+            assertNull("写失败返回 null（⟺ 追加未发生）", md.appendReturningTimestamp("y"))
+            assertEquals("写未发生：内容原样", before, file.readText())
+        } finally {
+            file.setWritable(true)
+        }
+        val ts = md.appendReturningTimestamp("y")
+        assertNotNull("恢复后重试成功", ts)
+        val entries = EntryParser.parse(md.readAll())
+        assertEquals(2, entries.size)
+        assertEquals("返回 ts == 末条 rawTimestamp", ts, entries.last().rawTimestamp)
+        assertEquals("y", entries.last().content)
+    }
+
+    @Test
+    fun appendEntry_writeFailure_returnsFalse_contentIntact_thenRetryPreservesTimestamp() {
+        md.initHeader()
+        md.appendEntry("2026-07-20 09:00:00.000", "x")
+        val before = file.readText()
+        assumeTrue("本环境可将文件置只读", file.setWritable(false))
+        try {
+            assertFalse("写失败返回 false（归档恢复路径同护）", md.appendEntry("2026-07-20 10:00:00.000", "restored"))
+            assertEquals("写未发生：内容原样", before, file.readText())
+        } finally {
+            file.setWritable(true)
+        }
+        assertTrue("恢复后重试成功", md.appendEntry("2026-07-20 10:00:00.000", "restored"))
+        val entries = EntryParser.parse(md.readAll())
+        assertEquals(2, entries.size)
+        assertEquals("重试仍保留指定时间戳", "2026-07-20 10:00:00.000", entries.last().rawTimestamp)
+        assertEquals("restored", entries.last().content)
+    }
+
+    @Test
+    fun append_writeFailure_onBlankFile_doesNotRewriteHeader() {
+        file.createNewFile() // 真空文件（非读失败）：走 current.isBlank() → HEADER+新条目分支
+        assumeTrue("本环境可将文件置只读", file.setWritable(false))
+        try {
+            assertFalse("写失败返回 false", md.append("x"))
+            assertEquals("空文件保持空：不得发生 header+新条目重写", "", file.readText())
+        } finally {
+            file.setWritable(true)
+        }
+    }
 }
