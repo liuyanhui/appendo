@@ -107,9 +107,13 @@ internal fun EntryInputDialog(
  * 放行时用重复计数句式，否则普通成功句（specs 42，5s 节流防刷屏）。两宿主共用；
  * **仅输入场景保存路径消费**（日历路径不带查重旁注，沿现状）。
  */
-internal fun chooseAppendToast(content: String, existingSameCount: Int): String =
+internal fun chooseAppendToast(
+    content: String,
+    existingSameCount: Int,
+    baseToast: String = Microcopy.TOAST_APPENDED
+): String =
     if (existingSameCount > 0 && DuplicateHintThrottle.shouldShow(content)) {
-        Microcopy.toastAppendedWithDuplicates(existingSameCount)
+        baseToast + Microcopy.duplicateSuffix(existingSameCount)
     } else {
-        Microcopy.TOAST_APPENDED
+        baseToast
     }

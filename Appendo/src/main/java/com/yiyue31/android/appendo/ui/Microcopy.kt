@@ -30,7 +30,10 @@ internal object Microcopy {
     const val TOAST_APPEND_FAILED = "追加失败"
 
     /** 追加成功 + 重复旁注（需求 42 语义不变；仅手动输入确认按钮路径使用）。 */
-    fun toastAppendedWithDuplicates(count: Int): String = "已追加（已有相同内容 $count 条）"
+    fun toastAppendedWithDuplicates(count: Int): String = "已追加" + duplicateSuffix(count)
+
+    /** 重复计数旁注（code-review 收敛：主/题共用，防硬编码漂移）。 */
+    fun duplicateSuffix(count: Int): String = "（已有相同内容 $count 条）"
 
     /** 归档恢复成功（无跳过，specs 43：Y=0 不显示跳过后缀）。 */
     fun toastAppendedCount(added: Int): String = "已追加 $added 条"

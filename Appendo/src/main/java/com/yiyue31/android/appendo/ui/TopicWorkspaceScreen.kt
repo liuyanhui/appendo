@@ -113,6 +113,8 @@ fun TopicWorkspaceScreen(
     var inputDraft by remember { mutableStateOf("") }
     var showArchiveDialog by remember { mutableStateOf(false) }
     var showOverflow by remember { mutableStateOf(false) }
+    // code-review 修：仅新增后定位顶部（编辑/删除重载不跳顶，保留滚动位置）
+    var scrollAfterAdd by remember { mutableStateOf(false) }
 
     // —— 移出/转移流程（MoveFlowHolder，T-26）——
     val moveFlow = remember { MoveFlowHolder() }
@@ -135,24 +137,25 @@ fun TopicWorkspaceScreen(
         } else {
             val loaded = EntryParser.parse(result.content).map { LinkEntry.from(it) }
             entries = loaded
-            // WB-3：新增后定位顶部（倒序新条恒 index 0；设计自有增强）
-            if (loaded.isNotEmpty()) listState.scrollToItem(0)
+            // code-review 修：仅新增后定位顶部（倒序新条恒 index 0）；编辑/删除保留滚动位置
+            if (scrollAfterAdd) {
+                scrollAfterAdd = false
+                if (loaded.isNotEmpty()) listState.scrollToItem(0)
+            }
             // 重载后保留仍存在的选中项（§22.4：retainedSelection 复用——被删剔除、新插入未选）
             selectedKeys = retainedSelection(selectedKeys, loaded)
         }
     }
 
-    /** 编辑保存核心（§2.3：失败保持开框不清草稿——行为修正 1；updateEntry 按 ts 首条）。 */
+    /** 编辑保存核心（§2.3：失败保持开框不清草稿——行为修正 1；updateEntry 按 ts 首条）。
+     *  code-review 修：不清对话框状态（调用方成功后统一清），防日历路径读空。 */
     fun performEditSave(): Boolean {
         val entry = editEntry ?: return false
         if (editDraft.isBlank()) {
             showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
             return false
         }
-        if (editDraft == entry.content) {
-            editEntry = null; editDraft = ""; lastEditedTs = null
-            return true
-        }
+        if (editDraft == entry.content) return true
         return try {
             val md = FileBasedMarkdownFile(context, topicFile)
             if (md.updateEntry(entry.timestamp, editDraft)) {
@@ -164,6 +167,49 @@ fun TopicWorkspaceScreen(
             }
         } catch (e: Exception) {
             showToast(context, Microcopy.TOAST_SAVE_FAILED); false
+        }
+    }
+
+    /** 追加保存核心（code-review 消重：onAppend 共用；查重旁注经 chooseAppendToast 主题基句）。 */
+    fun performAppendSave(): Boolean {
+        if (inputDraft.isBlank()) {
+            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+            return false
+        }
+        return try {
+            val md = FileBasedMarkdownFile(context, topicFile)
+            val existing = EntryParser.parse(md.readAll()).count { it.content == inputDraft }
+            if (md.appendReturningTimestamp(inputDraft) != null) {
+                showToast(context, chooseAppendToast(inputDraft, existing, Microcopy.toastAppendedToTopic(topicName)))
+                scrollAfterAdd = true
+                reloadKey++
+                true
+            } else {
+                showToast(context, Microcopy.TOAST_APPEND_FAILED); false
+            }
+        } catch (e: Exception) {
+            showToast(context, Microcopy.TOAST_APPEND_FAILED); false
+        }
+    }
+
+    /** 追加供日历核心（75 先落盘；不带查重旁注沿现状）。返回落盘内容供预填，失败 null。 */
+    fun performAppendForCalendar(): String? {
+        if (inputDraft.isBlank()) {
+            showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
+            return null
+        }
+        return try {
+            val md = FileBasedMarkdownFile(context, topicFile)
+            if (md.appendReturningTimestamp(inputDraft) != null) {
+                showToast(context, Microcopy.toastAppendedToTopic(topicName))
+                scrollAfterAdd = true
+                reloadKey++
+                inputDraft
+            } else {
+                showToast(context, Microcopy.TOAST_APPEND_FAILED); null
+            }
+        } catch (e: Exception) {
+            showToast(context, Microcopy.TOAST_APPEND_FAILED); null
         }
     }
 
@@ -528,45 +574,17 @@ fun TopicWorkspaceScreen(
             draft = inputDraft,
             onDraftChange = { inputDraft = it },
             onAppend = {
-                if (inputDraft.isBlank()) {
-                    showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                } else {
-                    try {
-                        val md = FileBasedMarkdownFile(context, topicFile)
-                        val existing = EntryParser.parse(md.readAll()).count { it.content == inputDraft }
-                        if (md.appendReturningTimestamp(inputDraft) != null) {
-                            val base = Microcopy.toastAppendedToTopic(topicName)
-                            val msg = if (existing > 0 && DuplicateHintThrottle.shouldShow(inputDraft))
-                                base + "（已有相同内容 $existing 条）" else base
-                            showToast(context, msg)
-                            inputDraft = ""
-                            showInputDialog = false
-                            reloadKey++
-                        } else showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                    } catch (e: Exception) {
-                        showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                    }
-                }
+                if (performAppendSave()) {
+                    inputDraft = ""
+                    showInputDialog = false
+                } // 失败保持开框（行为修正 1）
             },
             onRequestCalendar = {
-                if (inputDraft.isBlank()) {
-                    showToast(context, Microcopy.TOAST_CONTENT_EMPTY)
-                } else {
-                    try {
-                        val md = FileBasedMarkdownFile(context, topicFile)
-                        if (md.appendReturningTimestamp(inputDraft) != null) {
-                            val cal = CalendarEntryMapper.map(inputDraft)
-                            showToast(context, Microcopy.toastAppendedToTopic(topicName))
-                            inputDraft = ""
-                            showInputDialog = false
-                            reloadKey++
-                            if (!CalendarLauncher.launch(context, cal)) {
-                                showToast(context, Microcopy.TOAST_NO_CALENDAR)
-                            }
-                        } else showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                    } catch (e: Exception) {
-                        showToast(context, Microcopy.TOAST_APPEND_FAILED)
-                    }
+                val content = performAppendForCalendar() ?: return@EntryInputDialog
+                inputDraft = ""
+                showInputDialog = false
+                if (!CalendarLauncher.launch(context, CalendarEntryMapper.map(content))) {
+                    showToast(context, Microcopy.TOAST_NO_CALENDAR)
                 }
             },
             onDismiss = { showInputDialog = false }
@@ -616,10 +634,10 @@ fun TopicWorkspaceScreen(
                 }
             },
             onRequestCalendar = {
+                val content = editDraft // 先捕获（code-review 一致性：防 core 后状态变化读空）
                 if (!performEditSave()) return@EntryEditDialog
-                val cal = CalendarEntryMapper.map(editDraft.ifBlank { entry.content })
                 editEntry = null; editDraft = ""; lastEditedTs = null
-                if (!CalendarLauncher.launch(context, cal)) {
+                if (!CalendarLauncher.launch(context, CalendarEntryMapper.map(content))) {
                     showToast(context, Microcopy.TOAST_NO_CALENDAR)
                 }
             },

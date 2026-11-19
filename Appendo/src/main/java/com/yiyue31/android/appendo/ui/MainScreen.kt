@@ -946,13 +946,9 @@ fun MainScreen(
                 return false
             }
             val entry = selectedEntry ?: return false
-            if (editContent == entry.content) {
-                showDetailDialog = false
-                selectedEntry = null
-                editContent = ""
-                lastEditedTs = null
-                return true
-            }
+            // code-review 修：core 不清对话框状态（原"未变"分支提前清 selectedEntry/editContent
+            // 致日历路径读空——回归）；状态清理由调用方成功后统一做
+            if (editContent == entry.content) return true
             return try {
                 val mdFile = getCurrentMarkdownFile()
                 if (mdFile.updateEntry(entry.timestamp, editContent)) {
@@ -976,6 +972,8 @@ fun MainScreen(
         fun closeEditDialog() {
             showDetailDialog = false
             selectedEntry = null
+            editContent = ""
+            lastEditedTs = null
         }
 
         EntryEditDialog(
@@ -983,25 +981,21 @@ fun MainScreen(
             draft = editContent,
             onDraftChange = { editContent = it },
             onSave = {
-                if (performEditSaveCore()) {
-                    closeEditDialog()
-                    editContent = ""
-                    lastEditedTs = null
-                } // 失败保持开框（行为修正 1）——草稿保留可改后重存
+                if (performEditSaveCore()) closeEditDialog() // 失败保持开框（行为修正 1）
             },
             onRequestCalendar = {
-                // 需求 75 先落盘：空校验→有修改先保存（失败 return 保持开框）→清草稿关框跳日历
+                // 需求 75 先落盘；**先捕获草稿内容**再保存（防 core 后状态被清读空——code-review 修）
+                val content = editContent
                 if (!performEditSaveCore()) return@EntryEditDialog
-                val entry = CalendarEntryMapper.map(editContent.ifBlank { selectedEntry?.content ?: "" })
+                val entry = CalendarEntryMapper.map(content)
                 closeEditDialog()
-                editContent = ""
-                lastEditedTs = null
                 keyboardController?.hide()
                 if (!CalendarLauncher.launch(context, entry)) {
                     showToast(context, Microcopy.TOAST_NO_CALENDAR)
                 }
             },
-            onDismiss = { closeEditDialog() } // 点外/取消/返回三通道：仅关窗不清草稿（修订⑤）
+            // 点外/取消/返回三通道：仅关窗不清草稿（修订⑤；不走 closeEditDialog 因其清草稿）
+            onDismiss = { showDetailDialog = false; selectedEntry = null }
         )
     }
 
