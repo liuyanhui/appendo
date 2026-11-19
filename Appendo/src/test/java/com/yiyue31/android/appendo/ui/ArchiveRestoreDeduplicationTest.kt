@@ -90,13 +90,7 @@ content B
             LinkEntry("2026-04-18 10:31:20", "entry2")
         )
 
-        val existingKeys = existingEntries
-            .map { "${it.timestamp}|${it.content}" }
-            .toMutableSet()
-
-        val toAppend = archiveEntries.filter { entry ->
-            "${entry.timestamp}|${entry.content}" !in existingKeys
-        }
+        val (toAppend, _) = selectRestoreAdditions(archiveEntries, existingEntries)
 
         assertTrue("No entries should be appended (all duplicates)", toAppend.isEmpty())
     }
@@ -112,13 +106,7 @@ content B
             LinkEntry("2026-04-18 10:35:00", "entry3")
         )
 
-        val existingKeys = existingEntries
-            .map { "${it.timestamp}|${it.content}" }
-            .toMutableSet()
-
-        val toAppend = archiveEntries.filter { entry ->
-            "${entry.timestamp}|${entry.content}" !in existingKeys
-        }
+        val (toAppend, _) = selectRestoreAdditions(archiveEntries, existingEntries)
 
         assertEquals("Only 1 new entry should be appended", 1, toAppend.size)
         assertEquals("The new entry should be entry3", "entry3", toAppend[0].content)
@@ -135,13 +123,7 @@ content B
             LinkEntry("2026-04-18 10:36:00", "entry3")
         )
 
-        val existingKeys = existingEntries
-            .map { "${it.timestamp}|${it.content}" }
-            .toMutableSet()
-
-        val toAppend = archiveEntries.filter { entry ->
-            "${entry.timestamp}|${entry.content}" !in existingKeys
-        }
+        val (toAppend, _) = selectRestoreAdditions(archiveEntries, existingEntries)
 
         assertEquals("All 2 entries should be appended", 2, toAppend.size)
     }
@@ -154,13 +136,7 @@ content B
             LinkEntry("2026-04-18 10:31:20", "entry2")
         )
 
-        val existingKeys = existingEntries
-            .map { "${it.timestamp}|${it.content}" }
-            .toMutableSet()
-
-        val toAppend = archiveEntries.filter { entry ->
-            "${entry.timestamp}|${entry.content}" !in existingKeys
-        }
+        val (toAppend, _) = selectRestoreAdditions(archiveEntries, existingEntries)
 
         assertEquals("All archive entries should be appended", 2, toAppend.size)
     }
@@ -175,13 +151,7 @@ content B
             LinkEntry("2026-04-18 10:30:45", "different content")
         )
 
-        val existingKeys = existingEntries
-            .map { "${it.timestamp}|${it.content}" }
-            .toMutableSet()
-
-        val toAppend = archiveEntries.filter { entry ->
-            "${entry.timestamp}|${entry.content}" !in existingKeys
-        }
+        val (toAppend, _) = selectRestoreAdditions(archiveEntries, existingEntries)
 
         assertEquals("Only the truly different entry should be appended", 1, toAppend.size)
         assertEquals("different content", toAppend[0].content)
@@ -221,13 +191,7 @@ entry2
         assertEquals("Archive should have 2 entries", 2, archiveEntries.size)
 
         // Step 4: Deduplicate
-        val existingKeys = existingEntries
-            .map { "${it.timestamp}|${it.content}" }
-            .toMutableSet()
-
-        val toAppend = archiveEntries.filter { entry ->
-            "${entry.timestamp}|${entry.content}" !in existingKeys
-        }
+        val (toAppend, _) = selectRestoreAdditions(archiveEntries, existingEntries)
 
         // Step 5: Verify no duplicates
         assertEquals("No entries should be appended after restore", 0, toAppend.size)
@@ -271,15 +235,22 @@ new entry
         val existingEntries = parseMarkdownEntries(mainContent)
         val archiveEntries = parseMarkdownEntries(archiveContent)
 
-        val existingKeys = existingEntries
-            .map { "${it.timestamp}|${it.content}" }
-            .toMutableSet()
-
-        val toAppend = archiveEntries.filter { entry ->
-            "${entry.timestamp}|${entry.content}" !in existingKeys
-        }
+        val (toAppend, _) = selectRestoreAdditions(archiveEntries, existingEntries)
 
         assertEquals("Only 1 non-duplicate should be appended", 1, toAppend.size)
         assertEquals("old entry from archive", toAppend[0].content.trim())
+    }
+
+    @Test
+    fun testDeduplication_withinArchiveDuplicates_onlyOnce() {
+        val existing = emptyList<LinkEntry>()
+        val archive = listOf(
+            LinkEntry("2026-04-18 10:30:45", "dup"),
+            LinkEntry("2026-04-18 10:30:45", "dup"),
+            LinkEntry("2026-04-18 10:31:20", "other")
+        )
+        val (toAdd, skipped) = selectRestoreAdditions(archive, existing)
+        assertEquals("归档内部重复只追加一次", 2, toAdd.size)
+        assertEquals(1, skipped)
     }
 }

@@ -75,25 +75,14 @@ internal fun RestoreConfirmDialog(
                             fileRepository.getDefaultFile()
                         )
 
-                        // 去重（timestamp|content），用 appendEntry 保留归档原时间戳（v1.1 B3：去重 key 才真正生效）
-                        val existingContent = mdFile.readAll()
-                        val existingEntries = parseMarkdownEntries(existingContent)
-                        val existingKeys = existingEntries
-                            .map { "${it.timestamp}|${it.content}" }
-                            .toMutableSet()
-
-                        var addedCount = 0
-                        var skippedCount = 0
-                        for (entry in archiveEntries) {
-                            val key = "${entry.timestamp}|${entry.content}"
-                            if (key !in existingKeys) {
-                                mdFile.appendEntry(entry.timestamp, entry.content)
-                                existingKeys.add(key)
-                                addedCount++
-                            } else {
-                                skippedCount++
-                            }
+                        // 去重（timestamp|content）抽纯函数 [selectRestoreAdditions]（TD-056 消镜像腿），
+                        // 用 appendEntry 保留归档原时间戳（v1.1 B3：去重 key 才真正生效）
+                        val existingEntries = parseMarkdownEntries(mdFile.readAll())
+                        val (toAdd, skippedCount) = selectRestoreAdditions(archiveEntries, existingEntries)
+                        for (entry in toAdd) {
+                            mdFile.appendEntry(entry.timestamp, entry.content)
                         }
+                        val addedCount = toAdd.size
 
                         if (addedCount > 0) {
                             fileRepository.setFileLastModified(System.currentTimeMillis())
@@ -125,4 +114,28 @@ internal fun RestoreConfirmDialog(
             }
         }
     )
+}
+
+/**
+ * 恢复去重选择纯函数（TD-056：自 [RestoreConfirmDialog] 内联循环抽取，JVM 直测消镜像腿）。
+ * key＝`timestamp|content`；选中即加入 key 集——**归档内部重复 likewise 去重**。
+ * 返回 (待追加列表, 跳过数)。不涉 I/O，追加由调用方逐条 appendEntry（保留原时间戳）。
+ */
+internal fun selectRestoreAdditions(
+    archive: List<LinkEntry>,
+    existing: List<LinkEntry>
+): Pair<List<LinkEntry>, Int> {
+    val keys = existing.mapTo(mutableSetOf()) { "${it.timestamp}|${it.content}" }
+    val toAdd = mutableListOf<LinkEntry>()
+    var skipped = 0
+    for (entry in archive) {
+        val key = "${entry.timestamp}|${entry.content}"
+        if (key !in keys) {
+            keys.add(key)
+            toAdd.add(entry)
+        } else {
+            skipped++
+        }
+    }
+    return toAdd to skipped
 }

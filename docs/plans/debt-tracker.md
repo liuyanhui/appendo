@@ -175,4 +175,4 @@ TD-010 ~ TD-015 全部修复并随 v1.2.1 发布（详见 CHANGELOG 1.2.1、`tas
 - **TD-053 executeMove 双宿主编排重复**：MainScreen 与 TopicWorkspaceScreen 各持 ~40 行同构编排（设计承认的"编排两步走'过渡态）。第三 Move 消费方出现时统一迁入 MoveFlow。优先级：低。
 - **TD-054 chooseAppendToast 主题变体**：✅ 已解决（/simplify：tryAppend 共享核心＋baseToast 参数，两宿主收拢 EntrySaveOps.kt）。
 - **TD-055 archiveActionFor 参数微胖**：archiveName 在 NothingToArchive/Failed 分支未使用。无功能影响，记录不修。优先级：低。
-- **TD-056 归档恢复去重镜像腿**：ArchiveRestoreDeduplicationTest 为手工镜像算法，生产在 Composable；宜抽 internal 纯函数直测消除漂移。优先级：中。
+- **TD-056 归档恢复去重镜像腿**：✅ 已解决（selectRestoreAdditions 纯函数抽取，测试直调生产＋补归档内部去重用例；顺带修正镜像与生产的内部去重语义差）。
