@@ -80,6 +80,93 @@ internal class MoveFlowHolder {
         executing = false
         failed = false
     }
+
+    // ==================== N-4/TD-051：快照/恢复（设计 §3.3，2026-11-19） ====================
+
+    /** 恢复期一次性标记：快照 executing=true（事务被重建打断，真实结局未知——待重载重推导）。
+     *  非 UI 状态（不参与 recomposition），首次重载成功后由宿主经 [MoveRestoreDecision] 消费。 */
+    internal var restoredFromExecuting: Boolean = false
+        private set
+
+    /** 纯数据快照（经 [MoveFlowSnapshotCodec] 编码进 rememberSaveable）。 */
+    fun snapshot(): MoveFlowSnapshot = MoveFlowSnapshot(
+        step = step,
+        verb = verb,
+        targetPath = transferTarget?.file?.path,
+        targetName = transferTarget?.displayName,
+        targetCreatedAt = transferTarget?.createdAt ?: 0L,
+        targetEntryCount = transferTarget?.entryCount ?: 0,
+        newTopicInput = newTopicInput,
+        failed = failed,
+        executing = executing
+    )
+
+    /** 宿主消费重推导后清零一次性标记。 */
+    fun consumeRestoredFromExecuting() {
+        restoredFromExecuting = false
+    }
+
+    companion object {
+        /**
+         * 从快照恢复：executing=true → 暂记 failed=true（呈「重试」面貌）＋置 [restoredFromExecuting]
+         * ——synchronized 块零挂起点（架构师读码实证）：配置变更不能打断事务中段，事务跑完但结果被
+         * 丢弃＝快照 executing 可能「撒谎」；真实结局（完成/未发生/部分）由宿主重载后按选中集存空
+         * 经 [MoveRestoreDecision] 重推导。进程死亡则事务真被终止（84(d) 软中间态幂等收敛）。
+         * target entryCount 用快照值（禁 0 占位——F1-C1 教训），首次 listTopics 刷新对齐。
+         */
+        fun restored(s: MoveFlowSnapshot): MoveFlowHolder {
+            val h = MoveFlowHolder()
+            h.verb = s.verb
+            h.step = s.step
+            h.transferTarget = if (s.targetPath == null) null else TopicDocument(
+                file = java.io.File(s.targetPath),
+                displayName = s.targetName ?: "",
+                createdAt = s.targetCreatedAt,
+                entryCount = s.targetEntryCount
+            )
+            h.newTopicInput = s.newTopicInput
+            h.failed = s.failed
+            if (s.executing) {
+                h.failed = true // 暂记重试面貌——结局待重推导
+                h.restoredFromExecuting = true
+            }
+            return h
+        }
+    }
+}
+
+/** [MoveFlowHolder.snapshot] 纯数据（编码面＝[MoveFlowSnapshotCodec]，字段序只追加末尾）。 */
+internal data class MoveFlowSnapshot(
+    val step: MoveFlowStep?,
+    val verb: MoveVerb?,
+    val targetPath: String?,
+    val targetName: String?,
+    val targetCreatedAt: Long,
+    val targetEntryCount: Int,
+    val newTopicInput: String,
+    val failed: Boolean,
+    val executing: Boolean
+) {
+    companion object {
+        /** 关闭态快照（损坏/缺字段解码的安全默认）。 */
+        val CLOSED = MoveFlowSnapshot(null, null, null, null, 0L, 0, "", failed = false, executing = false)
+    }
+}
+
+/**
+ * 恢复重推导决策（N-4 设计 §3.3，纯函数 JVM 可测）：事务被重建打断（快照 executing=true）后，
+ * 真实结局由「重载后选中集（经 retainedSelection 过滤）是否为空」判定——
+ * 空＝条目已不在源＝事务实际已完成 → 静默关流程退多选（列表已反映现实，不发假失败信号）；
+ * 非空＝未发生/部分完成（84(d) 软中间态）→ 保持 failed 重试（幂等收敛）。
+ */
+internal object MoveRestoreDecision {
+    enum class Action { CLOSE_FLOW, KEEP_RETRY, NONE }
+
+    fun decide(restoredExecuting: Boolean, retainedKeysEmpty: Boolean): Action = when {
+        !restoredExecuting -> Action.NONE
+        retainedKeysEmpty -> Action.CLOSE_FLOW
+        else -> Action.KEEP_RETRY
+    }
 }
 
 /** 动作产出（消费方据此 toast／保持重试态／主列表刷新）。 */

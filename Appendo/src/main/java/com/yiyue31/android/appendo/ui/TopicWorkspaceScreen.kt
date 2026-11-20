@@ -36,11 +36,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yiyue31.android.appendo.data.FileRepository
 import com.yiyue31.android.appendo.data.TopicCreateResult
@@ -90,30 +92,34 @@ fun TopicWorkspaceScreen(
     var entries by remember(filePath) { mutableStateOf<List<LinkEntry>?>(null) }
     var loadFailed by remember(filePath) { mutableStateOf(false) }
     var reloadKey by remember(filePath) { mutableIntStateOf(0) }
+    // F1 标题行计数（16.D 修订注一 C1）：仅成功分支赋值——重载不闪 0、读失败保留旧值；
+    // filePath 键控＝切主题重置（聚焦工程评审 #3：不依赖「加载中不渲染标题行」隐式前提）
+    var titleCount by remember(filePath) { mutableIntStateOf(0) }
+    var hasLoaded by remember(filePath) { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    // —— 多选态（§7.2/§22.4）——
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedKeys by remember { mutableStateOf<Set<EntryKey>>(emptySet()) }
-    var previewEntry by remember { mutableStateOf<LinkEntry?>(null) }
+    // —— 多选态（§7.2/§22.4）＋N-4 saveable（过重建）——
+    var selectionMode by rememberSaveable { mutableStateOf(false) }
+    var selectedKeys by rememberSaveable(stateSaver = EntryKeySetSaver) { mutableStateOf<Set<EntryKey>>(emptySet()) }
+    var previewEntry by rememberSaveable(stateSaver = LinkEntrySaver) { mutableStateOf<LinkEntry?>(null) }
 
-    // —— 编辑/删除（WB-2，102(a)(b)(c)；草稿三件套宿主镜像 §2.2）——
-    var editEntry by remember { mutableStateOf<LinkEntry?>(null) }
-    var editDraft by remember { mutableStateOf("") }
-    var lastEditedTs by remember { mutableStateOf<String?>(null) }
-    var deleteTargetTs by remember { mutableStateOf<String?>(null) }
-    var showBatchDelete by remember { mutableStateOf(false) }
+    // —— 编辑/删除（WB-2，102(a)(b)(c)；草稿三件套宿主镜像 §2.2）＋N-4 saveable——
+    var editEntry by rememberSaveable(stateSaver = LinkEntrySaver) { mutableStateOf<LinkEntry?>(null) }
+    var editDraft by rememberSaveable { mutableStateOf("") }
+    var lastEditedTs by rememberSaveable(stateSaver = NullableStringSaver) { mutableStateOf<String?>(null) }
+    var deleteTargetTs by rememberSaveable(stateSaver = NullableStringSaver) { mutableStateOf<String?>(null) }
+    var showBatchDelete by rememberSaveable { mutableStateOf(false) }
 
-    // —— 新增/归档/溢出菜单（WB-3，102(d)(e)(g)）——
-    var showInputDialog by remember { mutableStateOf(false) }
-    var inputDraft by remember { mutableStateOf("") }
-    var showArchiveDialog by remember { mutableStateOf(false) }
+    // —— 新增/归档/溢出菜单（WB-3，102(d)(e)(g)）；瞬态 showOverflow 不保全（N-4 分类）——
+    var showInputDialog by rememberSaveable { mutableStateOf(false) }
+    var inputDraft by rememberSaveable { mutableStateOf("") }
+    var showArchiveDialog by rememberSaveable { mutableStateOf(false) }
     var showOverflow by remember { mutableStateOf(false) }
     // code-review 修：仅新增后定位顶部（编辑/删除重载不跳顶，保留滚动位置）
     var scrollAfterAdd by remember { mutableStateOf(false) }
 
-    // —— 移出/转移流程（MoveFlowHolder，T-26）——
-    val moveFlow = remember { MoveFlowHolder() }
+    // —— 移出/转移流程（MoveFlowHolder，T-26）＋N-4 saveable（executing 暂记 failed＋重推导标记）——
+    val moveFlow = rememberSaveable(saver = MoveFlowHolderSaver) { MoveFlowHolder() }
     var topics by remember { mutableStateOf<List<TopicDocument>>(emptyList()) }
     var sameNameExisting by remember { mutableStateOf<TopicDocument?>(null) }
 
@@ -130,16 +136,39 @@ fun TopicWorkspaceScreen(
         }
         if (result == null || result.failed) {
             loadFailed = true
+            scrollAfterAdd = false // 聚焦评审 #6：读失败也重置——防重试成功后意外跳顶
         } else {
             val loaded = EntryParser.parse(result.content).map { LinkEntry.from(it) }
             entries = loaded
-            // code-review 修：仅新增后定位顶部（倒序新条恒 index 0）；编辑/删除保留滚动位置
+            // F1（修订注一 C1）：计数仅成功分支赋值——重载期保留旧值无 N→0→N 闪烁
+            titleCount = loaded.size
+            hasLoaded = true
+            // code-review 修：仅新增后定位顶部（倒序新条恒首条目——F1 headerSlot 后＝index 1）；编辑/删除保留滚动位置
             if (scrollAfterAdd) {
                 scrollAfterAdd = false
-                if (loaded.isNotEmpty()) listState.scrollToItem(0)
+                if (loaded.isNotEmpty()) listState.scrollToItem(1)
             }
             // 重载后保留仍存在的选中项（§22.4：retainedSelection 复用——被删剔除、新插入未选）
             selectedKeys = retainedSelection(selectedKeys, loaded)
+            // N-4 陈旧校验（TD-051 §3.4）：恢复目标不存在→关框留草稿（editDraft 归属 lastEditedTs 保留）
+            if (editEntry != null && loaded.none { it.timestamp == editEntry?.timestamp }) {
+                editEntry = null
+            }
+            if (deleteTargetTs != null && loaded.none { it.timestamp == deleteTargetTs }) {
+                deleteTargetTs = null
+            }
+            // N-4 executing 重推导（TD-051 §3.3）：选中集已过滤后判定真实结局
+            if (moveFlow.restoredFromExecuting) {
+                moveFlow.consumeRestoredFromExecuting()
+                when (MoveRestoreDecision.decide(true, selectedKeys.isEmpty())) {
+                    MoveRestoreDecision.Action.CLOSE_FLOW -> {
+                        moveFlow.close() // 事务实际已完成——静默收尾
+                        selectionMode = false // ＝exitSelectionMode()（局部函数后置声明，此处内联）
+                        selectedKeys = emptySet()
+                    }
+                    else -> Unit // KEEP_RETRY＝暂记 failed 重试面貌；NONE 不可达（标记已守卫）
+                }
+            }
         }
     }
 
@@ -257,6 +286,8 @@ fun TopicWorkspaceScreen(
             if (selectionMode) {
                 MultiSelectTopBar(
                     selectedCount = selectedKeys.size,
+                    // F1 约束③：多选长选滚动场景主题上下文（区分度真机后重评——聚焦评审 #5）
+                    contextName = topicName,
                     onExit = { exitSelectionMode() },
                     onMoveIn = {}, // 缺省单钮不被消费——action 槽两钮注入（§21.2）
                     action = {
@@ -292,23 +323,9 @@ fun TopicWorkspaceScreen(
                 )
             } else {
                 TopAppBar(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                topicName,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                Microcopy.topicEntryCountLine(entries?.size ?: 0),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1
-                            )
-                        }
-                    },
+                    // F1（16.D 修订注一）：主题名＋计数移顶栏下方标题行（随列表滚动）；title 槽清空——
+                    // 空槽后 actions 水平左移＝预期（动作集不变；聚焦工程评审 #2 注明接受）
+                    title = {},
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(
@@ -361,45 +378,50 @@ fun TopicWorkspaceScreen(
         ) {
             when {
                 loadFailed -> {
-                    // 读失败如实呈现（评审 C3）＋重试（readAllWithStatus 重跑）
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                Microcopy.TOPIC_READ_FAILED,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.padding(top = 12.dp))
-                            Button(onClick = { reloadKey++ }) {
-                                Text(Microcopy.BTN_RETRY)
+                    // 读失败如实呈现（评审 C3）＋重试（readAllWithStatus 重跑）；
+                    // F1：标题行常驻分支顶部，计数保留上次成功值（不得呈错 0——修订注一 C1）
+                    Column {
+                        TopicTitleRow(topicName, titleCount, hasLoaded)
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    Microcopy.TOPIC_READ_FAILED,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.padding(top = 12.dp))
+                                Button(onClick = { reloadKey++ }) {
+                                    Text(Microcopy.BTN_RETRY)
+                                }
                             }
                         }
                     }
                 }
                 entries == null -> {
-                    // 加载中（沿 ArchiveDetailScreen「加载中...」先例）
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("加载中...")
+                    // 加载中（沿 ArchiveDetailScreen「加载中...」先例）；
+                    // F1：标题行常驻，首载计数隐藏（hasLoaded=false——不呈 0），重载期保留旧值
+                    Column {
+                        TopicTitleRow(topicName, titleCount, hasLoaded)
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("加载中...")
+                        }
                     }
                 }
                 entries!!.isEmpty() -> {
-                    // L1 中性句空态（§24.1：L3 T-31 切「点右上角＋添加条目」引导句）
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                Microcopy.TOPIC_WORKSPACE_EMPTY_TITLE,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    // F1（修订注一⑥）：标题行（名＋「0 条」）＋仅引导句——「暂无条目」行退役
+                    //（0 条已由标题行计数表达，去重）；EMPTY_BODY 引导句保留（TC-042 判据不动）
+                    Column {
+                        TopicTitleRow(topicName, titleCount, true)
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             if (Microcopy.TOPIC_WORKSPACE_EMPTY_BODY.isNotBlank()) {
                                 Text(
                                     Microcopy.TOPIC_WORKSPACE_EMPTY_BODY,
@@ -416,7 +438,8 @@ fun TopicWorkspaceScreen(
                         entryCount = entries!!.size,
                         listState = listState,
                         readOnly = false, // 徽标正向启用（K13 反向）
-                        headerText = "", // 计数已在顶栏（§22.1 headerText=null 口径）
+                        headerText = "", // F1：固定 header 退役——标题行经 headerSlot 承载
+                        headerSlot = { TopicTitleRow(topicName, titleCount, true) }, // 随列表滚动（修订注一①）
                         selectionMode = selectionMode,
                         selectedKeys = selectedKeys,
                         onToggleSelection = { entry ->
@@ -628,5 +651,32 @@ fun TopicWorkspaceScreen(
     // 多选态长按预览（§22.4——预览含复制动作，「长按复制不被占用」）
     previewEntry?.let { entry ->
         EntryPreviewDialog(entry = entry, onDismiss = { previewEntry = null })
+    }
+}
+
+/**
+ * F1 标题行（16.D 修订注一，2026-11-19）：主题名＋「N 条」——顶栏下方全宽，随列表滚动（正常态＝
+ * headerSlot 首项；加载/失败/空态＝分支顶部）。非交互（onSurface 而非 primary——Apple 大标题用
+ * label 色，消除假 affordance；改名入口维持主题卡左滑）。容量＝2 行约 28 汉字（50 字上限名截断为
+ * 已知限制）。bottom padding 4dp＋LazyColumn spacedBy(8dp)＝12dp 总间距（聚焦评审 #4 验算）。
+ */
+@Composable
+private fun TopicTitleRow(topicName: String, titleCount: Int, countVisible: Boolean) {
+    Column(modifier = Modifier.padding(bottom = 4.dp)) {
+        Text(
+            topicName,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (countVisible) {
+            Text(
+                Microcopy.topicEntryCountLine(titleCount),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

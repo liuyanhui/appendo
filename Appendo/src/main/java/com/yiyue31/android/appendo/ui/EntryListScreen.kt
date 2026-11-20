@@ -82,6 +82,8 @@ fun EntryListScreen(
     listState: LazyListState? = null,
     readOnly: Boolean = false,
     headerText: String = "已收集 $entryCount 条",
+    /** F1（16.D 修订注一①）：随列表滚动的头部槽（工作区标题行消费；主宿主不传＝零变化）。 */
+    headerSlot: (@Composable () -> Unit)? = null,
     onEntryLongClick: (String) -> Unit = { },
     onEntrySwipeToDelete: (String) -> Unit = { },
     onEntryClick: (LinkEntry) -> Unit = { },
@@ -97,7 +99,8 @@ fun EntryListScreen(
     // headerText 参数化＝戊批次 T-24 工作区复用，默认字面＝现状「已收集 N 条」，消费方零改动；
     // 空白串＝不渲染——工作区计数在顶栏（§22.1 headerText=null 口径））
     Column {
-        if (headerText.isNotBlank()) Text(
+        // F1：headerSlot 存在时固定 headerText 不渲染（防双 header——聚焦评审 #8 卫语句）
+        if (headerSlot == null && headerText.isNotBlank()) Text(
             headerText,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
@@ -111,6 +114,10 @@ fun EntryListScreen(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // F1：标题行＝首项（随列表滚动）；item 为 LazyListScope 成员函数无需额外 import
+            headerSlot?.let { slot ->
+                item(key = "topic_header") { slot() }
+            }
             itemsIndexed(
                 // 按时间戳降序（决策 i）：恢复的旧时间戳条目回到历史位置，而非顶部。
                 // 时间戳格式零填充 ISO 风格，字符串降序 == 时间降序。

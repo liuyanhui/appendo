@@ -53,6 +53,7 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
+    implementation(libs.compose.runtime.saveable) // N-4：显式化（原经 compose-ui 传递——防 BOM 转可选断链）
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
     implementation(libs.core.ktx)

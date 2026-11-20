@@ -1,5 +1,6 @@
 package com.yiyue31.android.appendo.ui
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ButtonDefaults
@@ -13,6 +14,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import com.yiyue31.android.appendo.util.EntryKey
 
 /**
@@ -53,6 +55,8 @@ fun retainedSelection(selectedKeys: Set<EntryKey>, currentEntries: List<LinkEntr
 @Composable
 internal fun MultiSelectTopBar(
     selectedCount: Int,
+    /** F1（16.D 修订注一约束③）：多选主题上下文缩略名（工作区传；主宿主缺省 null＝零变化）。 */
+    contextName: String? = null,
     onExit: () -> Unit,
     onMoveIn: () -> Unit,
     action: @Composable () -> Unit = {
@@ -74,10 +78,27 @@ internal fun MultiSelectTopBar(
             }
         },
         title = {
-            Text(
-                Microcopy.topBarSelectedCount(selectedCount),
-                fontWeight = FontWeight.SemiBold
-            )
+            // F1 约束③：主题上下文两行标题（缩略名小字＋选中计数）；无 contextName＝现状单行
+            if (contextName != null) {
+                Column {
+                    Text(
+                        contextName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        Microcopy.topBarSelectedCount(selectedCount),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            } else {
+                Text(
+                    Microcopy.topBarSelectedCount(selectedCount),
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         },
         actions = {
             action()

@@ -74,6 +74,12 @@ internal object Microcopy {
     /** SAF 写失败（授权可能已失效，附注保留）。 */
     const val TOAST_APPEND_FAILED_SAF_REVOKED = "追加失败：自定义目录授权可能已失效，请打开 appendo 重选文件"
 
+    /** 打开文件（N-5/TD-052）：无查看器分支（ActivityNotFoundException）——此时「请安装」才诚实。 */
+    const val TOAST_OPEN_FAILED_NO_VIEWER = "打开失败，请安装 Markdown 查看器"
+
+    /** 打开文件（N-5/TD-052）：通用失败分支（FileProvider/其他异常）——不再误导为缺查看器。 */
+    const val TOAST_OPEN_FAILED = "打开失败"
+
     // ---- 次级动作后续反馈（specs 75：独立反馈，不回滚已落盘内容）----
 
     const val TOAST_NO_CALENDAR = "未找到日历应用"
@@ -222,6 +228,9 @@ internal object Microcopy {
      * 工作区空态两行（§24.1）。L1 中性句：无新增钮可指（新增＝L3 T-31），TITLE 单行、
      * BODY 留空不渲染；T-31 落地后切「暂无条目／点右上角“＋”添加条目」终句（§25.4）。
      */
+    /** F1（16.D 修订注一⑥，2026-11-19）退役：空态「暂无条目」行——0 条已由标题行计数表达（去重）。
+     *  常量保留注记，消费方已移除。 */
+    @Deprecated("F1 空态去重退役（2026-11-19）——注记保留", level = DeprecationLevel.WARNING)
     const val TOPIC_WORKSPACE_EMPTY_TITLE = "暂无条目"
     const val TOPIC_WORKSPACE_EMPTY_BODY = "点右上角“＋”添加条目"
 

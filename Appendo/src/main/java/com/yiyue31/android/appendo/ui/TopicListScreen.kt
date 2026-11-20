@@ -36,6 +36,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +63,12 @@ import java.util.Date
 
 /** 页内新建流程状态机（修订二 §15.1 C5，沿移入流程状态机模式）：null＝未开启；NAMING ⇄ SAME_NAME_PROMPT。 */
 private enum class TopicCreateStep { NAMING, SAME_NAME_PROMPT }
+
+/** N-4：新建步骤可空枚举 Saver（空串＝null 哨兵；非法名＝损坏→null）。 */
+private val CreateStepSaver: Saver<TopicCreateStep?, String> = Saver(
+    save = { it?.name ?: "" },
+    restore = { raw -> raw.takeIf { it.isNotEmpty() }?.let { name -> runCatching { TopicCreateStep.valueOf(name) }.getOrNull() } }
+)
 
 /**
  * 主题独立页（topic-move 设计修订二 §14.1/§15.1，T-14，条文 90）：`topics` 路由列表页——
@@ -92,14 +100,15 @@ fun TopicListScreen(
     var showTopicDeleteDialog by remember { mutableStateOf(false) }
     var topicToDelete by remember { mutableStateOf<TopicDocument?>(null) }
     // WB-4：左滑恢复退役→改名（99/104）；会话级一次性钳 0 指路
-    var renameTarget by remember { mutableStateOf<TopicDocument?>(null) }
-    var renameInput by remember { mutableStateOf("") }
-    var deleteGuideShown by remember { mutableStateOf(false) }
+    // N-4/TD-051：命名/改名草稿（第四丢失面）过重建；renameTarget 经 TopicDocumentSaver
+    var renameTarget by rememberSaveable(stateSaver = TopicDocumentSaver) { mutableStateOf<TopicDocument?>(null) }
+    var renameInput by rememberSaveable { mutableStateOf("") }
+    var deleteGuideShown by remember { mutableStateOf(false) } // 会话级一次性，不保全（N-4 分类）
 
     // —— 页内新建状态机（§15.1 C5）：命名输入由本处持有——同名提示返回命名框时输入保留（可改名）——
-    var createStep by remember { mutableStateOf<TopicCreateStep?>(null) }
-    var newTopicInput by remember { mutableStateOf("") }
-    var sameNameExistingName by remember { mutableStateOf("") }
+    var createStep by rememberSaveable(stateSaver = CreateStepSaver) { mutableStateOf<TopicCreateStep?>(null) }
+    var newTopicInput by rememberSaveable { mutableStateOf("") }
+    var sameNameExistingName by remember { mutableStateOf("") } // 同名提示瞬态，不保全
 
     /** 重载主题列表（E-4：一律下放 Dispatchers.IO——修正归档页主线程重载路径，不沿袭）。 */
     fun reloadTopics() {

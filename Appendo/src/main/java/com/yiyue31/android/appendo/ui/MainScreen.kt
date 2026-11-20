@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,25 +136,25 @@ fun MainScreen(
     var defaultFile by remember { mutableStateOf(fileRepository.getDefaultFile()) }
     var entryCount by remember { mutableIntStateOf(0) }
     var entries by remember { mutableStateOf(emptyList<LinkEntry>()) }
-    var showArchiveDialog by remember { mutableStateOf(false) }
-    var showInputDialog by remember { mutableStateOf(false) }
+    var showArchiveDialog by rememberSaveable { mutableStateOf(false) } // N-4：用户工作流对话框过重建
+    var showInputDialog by rememberSaveable { mutableStateOf(false) }   // N-4：同上
     var showAboutDialog by remember { mutableStateOf(false) }
-    var inputContent by remember { mutableStateOf("") }
+    var inputContent by rememberSaveable { mutableStateOf("") } // N-4/TD-051：输入草稿过重建（禁挂键/inputs——106 修订⑤红线）
     var lastModified by remember { mutableStateOf(fileRepository.getFileLastModified()) }
     var showMenu by remember { mutableStateOf(false) }
     var showThemePicker by remember { mutableStateOf(false) }
     var showSetupGuideDialog by remember { mutableStateOf(false) }
     // SAF 授权失效（TD-021）：读失败且 SAF 模式时弹此对话框，不再静默空列表
     var showSafInvalidDialog by remember { mutableStateOf(false) }
-    var showDetailDialog by remember { mutableStateOf(false) }
-    var selectedEntry by remember { mutableStateOf<LinkEntry?>(null) }
-    var editContent by remember { mutableStateOf("") }
+    var showDetailDialog by rememberSaveable { mutableStateOf(false) } // N-4：编辑框过重建
+    var selectedEntry by rememberSaveable(stateSaver = LinkEntrySaver) { mutableStateOf<LinkEntry?>(null) } // N-4
+    var editContent by rememberSaveable { mutableStateOf("") } // N-4：编辑草稿过重建
     /** 编辑草稿归属条目（关窗不丢字：同条目重开沿用草稿、换条目重置为原文；保存成功两者皆清） */
-    var lastEditedTs by remember { mutableStateOf<String?>(null) }
+    var lastEditedTs by rememberSaveable(stateSaver = NullableStringSaver) { mutableStateOf<String?>(null) } // N-4：草稿归属标记过重建
 
     // 「移入主题」多选态（topic-move 设计 §7.2）：选中集按 EntryKey 维护（§7.3，与复合 key 解耦）
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedKeys by remember { mutableStateOf(emptySet<EntryKey>()) }
+    var selectionMode by rememberSaveable { mutableStateOf(false) } // N-4：多选态过重建
+    var selectedKeys by rememberSaveable(stateSaver = EntryKeySetSaver) { mutableStateOf(emptySet<EntryKey>()) } // N-4：选中集（容量守卫截断）
 
     /** 退出多选并清空选中集（§7.2：关闭 × / 系统返回 / SAF 失效回退共用） */
     fun exitSelectionMode() {
@@ -163,11 +164,17 @@ fun MainScreen(
 
     // —— 「移入主题」流程（WA-1 迁 MoveFlowHolder：三动词单一状态机，工作区同款）——
     // 宿主自持：目标列表快照/同名指路对象/长按预览条目（Holder 持流程态与命名草稿）
-    val moveFlow = remember { MoveFlowHolder() }
-    var moveTopics by remember { mutableStateOf(emptyList<TopicDocument>()) }
-    var sameNameExisting by remember { mutableStateOf<TopicDocument?>(null) }
+    // N-4：移入流程过重建（save＝保存时点 snapshot 现值；restore＝restored 工厂——executing 暂记
+    // failed＋restoredFromExecuting 标记，重载后经 MoveRestoreDecision 重推导真实结局）
+    val moveFlow = rememberSaveable(saver = MoveFlowHolderSaver) { MoveFlowHolder() }
+    var moveTopics by remember { mutableStateOf(emptyList<TopicDocument>()) } // 重载不保存
+    var sameNameExisting by remember { mutableStateOf<TopicDocument?>(null) } // 由流程步重推导不保存
+    // N-4：删除确认态提升至顶层＋saveable（原嵌套列表分支 remember——重建丢失；提升后
+    // refreshEntryCount 可做陈旧校验；读失败分支不参与组合＝自然不恢复＝正确行为）
+    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
+    var entryToDeleteTimestamp by rememberSaveable { mutableStateOf("") }
     // 多选态长按预览（§7.4）：持有预览条目，对话框本体＝TopicMoveDialogs.EntryPreviewDialog
-    var previewEntry by remember { mutableStateOf<LinkEntry?>(null) }
+    var previewEntry by rememberSaveable(stateSaver = LinkEntrySaver) { mutableStateOf<LinkEntry?>(null) } // N-4
 
     val topicRepository = remember { TopicRepository(context) }
 
@@ -235,6 +242,26 @@ fun MainScreen(
                 entryCount = newEntries.size
                 // §7.3：刷新后保留仍存在的选中项——被删剔除、新插入默认未选（勾选按 key 查 Set，不错位）
                 selectedKeys = retainedSelection(selectedKeys, newEntries)
+                // N-4 陈旧校验（TD-051 §3.4）：恢复目标不存在→关框留草稿（editContent 归属 lastEditedTs 保留）
+                if (selectedEntry != null && newEntries.none { it.timestamp == selectedEntry?.timestamp }) {
+                    selectedEntry = null
+                }
+                if (entryToDeleteTimestamp.isNotEmpty() && newEntries.none { it.timestamp == entryToDeleteTimestamp }) {
+                    entryToDeleteTimestamp = ""
+                    showDeleteDialog = false
+                }
+                // N-4 executing 重推导（TD-051 §3.3）：事务被重建打断后按选中集存空判定真实结局
+                if (moveFlow.restoredFromExecuting) {
+                    moveFlow.consumeRestoredFromExecuting()
+                    when (MoveRestoreDecision.decide(true, selectedKeys.isEmpty())) {
+                        MoveRestoreDecision.Action.CLOSE_FLOW -> {
+                            moveFlow.close() // 事务实际已完成——静默收尾，不发假失败信号
+                            exitSelectionMode()
+                        }
+                        MoveRestoreDecision.Action.KEEP_RETRY -> Unit // 已暂记 failed＝重试面貌（84(d) 幂等收敛）
+                        MoveRestoreDecision.Action.NONE -> Unit
+                    }
+                }
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) {
                     android.util.Log.e("MainScreen", "Failed to refresh entries", e)
@@ -686,11 +713,7 @@ fun MainScreen(
                     }
                 }
             } else {
-                // Entry list with shared component
-                var showDeleteDialog by remember { mutableStateOf(false) }
-                // Store timestamp instead of index for reliable deletion
-                var entryToDeleteTimestamp by remember { mutableStateOf("") }
-
+                // Entry list with shared component（N-4：删除确认态已提升至顶层 saveable）
                 EntryListScreen(
                     entries = entries,
                     entryCount = entryCount,
@@ -1260,22 +1283,36 @@ internal fun shareContent(context: android.content.Context, mdFile: MarkdownFile
     }
 }
 
+/** FileProvider authority 后缀（N-5/TD-052：与 manifest `${applicationId}.fileprovider` 联动）。 */
+private const val FILE_PROVIDER_AUTHORITY_SUFFIX = ".fileprovider"
+
 private fun openFile(context: android.content.Context, useSAF: Boolean, fileUri: Uri?, defaultFile: File) {
     try {
         val uri = if (useSAF && fileUri != null) {
             fileUri
         } else {
-            android.net.Uri.fromFile(defaultFile)
+            // N-5（TD-052）：file:// URI 在 targetSdk≥24 抛 FileUriExposedException →
+            // FileProvider content:// URI（androidx.core 已含，零新依赖）；SAF 分支不变。
+            androidx.core.content.FileProvider.getUriForFile(
+                context, context.packageName + FILE_PROVIDER_AUTHORITY_SUFFIX, defaultFile
+            )
         }
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "text/markdown")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // chooser 接收方授权传播（API 24+ ClipData 通道）
+            clipData = android.content.ClipData.newRawUri(null, uri)
         }
         context.startActivity(Intent.createChooser(intent, "打开文件"))
+    } catch (e: android.content.ActivityNotFoundException) {
+        if (BuildConfig.DEBUG) {
+            android.util.Log.e("MainScreen", "Open file failed: no viewer", e)
+        }
+        showToast(context, Microcopy.TOAST_OPEN_FAILED_NO_VIEWER)
     } catch (e: Exception) {
         if (BuildConfig.DEBUG) {
             android.util.Log.e("MainScreen", "Open file failed", e)
         }
-        showToast(context, "打开失败，请安装 Markdown 查看器")
+        showToast(context, Microcopy.TOAST_OPEN_FAILED)
     }
 }

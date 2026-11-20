@@ -35,6 +35,18 @@
             </intent-filter>
         </activity>
 
+        <!-- N-5（TD-052）：默认模式「打开文件」file:// URI 触 FileUriExposedException（targetSdk≥24）
+             → FileProvider content:// URI（androidx.core 已含，零新依赖）；路径声明 res/xml/file_paths.xml -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

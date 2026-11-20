@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- N-5（TD-052）：FileProvider 路径声明——「打开文件」默认模式 content:// URI 授权。
+     双路径覆盖 FileRepository.getDefaultFile()：外部私有目录优先＋内部 filesDir 兜底。 -->
+<paths>
+    <external-files-path name="external_files" path="." />
+    <files-path name="internal_files" path="." />
+</paths>
