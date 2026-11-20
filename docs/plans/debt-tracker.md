@@ -167,8 +167,8 @@ TD-010 ~ TD-015 全部修复并随 v1.2.1 发布（详见 CHANGELOG 1.2.1、`tas
 
 - **同秒归档覆盖已修复**：getArchiveFile 单点 `_n` 后缀（上限 100 不覆盖），主/题双消费方统一（test-cases §9 该条改「已修复」，TC-098b 验收）。
 - **TD-042/039/040/043 维持**：单消费方重复，不满足 107 准入门槛③，未随批抽象（范围冻结）。
-- **新登记 TD-051 uiMode 重建丢草稿/多选态**：系统深浅切换触发 Activity 重建，remember 级草稿/多选/moveFlow 丢失（与「关窗不丢字」精神冲突的边界）；test-cases §9 已声明，待立批次（ViewModel 提升）。优先级：中。
-- **新登记 TD-052 默认模式「打开文件」FileUriExposedException**：targetSdk34 下 Uri.fromFile 抛异常→误导性 toast；低频场景（SAF 模式正常），test-cases §9 已声明。优先级：低。
+- **新登记 TD-051 uiMode 重建丢草稿/多选态**：系统深浅切换触发 Activity 重建，remember 级草稿/多选/moveFlow 丢失（与「关窗不丢字」精神冲突的边界）；test-cases §9 已声明，待立批次（ViewModel 提升）。优先级：中。→ **代码完成（2026-11-20，v1.6.1 N-4）**：rememberSaveable 分立式（3 自定义 Saver＋MoveFlowHolder 快照/恢复＋executing 重推导）双宿主＋主题页接线；设计 td-051-state-hoisting-design.md 定稿（三视角 26 项）；JVM 新增 24 用例全绿（270 基线）；真机 10x 段（TC-100~106）待设备稳定后验证。
+- **新登记 TD-052 默认模式「打开文件」FileUriExposedException**：targetSdk34 下 Uri.fromFile 抛异常→误导性 toast；低频场景（SAF 模式正常），test-cases §9 已声明。优先级：低。→ **代码完成（2026-11-20，v1.6.1 N-5 案 a）**：FileProvider content:// URI（manifest provider＋file_paths.xml 双路径＋ClipData 授权传播）＋catch 分流诚实 toast（无查看器/通用失败分离，Microcopy 常量化）；零新依赖。真机验证（默认模式打开）待设备稳定。
 
 ### 己批次复审登记（2026-11-18，可后置）
 

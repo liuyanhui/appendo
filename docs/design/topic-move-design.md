@@ -1188,7 +1188,7 @@ main ──顶栏「主题」──▶ topics ──点卡片──▶ topic_wor
 | 项 | 设计 |
 |---|---|
 | 路由 | `topic_workspace/{filePath}?scrollTs={ts}`（filePath 经 Uri.encode——沿既有调用点构造式） |
-| 顶栏 | 标题＝主题名（primary SemiBold，2026-11-11 裁定维持）＋同行小字「N 条」（97(f) 计数镜像，onSurfaceVariant）；返回箭头；actions＝新增（AddCircle 沿主题页先例）＋复制全部＋分享全部。**选型预警（评审 E）**：material-icons-core 无 ContentCopy 字形（Share/Add 有）——复制动作图标在核心集内选型或改文字动作，**计划阶段定，不引入 extended**（§15.1 纪律） |
+| 顶栏 | 标题＝主题名（primary SemiBold，2026-11-11 裁定维持）＋同行小字「N 条」（97(f) 计数镜像，onSurfaceVariant）；返回箭头；actions＝新增（AddCircle 沿主题页先例）＋复制全部＋分享全部。**选型预警（评审 E）**：material-icons-core 无 ContentCopy 字形（Share/Add 有）——复制动作图标在核心集内选型或改文字动作，**计划阶段定，不引入 extended**（§15.1 纪律）。**2026-11-19 F1 修订注一就地注（16.D 定稿）：本行标题结构已被取代——五槽挤压标题槽致中文名截断＋计数不渲染（真机实证）；主题名＋计数移至顶栏下方全宽标题行（标题区），顶栏 title 槽清空、actions 保留；落地设计＝workspace-completion-design.md §12** |
 | 加载 | `LaunchedEffect(filePath)`＋`Dispatchers.IO` 经 `FileBasedMarkdownFile.readAllWithStatus`；**读失败如实呈现**「读取失败，请重试」＋重试按钮（TOPIC_READ_FAILED/BTN_RETRY） |
 | 列表 | `EntryListScreen(entries, count, readOnly=false, listState=…, headerText=null)`——徽标（readOnly=false 即启用提醒徽标——K13 定例「只读页不显徽标」的工作区反向；:122-125）、滑动删除、点击编辑、长按复制、多选参数正向复用；**specs 97「新增模式参数而非翻只读开关」的等价解释**：徽标由 readOnly 派生（readOnly=false 即正确启用）、滑动/多选为独立参数正向复用——工作区语境＝全部正确启用，无第三态需求故不新增冗余参数（措辞按复核工程师 E12 核正）；此解释在条文落点表登记，就地注义务同步注明（评审 E12） |
 | 空态 | 条目 0→「暂无条目」＋新增引导（§24；不复用「此归档为空」旧句） |

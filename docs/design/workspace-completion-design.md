@@ -6,6 +6,7 @@
 > |---|---|---|
 > | 2026-11-18 | Yiyue + Claude | 首次创建（草案） |
 > | 2026-11-18 | Yiyue + Claude | **三视角设计评审修订（v2）**：架构/工程/测试 21 项必修全落——段A 等价口径重裁定（两处声明式行为修正）/MoveFlowHolder 草稿与指路旗标承载/归档解析尾部锚定含后缀形态＋同秒后缀主界面随批统一/词族对象 ArchiveWordbook/§8 补 MainActivity＋ArchiveListScreen/§7 九条全部新落标注/TC-ID 09x 段方案/新增定位去失实引用。**定稿（2026-11-18 用户确认「定稿」）**——test-cases v1.1 追加与执行计划启动 |
+> | 2026-11-19 | Yiyue + Claude | **§12 修订追加——F1 标题行（16.D 修订注一落地，定稿）**：真机发现顶栏五槽挤压标题槽（名截断＋计数不渲染，用户目检确认）→用户裁定方案 c（三动作留顶栏零反转）→三视角评审 20 项（3 必修簇：计数闪烁回归防护/随动义务/行为规范六约束）→specs 修订注一定稿（用户裁定委托）→本节落地：TopicTitleRow（22sp onSurface 非交互/2 行 28 字容量已知限制）＋headerSlot 参数化随列表滚动＋MultiSelectTopBar contextName 两行标题＋titleCount/hasLoaded 独立计数（仅成功分支赋值）＋四态行为表＋scrollToItem(1) 随动＋空态 TITLE 行退役去重；§4.4/§4.5 就地注＋topic-move-design §22.1 就地注＋test-cases v1.1.2 三判据随动。聚焦工程评审后编码 |
 
 ## 1. 概述与需求映射
 
@@ -88,10 +89,10 @@ data class ArchiveWordbook(
 多选 bar 第三钮「删除」→ 确认框 `dlgBatchDeleteBody(n)` → `deleteEntries(selectedKeys)` → `reloadKey++`＋退出多选。
 
 ### 4.4 新增（102(d)）
-顶栏「＋」→ `EntryInputDialog`；`appendReturningTimestamp`；重复提示非阻塞（共享 helper）；成功 toast `toastAppendedToTopic(name)`；顶栏计数 N+1。**新增后定位**：`appendReturningTimestamp` 返回 ts → `reloadKey++` → 载入完成后 `listState.scrollToItem(0)`（倒序新条恒 index 0；同协程顺序无竞态）——**设计自有增强**（specs 101(k) 无此要求，声明不冒引；如不要可一行去留）。
+顶栏「＋」→ `EntryInputDialog`；`appendReturningTimestamp`；重复提示非阻塞（共享 helper）；成功 toast `toastAppendedToTopic(name)`；顶栏计数 N+1（**2026-11-19 F1 修订注一就地注：计数移至标题区（顶栏下方标题行），「标题区计数 N+1」——见 §12；新增后定位索引随 headerSlot 随动 scrollToItem(1)**）。**新增后定位**：`appendReturningTimestamp` 返回 ts → `reloadKey++` → 载入完成后 `listState.scrollToItem(0)`（倒序新条恒 index 0；同协程顺序无竞态）——**设计自有增强**（specs 101(k) 无此要求，声明不冒引；如不要可一行去留）。
 
 ### 4.5 出口与顶栏（102(e)）
-顶栏 actions＝「＋」（AddCircle）｜「复制全部」（TextButton）｜「分享」（Share 图标）；归档/清空收**溢出菜单**。`copyContent/shareContent` 提权 internal；**长按单条复制需接线**（现状工作区未传 `onEntryLongClick`＝有振动无复制——非零改动，§8 落 TopicWorkspaceScreen）。
+顶栏 actions＝「＋」（AddCircle）｜「复制全部」（TextButton）｜「分享」（Share 图标）；归档/清空收**溢出菜单**（**2026-11-19 F1 修订注一就地注：actions 五槽保留不动——102(e)/D1 零反转；标题（主题名＋计数）自顶栏分离至下方标题行，顶栏 title 槽清空——见 §12**）。`copyContent/shareContent` 提权 internal；**长按单条复制需接线**（现状工作区未传 `onEntryLongClick`＝有振动无复制——非零改动，§8 落 TopicWorkspaceScreen）。
 
 ### 4.6 排序（102(h)）
 EntryListScreen 内部既有 `sortedByDescending` 两消费方天然同口径（读码核实 :117）；设计钉死口径＋v1.1 排序用例防回归（EntryListScreen 本身零改动）。
@@ -180,3 +181,59 @@ EntryListScreen/TopicBadge/ArchiveRestore（除来源字段外）零改动。
 | 等价性回归（340 行迁出） | 段A 独立提交＋§0.3.1-2 先绿后进＋段A/B 门槛分列（§10）＋两处行为修正显式声明按新判据 |
 | 归档数据安全（覆盖/剔除/混排） | 尾部锚定三类解析＋后缀单点统一＋上限 100 不覆盖＋P0 用例含后缀件可见可恢复 |
 | 混合批次归因 | 拆段硬排序（A→B→C）＋段间批次门槛（§0.3.1：本批 P0＋受影响面全过） |
+
+---
+
+## 12. 修订追加——F1 标题行（16.D 修订注一落地，2026-11-19）
+
+> **状态：定稿**（specs 16.D 修订注一 2026-11-19 用户确认——裁定委托；本节为其设计落地，聚焦工程评审后编码——角色组合随评审对象调整，CLAUDE.md 条款）。
+>
+> **聚焦工程评审修正（8 项，2026-11-19）**：①titleCount/hasLoaded 改 `remember(filePath)` 键控（消除「加载中分支不渲染标题行」隐式防闪前提——未来重构不可破）；②空 title 槽后 actions 水平左移＝预期（动作集不变，像素位置变——测试/用户知情）；③TopicTitleRow bottom padding 12→4dp（LazyColumn spacedBy 8dp 叠加验算＝12dp 总间距）；④contextName 三长标钮挤压下实际 3-4 字——区分度真机后重评；⑤scrollAfterAdd 读失败分支重置（随码落）；⑥headerText 渲染加 headerSlot==null 卫语句（防双 header）；⑦「item 需 import」发现不成立（LazyListScope 成员函数，编译自证）；⑧scrollToItem(1) 越界由 isNotEmpty 守卫覆盖。
+> **输入**：修订注一六约束①~⑥＋三视角评审收敛簇 C1（计数闪烁回归）/C2（随动义务）/C3（行为规范）。读码实证：TopicWorkspaceScreen.kt:294-352（顶栏）/355-429（四态）/125-144（重载）、EntryListScreen.kt:84-148（header＋LazyColumn）、MultiSelect.kt:54-80（contextual 顶栏）。
+
+### 12.1 布局与形态
+
+- **顶栏**：title 槽清空（名＋计数移出）；actions 五槽不动（返回＋新增/复制全部/分享全部/更多/多选）——102(e)/D1 零反转。
+- **标题行**（新 composable `TopicTitleRow`，TopicWorkspaceScreen.kt 内私有——消费方 1，不建共享抽象，107③）：
+  - 主题名：`titleLarge`（22sp）SemiBold **onSurface**（非 primary——Apple 大标题用 label 色；消除「看着能点」假 affordance，用户评审#3；**非交互**，改名入口维持 104 主题卡左滑，不新增入口）；`maxLines=2`＋溢出省略；
+  - 计数：`labelSmall` onSurfaceVariant，复用 `Microcopy.topicEntryCountLine`；布局＝Column(名, 计数) 左对齐＋bottom padding 12dp（沿 EntryListScreen header 先例）；
+  - **容量验算（约束④）**：360dp 屏−2×20dp padding＝320dp；22sp 汉字≈22dp/字→每行约 14 字×2 行≈**28 字**；50 字符上限名截断于 ~28 字——**已知限制**：同前缀长名超 28 字不可区分（首字标锚点＝用户评审可后置项，范围冻结不做）。
+- **滚动行为（约束①）**：标题行＝列表首项，**随列表滚动滚出**（评审推荐；收起进顶栏不可行——五槽容不下收起态小标题，架构师核验）。实现：`EntryListScreen` 新参数 `headerSlot: (@Composable () -> Unit)? = null`——非 null → `LazyColumn` 内 `item(key = "topic_header") { headerSlot() }` 且跳过固定 headerText 渲染；**主宿主不传→零改动**（headerText 固定路径保留，参数化非抽象）。
+  - **定位随动**：工作区 `scrollAfterAdd` 的 `scrollToItem(0)` → headerSlot 存在时 **`scrollToItem(1)`**（新条目＝index 1；§4.4 定位增强语义不变；空列表不触发——仅新增成功后置位）。
+- **多选态（约束③）**：标题行仍为列表首项（随滚动）；**`MultiSelectTopBar` 新参数 `contextName: String? = null`**——非 null → title 变两行 Column{主题名 `labelMedium` maxLines=1 省略 onSurfaceVariant；「已选 N 条」现行 SemiBold 样式}——长选滚动场景主题上下文保留（用户评审#2）；主宿主传 null→零改动。三长标钮挤压下主题名省略（缩略优于丢弃）；两行高度 ≈40dp < 64dp 顶栏✓。
+- **四态行为（约束⑥，when{} 四分支逐一钉死）**：
+  | 态 | 标题行位置 | 计数呈现 |
+  |---|---|---|
+  | 正常列表 | headerSlot item(0)（随滚动） | titleCount 现值 |
+  | 加载中（首次，entries==null） | 分支 Column 顶部 | **隐藏**（hasLoaded=false——首载前不呈 0）＋居中「加载中...」现状 |
+  | 读失败 | 分支 Column 顶部 | **titleCount 上次成功值**（不得呈错 0——C1）＋居中失败重试现状 |
+  | 空态 | 分支 Column 顶部 | 「0 条」＋居中**仅引导句**（`TOPIC_WORKSPACE_EMPTY_TITLE`「暂无条目」行退役——计数已由标题行表达，去重用户评审#6；`EMPTY_BODY` 引导句保留，TC-042 判据＝引导句不动） |
+- **计数数据源（约束②，C1 必修）**：新增 `var titleCount by remember { mutableIntStateOf(0) }`＋`var hasLoaded by remember { mutableStateOf(false) }`——**仅 LaunchedEffect 成功分支赋值**（titleCount=list.size；hasLoaded=true）；重载期间保留旧值（无 N→0→N 闪烁）；读失败保留旧值；顶栏旧 title Row 的 `entries?.size ?: 0` 消费随 title 槽清空移除。
+
+### 12.2 断言随动（C2，已落盘）
+
+- test-cases **v1.1.2**：TC-040「标题区主题名＋N 条＋随列表滚动」/TC-094「标题区 N+1（重载不闪 0）」/TC-095「标题区标题即时更新」；specs 97(f) 就地注已落。
+- 真机增强断言（随 TC-040/094 执行）：滚动后标题行滚出／多选 contextual bar 含缩略主题名／连续操作计数无 0 闪／深色标题行可读（TC-071 口径）。
+
+### 12.3 改动面
+
+| 文件 | 改动 |
+|---|---|
+| TopicWorkspaceScreen.kt | 顶栏 title Row 移除；TopicTitleRow＋titleCount/hasLoaded；四态接线；scrollToItem(1)；MultiSelectTopBar contextName 接线 |
+| EntryListScreen.kt | headerSlot 参数＋item(0) 渲染＋headerText 跳过（~10 行，主宿主默认 null 零改动） |
+| MultiSelect.kt | contextName 参数＋两行 title（~8 行，默认 null 零改动） |
+| Microcopy.kt | TOPIC_WORKSPACE_EMPTY_TITLE 退役（grep 消费方确认仅工作区空态；退役先例沿 §7 口径） |
+
+零新依赖／零 manifest 改动／出口与事务逻辑零触碰。
+
+### 12.4 测试
+
+- **JVM**：既有 246 回归全绿（两共享组件新参数均默认值→主宿主零行为变化）；无新纯逻辑（titleCount 接线在 Composable 内，JVM 不可直测——真机目检判据）。
+- **真机（修复包装机后）**：F1 回归（验收主题 4 字名全显＋计数可见）／TC-040／TC-094 N+1／TC-095 标题即时更新／滚动滚出／多选缩略名／四态呈现／重载不闪 0／深色可读。
+
+### 12.5 风险
+
+- header key="topic_header" 与 itemsIndexed key "${ts}_$index" 无碰撞；
+- scrollToItem(1) 索引硬编码——headerSlot 存在时 header 恒 item 0，索引稳定（键查找过度设计，不做）；
+- 空态 TITLE 常量退役触 TC-042 判据核对（判据＝引导句，TITLE 行 removal 不触判据——test-cases TC-042 现行字面已核）；
+- 标题行占垂直空间（~50dp 单行名）——随滚动滚出归还空间（约束①满足；首屏列表可视区较 F1 前略减，评审已权衡）。
