@@ -133,8 +133,8 @@ internal fun NewTopicNameDialog(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(Unit) {
-        // 打开即聚焦输入框并弹键盘（沿手动输入对话框先例）
-        focusRequester.requestFocus()
+        // 打开即聚焦输入框并弹键盘（沿手动输入对话框先例）；requestFocusSafe＝N-4 恢复开态防崩
+        focusRequester.requestFocusSafe()
         keyboardController?.show()
     }
 
@@ -315,7 +315,7 @@ internal fun RenameTopicDialog(
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        focusRequester.requestFocusSafe() // N-4 恢复开态防崩（重建帧竞态）
         keyboardController?.show()
     }
     AlertDialog(

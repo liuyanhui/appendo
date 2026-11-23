@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -286,14 +287,17 @@ fun TopicWorkspaceScreen(
             if (selectionMode) {
                 MultiSelectTopBar(
                     selectedCount = selectedKeys.size,
-                    // F1 约束③：多选长选滚动场景主题上下文（区分度真机后重评——聚焦评审 #5）
-                    contextName = topicName,
+                    // F2（真机实证 2026-11-20）：主题上下文由标题行承载（多选态仍为列表首项可见）——
+                    // contextual bar 槽位被 96 钉死的三长钮挤至 ~60px，contextName 不可行（评审 #5 预估过乐观）
                     onExit = { exitSelectionMode() },
                     onMoveIn = {}, // 缺省单钮不被消费——action 槽两钮注入（§21.2）
                     action = {
+                        // F2：三长标钮紧凑 padding（12→8dp）——标题槽 ~60px→~140px（单行「已选 N 条」可容）
+                        val compact = PaddingValues(horizontal = 8.dp)
                         TextButton(
                             onClick = { startMoveOut() },
                             enabled = selectedKeys.isNotEmpty(),
+                            contentPadding = compact,
                             colors = ButtonDefaults.textButtonColors(
                                 contentColor = MaterialTheme.colorScheme.primary
                             )
@@ -303,6 +307,7 @@ fun TopicWorkspaceScreen(
                         TextButton(
                             onClick = { startTransfer() },
                             enabled = selectedKeys.isNotEmpty(),
+                            contentPadding = compact,
                             colors = ButtonDefaults.textButtonColors(
                                 contentColor = MaterialTheme.colorScheme.primary
                             )
@@ -313,6 +318,7 @@ fun TopicWorkspaceScreen(
                         TextButton(
                             onClick = { showBatchDelete = true },
                             enabled = selectedKeys.isNotEmpty(),
+                            contentPadding = compact,
                             colors = ButtonDefaults.textButtonColors(
                                 contentColor = MaterialTheme.colorScheme.error
                             )

@@ -1,6 +1,5 @@
 package com.yiyue31.android.appendo.ui
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ButtonDefaults
@@ -55,8 +54,6 @@ fun retainedSelection(selectedKeys: Set<EntryKey>, currentEntries: List<LinkEntr
 @Composable
 internal fun MultiSelectTopBar(
     selectedCount: Int,
-    /** F1（16.D 修订注一约束③）：多选主题上下文缩略名（工作区传；主宿主缺省 null＝零变化）。 */
-    contextName: String? = null,
     onExit: () -> Unit,
     onMoveIn: () -> Unit,
     action: @Composable () -> Unit = {
@@ -78,27 +75,15 @@ internal fun MultiSelectTopBar(
             }
         },
         title = {
-            // F1 约束③：主题上下文两行标题（缩略名小字＋选中计数）；无 contextName＝现状单行
-            if (contextName != null) {
-                Column {
-                    Text(
-                        contextName,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        Microcopy.topBarSelectedCount(selectedCount),
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            } else {
-                Text(
-                    Microcopy.topBarSelectedCount(selectedCount),
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            // F2（真机实证 2026-11-20）：三长标钮（96 钉死字面）挤压标题槽至 ~60px——两行上下文标题
+            // 不可行（评审 #5 的 3-4 字预估实为零可见）；主题上下文由工作区标题行承载（多选态仍为
+            // 列表首项），此处恢复单行＋maxLines=1 消除竖排换行劣化
+            Text(
+                Microcopy.topBarSelectedCount(selectedCount),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         },
         actions = {
             action()

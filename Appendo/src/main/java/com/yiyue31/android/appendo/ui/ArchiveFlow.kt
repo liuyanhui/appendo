@@ -178,7 +178,8 @@ internal fun ArchiveChoiceDialog(
     topicName: String? = null
 ) {
     val archiveAndClearFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { archiveAndClearFocus.requestFocus() } // 93：默认焦点落「归档并清空」
+    // requestFocusSafe＝N-4 恢复开态防崩（重建帧竞态）；93：默认焦点落「归档并清空」
+    LaunchedEffect(Unit) { archiveAndClearFocus.requestFocusSafe() }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(Microcopy.DLG_ARCHIVE_TITLE, fontWeight = FontWeight.SemiBold) },

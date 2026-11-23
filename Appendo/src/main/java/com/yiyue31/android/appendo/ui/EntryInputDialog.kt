@@ -47,8 +47,9 @@ internal fun EntryInputDialog(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(Unit) {
-        // 打开即聚焦输入框并弹键盘（沿手动输入对话框先例）
-        focusRequester.requestFocus()
+        // 打开即聚焦输入框并弹键盘（沿手动输入对话框先例）；
+        // requestFocusSafe＝N-4 恢复开态防崩（重建帧 focus 节点晚挂载竞态，2026-11-20 真机实证）
+        focusRequester.requestFocusSafe()
         keyboardController?.show()
     }
 
