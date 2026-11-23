@@ -21,6 +21,7 @@
 | 2026-09-02 | Yiyue + Claude | TD-022 决策（用户拍板）：**维持现状**（解锁后重注册/补发），成本/风险评估与理由入 §5.3 注记、§9 ADR 与 debt-tracker |
 | 2026-09-17 | Yiyue + Claude | v1.3 主题功能（需求 48~56）同步：§2 模块地图加 `ui/theme`、§3.6 SP 清单加 `theme_mode`；浅色强调色对比度取舍登记 TD-023（D1 方案 A：浅色不动） |
 | 2026-11-06 | Claude（Generator，T-19） | v1.4「移入主题＋主题 IA 分家＋归档清空合并」两批次同步：§1.2/§2 补 `topics` 路由与新文件（TopicListScreen/SwipeCard/TopicBadge/MultiSelect/TopicMoveDialogs/ArchiveRestore/Microcopy/TopicRepository/ThemePreferences/EntryKey/TopicMoveTransaction）与 `ArchiveOutcome`；§3.3 出口表增主题长按复制全文；§3.5 补主题文档协议（`topics/` 目录＋createdAt SP＋移入组合事务＋指路旗标）；§3.6 增 `appendo_topics`；§4.2 归档清空边界更新（TD-017 语义重构为 `ArchiveOutcome` 决策映射）；§5.4/§6.1/§6.3 提醒联动与写盘点更新；§11 SP 键清单核对 |
+| 2026-11-23 | Claude | v1.6.1 质量批同步（F1/N-4/N-5 三案）：新增 **§6.4 UI 状态保全**（rememberSaveable 分立式＋StateSavers 纯核心红线＋executing 重推导＋SafeFocus 恢复帧防御＋工作区标题行/titleCount 防闪）；§7 测试表补三测试类（StateSaversTest/MoveFlowHolderRestoreTest/MoveRestoreDecisionTest——JVM 246→270）；§6.1 注 v1.6.1 起主线程同步 I/O 债务未随本批变化（TD-008 仍在）。F1/N-4 细节权威＝workspace-completion-design.md §12 与 td-051-state-hoisting-design.md |
 
 ---
 
@@ -264,11 +265,23 @@ SAF 模式回退：由两个入口各自检查 `isFileUriValid()`，失效即 `c
 
 `MainScreen` 每 2 秒比对 `FileRepository.getFileLastModified()`——注意这是**存在 SP 里的逻辑时间戳**（应用每次写完调 `setFileLastModified(now)`），不是文件系统 mtime。效果：本应用各入口（分享接收、手动输入）的写入都会被轮询捕获；**外部编辑不会触发刷新**（与"不支持外部编辑"的立场一致）。该 mtime 由**各写点手工调用**维护（主列表写点在 `MainScreen`——手动输入/编辑/删除、移入事务成功与 `SourceDeleteFailed`（后者源可能已部分移除，立即主动刷新）；分享写入在 `ShareReceiverActivity`；恢复路径在 `ui/ArchiveRestore`，v1.4 起归档/主题两路共用各计一处）——**新增写入路径必须补调**，否则列表不刷新。v1.4 新写盘点口径：**主题文档（`topics/`）写入不触发主文件 mtime**（不同文件，主题页自身导航加载）；「归档并清空」清空成功后改调 `clearFileLastModified()`（清键驱动下轮轮询重读——文件已空、清键语义更准）＋`refreshEntryCount()`，「只归档」主文件未动不调。
 
+### 6.4 UI 状态保全（v1.6.1 N-4/TD-051，2026-11-20）
+
+Activity 重建（uiMode 深浅切换等）与 SavedInstanceState 恢复路径上，**用户工作流状态经 `rememberSaveable` 保全**（此前 remember 级全丢——TD-051 债已偿）。设计权威＝`docs/design/td-051-state-hoisting-design.md`（定稿）。
+
+- **分立式接线**：各字段原位 `remember` → `rememberSaveable`；自定义 Saver 仅三类＋一：`EntryKeySetSaver`（选中集，排序确定性编码＋200KB 容量守卫**确定性截断**）、`LinkEntrySaver`／`TopicDocumentSaver`（目标身份）、`MoveFlowHolderSaver`（快照/恢复工厂）——全部在 `ui/StateSavers.kt`，**纯核心禁 import android.\***（`isReturnDefaultValues=true` 下 JVM 假绿围栏）。
+- **保存面**（两宿主镜像＋主题页）：草稿三件套／多选态＋选中集／编辑与删除目标身份／用户工作流对话框旗标／moveFlow（含 `newTopicInput`）。**不保存**：重载可再得的数据态（entries/topics）、瞬态 UI（菜单/关于/外观框）、系统态对话框（首启引导/SAF 失效——检查逻辑重触发）、`scrollAfterAdd`。
+- **红线**：草稿/多选/flow 的 `rememberSaveable` **既无 key 也无 inputs**（两机制任一变更即丢已保存状态——106 修订⑤延伸）。
+- **executing 重推导**：move 事务全程在 `synchronized` 块内**零挂起点**——重建不能打断事务中段，事务跑完但结果被丢弃＝快照 `executing` 可能失真。恢复＝暂记 failed 呈重试面貌＋一次性标记，**首次重载成功后按选中集（经 retainedSelection 过滤）存空重推导**真实结局：空＝事务已完成→静默关流程；非空＝未发生/部分（84(d) 软中间态）→保持重试幂等收敛（`MoveRestoreDecision` 纯函数，JVM 钉死）。
+- **恢复开态副作用防御**：恢复帧 LaunchedEffect 自动聚焦早于对话框窗口挂载会崩（真机实证 C-1）——所有自动聚焦走 `ui/SafeFocus.kt` 的 `requestFocusSafe()`（等一帧＋runCatching）。
+- **工作区标题行（F1，16.D 修订注一）**：主题名＋计数在顶栏下方全宽标题行（LazyColumn 首项，随列表滚动）；计数走独立 `titleCount` 状态**仅成功分支赋值**（重载不闪 0、读失败保留旧值）；多选 contextual bar 三长钮（96 钉死字面）挤压下主题上下文由标题行承载。
+- 进程死亡：同一 SavedStateRegistry 机制覆盖（Saver round-trip JVM 钉死）；本机（RMX3560）真机配方不可达（am kill/kill -9/WRITE_SECURE_SETTINGS 均被 ROM 拒）——降级论证在案（test-cases TC-104）。
+
 ## 7. 测试策略
 
 | 层 | 现状 | 说明 |
 |---|---|---|
-| 纯 JVM 单测 | ✅ 主体 | `EntryParserTest`、`CalendarEntryMapperTest`、`DuplicateHintThrottleTest`、`FileBasedMarkdownFileTest`（mock Context）、`FileRepositoryFirstLaunchTest`、`MarkdownParserTest`（parseMarkdownEntries 薄包装，K5 对应）、`ArchiveRestoreDeduplicationTest`、`EntryDeletionIntegrationTest` |
+| 纯 JVM 单测 | ✅ 主体 | `EntryParserTest`、`CalendarEntryMapperTest`、`DuplicateHintThrottleTest`、`FileBasedMarkdownFileTest`（mock Context）、`FileRepositoryFirstLaunchTest`、`MarkdownParserTest`（parseMarkdownEntries 薄包装，K5 对应）、`ArchiveRestoreDeduplicationTest`、`EntryDeletionIntegrationTest`；v1.4~v1.6.1 增 `TopicMoveTransactionTest`、`TopicRepositoryTest`、`MoveOutcomeMappingTest`、`ArchiveOutcomeMappingTest`、`MultiSelectTest`、`SecondLevelEquivalenceTest` 等；**v1.6.1 增 `StateSaversTest`/`MoveFlowHolderRestoreTest`/`MoveRestoreDecisionTest`**（N-4 状态保全纯核心——Saver round-trip/corruption 穷举/executing 重推导矩阵；270 基线） |
 | Robolectric | ⚠️ 依赖已声明，当前环境跑不了（android-all jar 下载失败，TD-003） | FileBased 路径用 mock Context 纯 JVM 覆盖 |
 | Instrumented | ⚠️ androidTest 依赖已备、用例未写（TD-006） | SAF 路径（真 ContentResolver、授权失效）目前靠真机手动验证 |
 
