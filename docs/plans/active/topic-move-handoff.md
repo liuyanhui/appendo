@@ -1,18 +1,18 @@
-# 交接快照（v1.6.0 发布后 · 2026-11-19 · 可续接入口）
+# 交接快照（v1.6.1 发布后 · 2026-11-24 · 可续接入口）
 
-> **新会话续接方式**：读本文件＋`docs/plans/active/v1.6.1-quality-plan.md`（后续批次任务清单）即可继续，无需旧会话上下文。判据唯一源＝`docs/test-cases.md`；债务＝`docs/plans/debt-tracker.md`；需求＝`docs/specs.md` 第 16 章；架构＝`docs/architecture.md`。
+> **新会话续接方式**：判据唯一源＝`docs/test-cases.md`（v1.2.1）；债务＝`docs/plans/debt-tracker.md`；需求＝`docs/specs.md` 第 16 章；架构＝`docs/architecture.md`。无进行中批次——新工作从 debt-tracker 立项或用户新需求起步（SDLC 从阶段1）。
 >
-> **当前基线**：v1.6.0 已 tag＋push（main≈`f47bec8`）；**242 JVM 全绿**；工作区与主界面同权（编辑/删除/批量/新增/复制/分享/归档）＋批量清理＋主题归档件＋改名＋共享架构（EntrySaveOps/ArchiveFlow/MoveFlow/共享对话框）。AI 测试数据已清理（主文件仅真实笔记、topics 空）。
+> **当前基线**：**v1.6.1（versionCode 14）已 push＋tag**（`5daf0a2` 后）；**270 JVM 全绿**；v1.6.1 质量批 N-1~N-8 全闭环＋F1 工作区标题行修复（specs 16.D 修订注一）＋C-1 恢复帧防崩＋F2 多选栏布局（详 `docs/plans/completed/v1.6.1-quality-plan.md` §4 与 `D:/tmp/appendo-v161-backup/evidence-log.md`）。发布口径：无 GitHub Release 页（用户裁定「无需 release」）。
 >
-> **未完成／后续**（已立成 v1.6.1 质量批计划，见该文件 §1）：
-> - 外部阻塞：GitHub Release v1.5.0/v1.6.0 网页（gh/API 被网络挡，需用户手动）。
-> - 真机补测：SAF 变体组、09x 双宿主等价全组、秒级旧条目真机变体（设备需 `svc power stayon true` 保持解锁）。
-> - 债务：TD-051 uiMode 重建丢草稿（需先设计＋评审）、TD-052 打开文件 FileUriExposed、TD-053 executeMove 双宿主（条件触发）、TD-055 记录不修。
-> - 无真机可先行：N-1 append 写失败注入、N-6/N-8。
+> **遗留／待裁定**：
+> - **用户数据裁定**：主文件两条真实笔记（11-17 addyosmani / 11-20 poteto 链接）2026-11-23 夜经应用内路径被删（疑用户手动）——现存 2 条真实；完整 4 条备份 `D:/tmp/main-before.md`，是否恢复待用户裁定（勿擅自回写）。
+> - 真机降级腿（JVM 主判/论证在案，配方受限）：TC-043b（并发注入三通道堵）/TC-104/105（死亡配方 ROM 拒）/TC-106/095b/097b/098b；目检项：振动触感、深色标题行可读性、长按复制粘贴核对无隐形字符、首字标颜色观感、「不保留活动」下草稿恢复。
+> - 债务（debt-tracker）：TD-003（Robolectric 环境）/TD-006（instrumented）/TD-008（主线程同步 I/O）/TD-024（真机自动化约束——本批已大幅突破：adb 驾驶四事实源可行）/TD-029（乙设置页）/TD-053（executeMove 双宿主统一，条件未触发）/TD-055（记录不修）等。
+> - 独立仓库：raw-pile/grill-me/appendo-inbox-sync（待裁决 P1~P3，与本仓无关）。
 >
 > **流程纪律**：SDLC（需求→设计→计划→编码→评审→测试→真机→发布），阶段评审自动执行；只问产物定稿/发布/真开放裁定。范围冻结：不新增功能。
 >
-> 历史交接内容见下文（v1.5.0/戊批次/16.C 提醒退役等，供追溯）。
+> 历史交接内容见下文（v1.6.0/v1.5.0/戊批次/16.C 提醒退役等，供追溯）。
 
 
 ---

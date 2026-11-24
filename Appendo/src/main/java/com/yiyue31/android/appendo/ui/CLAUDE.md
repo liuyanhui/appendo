@@ -9,7 +9,7 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 | 文件 | 职责 | 复杂度 |
 |------|------|--------|
 | `MainScreen.kt` | 主页面：笔记列表、2x2 操作网格（手动输入/复制全部/分享全部/归档）、多选模式与移入主题、归档二选一对话框、输入/编辑/关于/外观选择对话框、首启存储引导、文件轮询刷新；顶层 sealed `ArchiveOutcome`＋归档决策映射 internal 纯函数 | 高 |
-| `EntryListScreen.kt` | 可复用笔记列表组件：条目卡片、滑动删除、长按复制、点击编辑、多选勾选 | 中 |
+| `EntryListScreen.kt` | 可复用笔记列表组件：条目卡片、滑动删除、长按复制、点击编辑、多选勾选；`headerSlot` 参数＝随列表滚动的头部槽（v1.6.1 工作区标题行消费，主宿主不传零变化） | 中 |
 | `ArchiveListScreen.kt` | 归档管理页：归档卡片、滑动删除/追加恢复（去重）——v1.4 分家后仅整文件归档（主题移至 `TopicListScreen`）；`ArchiveEntryKind` 枚举定义留驻本文件 | 中 |
 | `ArchiveDetailScreen.kt` | 归档/主题详情页：复用 EntryListScreen（只读模式），`kind=topic` 传「主题详情」标题与来源文件名 | 低 |
 | `TopicListScreen.kt` | 主题独立页（v1.4，`topics` 路由）：主题卡片（彩色首字标）、页内新建（同名提示）、空主题右滑删除、左滑恢复 | 中 |
@@ -20,12 +20,14 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 | `EntryEditDialog.kt` / `EntryInputDialog.kt` | v1.6 无状态共享对话框（草稿提升宿主、onSave 单源、日历时序归宿主；MainScreen/工作区两消费方） | 低 |
 | `ArchiveFlow.kt` | v1.6 归档共享编排（runArchive/ArchiveWordbook/ArchiveChoiceDialog/ArchiveOutcome/决策映射；主/题两消费方 onCompleted 差异化善后） | 中 |
 | `MoveFlow.kt` | v1.6 三动词（移入/移出/转移）状态 holder＋MoveOutcomeMapping 全组合（guideSuffix 承载首次指路） | 中 |
-| `TopicWorkspaceScreen.kt` | v1.6 主题工作区（编辑/删除/批量/新增/复制/分享/归档；与主界面同权；topic_workspace 路由） | 高 |
+| `TopicWorkspaceScreen.kt` | v1.6 主题工作区（编辑/删除/批量/新增/复制/分享/归档；与主界面同权；topic_workspace 路由）；v1.6.1 顶栏下方全宽标题行（随列表滚动＋titleCount 防闪计数） | 高 |
 | `ArchiveRestore.kt` | 恢复确认对话框＋去重追加循环（自 ArchiveListScreen 迁移共用，归档/主题两路消费） | 中 |
 | `Microcopy.kt` | 微文案常量源（v1.3.x 起）：追加/保存/复制反馈＋移入主题词族＋归档二选一词族 | 低 |
 | `LinkEntry.kt` | UI 层条目模型：timestamp（完整时间戳串作 key）+ content + 派生 timestampDisplay | 低 |
 | `AppColors.kt` | ~~全局颜色常量~~ **已删除（v1.3）**：迁移为 `ui/theme/Theme.kt` 语义色（`MaterialTheme.colorScheme.primary`/`.error` + `successColor` 扩展），详见 `theme/CLAUDE.md` | — |
 | `ToastUtils.kt` | 自定义 Toast：反色药丸（v1.4 视觉裁定——随应用主题反转：浅色深底白字/深色浅底深字，近不透明；ThemePreferences 偏好＋系统夜间同 Compose 解析规则），兼容旧版 Android | 低 |
+| `StateSavers.kt` | v1.6.1 状态保全（TD-051）：rememberSaveable 分立式三 Saver＋编码原语——**纯核心禁 import android.\***（JVM 假绿围栏），容量守卫确定性截断 | 低 |
+| `SafeFocus.kt` | v1.6.1 对话框恢复开态防崩：requestFocusSafe（等一帧＋runCatching——重建恢复帧 FocusRequester 晚挂载竞态） | 低 |
 | `theme/`（子包） | 主题基础设施（v1.3）：`AppendoTheme` 双色板、success 扩展色、`ThemeMode` 三态、状态栏同步——见 `theme/CLAUDE.md` | 中 |
 
 ## 导航流程
