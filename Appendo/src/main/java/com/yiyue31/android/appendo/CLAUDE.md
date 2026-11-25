@@ -2,7 +2,7 @@
 
 ## 目录职责
 
-应用的入口层，包含 Activity 定义、Application 初始化和 Navigation 路由。不包含业务逻辑。
+应用的入口层，包含 Activity 定义与 Navigation 路由。不包含业务逻辑。（Application 子类已随 v1.5.0 提醒子系统退役删除，无 Application 初始化。）
 
 ## 关键文件
 
@@ -13,27 +13,12 @@
 
 ## 架构要点
 
-### 双 Activity 设计
+### 双 Activity 与导航
 
-- **MainActivity**：主界面入口，通过 `AppendoNavHost` 管理 Compose Navigation 路由
-- **ShareReceiverActivity**：接收其他应用的分享内容，独立运行在后台线程写入，完成后 `finish()`
+- **MainActivity**：主界面入口，经 `AppendoNavHost` 管理 Compose Navigation 路由（持有主题三态 State、冷启动窗口主题）
+- **ShareReceiverActivity**：接收分享内容，后台线程写入后 `finish()`
 
-为什么需要两个 Activity？
-- 分享操作是独立的、无需 UI 的，使用独立 Activity 可以避免干扰主界面
-- ShareReceiverActivity 不经过 Compose UI，直接操作文件，保证写入速度
-
-### Navigation 路由结构
-
-```
-MainActivity
-  └── AppendoNavHost (NavHost)
-       ├── "main"            → MainScreen (主页，笔记列表)
-       ├── "archive_list"    → ArchiveListScreen (归档列表)
-       └── "archive_detail/{filePath}" → ArchiveDetailScreen (归档详情)
-```
-
-- 路由参数使用 `Uri.encode()`/`Uri.decode()` 处理文件路径
-- 归档详情页通过解析文件名提取时间戳（格式：`Appendo_yyyyMMdd_HHmmss.md`）
+为什么是两个 Activity、完整路由图、路径参数约定、归档命名与解析规则：见 `docs/architecture.md` §1.2/§3.5（系统级现状只在该文档维护——分工规则见其文末）。
 
 ### 业务子包
 
@@ -43,12 +28,17 @@ MainActivity
 
 ```
 MainActivity → data/FileRepository (创建实例并传入 Compose)
-             → ui/MainScreen, ui/ArchiveListScreen, ui/ArchiveDetailScreen
+             → data/ThemePreferences (主题三态读写)
+             → data/ArchiveRepository, data/ArchiveFile (归档元数据解析)
+             → ui/MainScreen, ui/TopicListScreen, ui/TopicWorkspaceScreen,
+               ui/ArchiveListScreen, ui/ArchiveDetailScreen
+             → ui/theme/AppendoTheme, ui/theme/ThemeMode
+             → util/EntryParser (路由兜底计数)
 
 ShareReceiverActivity → data/FileRepository
                       → util/SafMarkdownFile, util/FileBasedMarkdownFile
 
-AppendoApplication → 无业务依赖（仅初始化通知渠道）
+（无 Application 子类——v1.5.0 随提醒子系统退役删除）
 ```
 
 ## 扩展指南

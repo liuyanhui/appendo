@@ -9,18 +9,37 @@
 ```
 test/java/com/yiyue31/android/appendo/
 ├── data/
-│   └── FileRepositoryFirstLaunchTest.kt        — FileRepository 首次启动逻辑测试
+│   ├── ArchiveNameParseTest.kt                 — 归档命名/解析（WB-1 尾部锚定、同秒 _n 不覆盖）
+│   ├── FileRepositoryFirstLaunchTest.kt        — FileRepository 首次启动逻辑测试
+│   ├── ThemePreferencesTest.kt                 — 主题三态偏好（缺省/非法回退 SYSTEM）
+│   └── TopicRepositoryTest.kt                  — 主题文档管理（topics/ 增删改名）
 ├── integration/
 │   └── EntryDeletionIntegrationTest.kt         — 条目删除端到端测试（真文件）
 ├── ui/
+│   ├── ArchiveOutcomeMappingTest.kt            — 归档二选一决策映射全组合
+│   ├── ArchiveRestoreDeduplicationTest.kt      — 归档恢复去重算法测试
+│   ├── ChooseAppendToastTest.kt                — 重复内容追加 toast 旁注（防硬编码漂移）
 │   ├── MarkdownParserTest.kt                   — parseMarkdownEntries 包装器测试
-│   └── ArchiveRestoreDeduplicationTest.kt      — 归档恢复去重算法测试
+│   ├── MoveFlowHolderRestoreTest.kt            — 移入流程快照恢复（v1.6.1 N-4）
+│   ├── MoveOutcomeMappingTest.kt               — 移入/移出/转移决策映射全组合
+│   ├── MoveRestoreDecisionTest.kt              — 事务中断后恢复重推导（v1.6.1 N-4）
+│   ├── MultiSelectTest.kt                      — 多选选中集维护纯函数
+│   ├── StateSaversTest.kt                      — Saver round-trip/损坏穷举（v1.6.1 N-4）
+│   ├── TopicBadgeTest.kt                       — 主题首字标色板（对比度独立复算）
+│   └── theme/
+│       └── ThemeModeTest.kt                    — resolveDarkTheme 纯函数（模式×系统深浅）
 └── util/
-    ├── EntryParserTest.kt                      — EntryParser 全量（读/写/边界/恢复，~33 用例）
-    ├── FileBasedMarkdownFileTest.kt            — FileBasedMarkdownFile 真类（mock Context + 真 FS）
-    ├── DuplicateHintThrottleTest.kt            — 重复提示节流
     ├── CalendarEntryMapperTest.kt              — 添加到日历标题映射（v1.0.3）
+    ├── DuplicateHintThrottleTest.kt            — 重复提示节流
+    ├── EntryParserTest.kt                      — EntryParser 全量（读/写/边界/恢复）
+    ├── ExportFormatTest.kt                     — 出口格式化 formatForExport（v1.3）
+    ├── FileBasedMarkdownFileTest.kt            — FileBasedMarkdownFile 真类（mock Context + 真 FS）
+    ├── RefreshGuardTest.kt                     — 列表刷新守卫（TD-016）
+    ├── SecondLevelEquivalenceTest.kt           — 秒级旧条目等价类（v1.4 前无 .SSS）
+    └── TopicMoveTransactionTest.kt             — 组合事务六步编排/失败态矩阵（T-03）
 ```
+
+（当前 24 个测试类、270 用例基线；清单随批次增长，权威口径见 `docs/architecture.md` §7 与 §12。）
 
 ## 测试分类
 

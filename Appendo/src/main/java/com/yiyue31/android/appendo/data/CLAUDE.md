@@ -14,32 +14,9 @@
 | `TopicRepository.kt` | 主题文档管理（topics/ 目录、命名校验、创建/删除、createdAt 元数据、首次移入指路旗标）；v1.6 增 `renameTopic`（锁内三步/createdAt 保留/原名无操作/失败回滚） |
 | `FileRepository.kt`（v1.6 归档命名） | `getArchiveFile(sourceTopic)` 主题名变体＋同秒 `_n` 递增后缀（上限 100 不覆盖，主/题统一） |
 
-## 存储架构：双模式设计
+## 系统级机制 → 架构文档
 
-应用支持两种文件存储模式，通过 `FileRepository` 管理：
-
-```
-FileRepository
-  ├── SAF 模式 (useSAF = true)
-  │   └── 通过 Storage Access Framework 操作用户选择的外部文件
-  │   └── URI 持久化到 SharedPreferences
-  │   └── 需要持久化 URI 权限 (takePersistableUriPermission)
-  │
-  └── 默认模式 (useSAF = false)
-      └── 操作应用私有目录下的 Appendo.md
-      └── 路径: getExternalFilesDir(null)/Appendo.md
-```
-
-### 模式切换与降级
-
-- SAF URI 失效时自动降级为默认模式（`clearFileUri()`）
-- 降级时先清除偏好再释放权限，防止竞态条件导致永久丢失 URI
-- `isFirstLaunch()` 用于首次安装时引导用户选择外部存储
-
-## SharedPreferences 说明
-
-- 文件名：`"appendo"`（常量 `FileRepository.APPENDO_PREFS`）
-- 存储内容：`use_saf`（布尔）、`file_uri`（字符串）、`file_last_modified`（长整型）、`theme_mode`（字符串，v1.3：`system`/`light`/`dark`，缺省=system 不写入）
+双存储模式（SAF/默认）、URI 失效回退与授权自愈、原子写/软恢复语义、SharedPreferences 键清单均为系统级现状，**只在 `docs/architecture.md` 维护**（§4.1/§4.2/§3.6，分工规则见其文末），此处不复制。
 
 ## 线程安全
 

@@ -10,6 +10,9 @@
 |------|------|---------|
 | `EntryParser.kt` | **条目知识唯一收敛点（v1.1）**：parse/format/时间戳/边界算法/恢复判定/出口格式化（v1.3 `formatForExport`），纯函数 | 核心（v1.1 新） |
 | `ParsedEntry.kt` / `ReadResult.kt` | util 纯数据（解析条目 / 读结果+恢复标志） | 数据类 |
+| `RefreshGuard.kt` | 列表刷新守卫纯函数（v1.2.2）：读失败/疑似异常读取跳过刷新、header-only 合法空文件放行（TD-016 回归修复） | 工具 |
+| `EntryKey.kt` | `timestamp|content` 条目唯一标识（v1.4）：寻址/去重/勾选三处共用 | 数据类 |
+| `TopicMoveTransaction.kt` | 移入/移出/转移组合事务（v1.4 移入、v1.6 通用化三向——源/目标均可为 FileBased 或 SAF）：单次持锁先写目标后删源，`MoveResult` 六分类（含 `SameDocument` 防御护栏） | 核心（事务） |
 | `DuplicateHintThrottle.kt` | 重复内容提示 5s 节流（进程内单例） | 工具 |
 | `CalendarEntryMapper.kt` / `CalendarLauncher.kt` | 添加到日历（v1.0.3）：标题映射纯函数 + ACTION_INSERT 拉起日历 | 工具 |
 | `MarkdownFileOperations.kt` | 文件操作接口 + 全局锁 + 默认方法（appendEntry / readAllForExternal / readAllWithStatus） | 策略接口 |
@@ -20,84 +23,16 @@
 
 > **v1.1 变更**：`MarkdownFile.kt`（旧 SAF 实现）已删除；条目 parse/format/边界/恢复逻辑统一收敛到 `EntryParser`（此前在 FileBasedMarkdownFile / SafMarkdownFile 各 ~80 行 ×2 重复）。时间戳改毫秒级（java.time），写入原子化（默认真原子 / SAF 软恢复），内容零宽空格隔离。详见 `docs/design.md` v1.1 章节。
 
-## 设计模式
+## 系统级机制 → 架构文档
 
-```
-MarkdownFileOperations (接口)
-  ├── append(content)       — 追加内容（nextTimestamp 自动加毫秒时间戳）
-  ├── appendEntry(ts, content) — 追加并保留指定时间戳（归档恢复用）
-  ├── readAll()             — 读取全部内容（含 ZWSP）
-  ├── readAllWithStatus()   — 读取 + 恢复标志（SAF 软恢复时 recovered=true）
-  ├── readAllForExternal()  — 读取并剥离 ZWSP（复制/分享出口专用）
-  ├── writeAll(content)     — 覆写全部内容（不加时间戳）
-  ├── clear()               — 清空（恢复到只有文件头，不走 .bak）
-  ├── exists()              — 文件是否存在
-  ├── count()               — 统计条目数（宽松正则，新旧格式都数得到）
-  ├── initHeader()          — 初始化文件头
-  ├── deleteEntry(timestamp) — 按时间戳删除条目
-  └── updateEntry(timestamp, newContent) — 按时间戳替换内容（时间戳不变）
+本包涉及的系统级现状**只在 `docs/architecture.md` 维护**（分工规则见其文末），此处不复制，改前必读：
 
-MarkdownFileFactory.create(context, useSAF, fileUri, defaultFile)
-  │
-  ├── useSAF=true  → SafMarkdownFile(context, fileUri)
-  └── useSAF=false → FileBasedMarkdownFile(context, defaultFile)
-```
+- 接口成员清单与全局锁 `FileOperationLock` → architecture.md §4.1/§4.3（接口成员以 `MarkdownFileOperations.kt` 为准）
+- Markdown 条目格式、ZWSP 隔离两条不变量、出口剥离规则 → §3.1/§3.3
+- 时间戳主键与单调防碰撞（为何不用索引）→ §3.2 与 §9 ADR
+- 存储双模式、原子写/SAF 软恢复、URI 失效回退与授权自愈 → §4.1/§4.2
 
-### 为什么用策略模式？
-
-- ShareReceiverActivity 和 MainScreen 可能同时访问文件
-- 不同存储后端（默认文件 vs SAF）有完全不同的 I/O API
-- 统一接口让上层代码无需关心底层实现
-
-## 全局锁机制
-
-```kotlin
-// MarkdownFileOperations.kt 中定义
-object FileOperationLock
-```
-
-- **为什么需要**：MainScreen 和 ShareReceiverActivity 创建各自独立的 `MarkdownFileOperations` 实例，实例级锁无法防止跨实例并发
-- **使用方式**：所有文件写操作需要 `synchronized(FileOperationLock)` 包裹
-- **影响范围（v1.1 起）**：**全部读写**——append/appendEntry/deleteEntry/updateEntry/clear/writeAll/count/initHeader，以及 readAll/readAllWithStatus/exists（SAF 读前要做恢复判定，且 read-modify-write 要求读到一致状态）
-
-## Markdown 文件格式
-
-```markdown
-# Appendo
-
----
-
-## 2026-06-02 14:30:00.123
-
-用户输入的内容
-
----
-
-## 2026-06-02 15:00:01.456
-
-另一条内容
-
----
-```
-
-- 文件头：`# Appendo\n`（由 `MarkdownFormatter.FILE_HEADER` 定义）
-- 条目分隔符：`---`
-- 时间戳格式：写入 `## yyyy-MM-dd HH:mm:ss.SSS`（毫秒，`EntryParser.timestampFormatter`）；解析用宽松正则（`EntryParser.getTimestampRegex()`），兼容旧秒级条目
-- 内容隔离：内容行恰好匹配时间戳格式时，写入侧加 ZWSP（U+200B）前缀；复制/分享等出口统一剥离（详见 `docs/architecture.md` §3.3）
-- 编码：UTF-8，无 BOM
-
-## 条目删除机制
-
-使用**时间戳**而非索引作为删除标识符：
-- 索引在插入/删除后会变化，可能导致误删
-- 时间戳是每条记录的唯一标识，始终准确
-- 支持连续删除和批量操作
-
-## SAF 回退机制
-
-`SafMarkdownFile` 的降级与回退（v1.1 重写后）：
-1. 写主 URI：优先 `openFileDescriptor("wt")`（可 fsync），provider 不支持时回退 `openOutputStream("wt")`
-2. URI 授权失效（`exists()` 抛 SecurityException）：由上层（ShareReceiverActivity / MainScreen 首启检查）`clearFileUri()` 后回退默认文件模式
+**模式速记**：策略模式（`MarkdownFileOperations` 双实现 FileBased/Saf——统一接口隔离 I/O 差异，双 Activity 并发入口）＋工厂（`MarkdownFileFactory`）；新增逻辑优先落纯函数（util `object`，纯 JVM 可测——`EntryParser` 存在的直接原因）。
 
 ## 依赖关系
 

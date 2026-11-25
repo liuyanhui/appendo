@@ -8,7 +8,7 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 
 | 文件 | 职责 | 复杂度 |
 |------|------|--------|
-| `MainScreen.kt` | 主页面：笔记列表、2x2 操作网格（手动输入/复制全部/分享全部/归档）、多选模式与移入主题、归档二选一对话框、输入/编辑/关于/外观选择对话框、首启存储引导、文件轮询刷新；顶层 sealed `ArchiveOutcome`＋归档决策映射 internal 纯函数 | 高 |
+| `MainScreen.kt` | 主页面：笔记列表、2x2 操作网格（手动输入/复制全部/分享全部/归档）、多选模式与移入主题、归档二选一对话框、输入/编辑/关于/外观选择对话框、首启存储引导、文件轮询刷新（归档编排与 `ArchiveOutcome` 已迁 `ArchiveFlow.kt`） | 高 |
 | `EntryListScreen.kt` | 可复用笔记列表组件：条目卡片、滑动删除、长按复制、点击编辑、多选勾选；`headerSlot` 参数＝随列表滚动的头部槽（v1.6.1 工作区标题行消费，主宿主不传零变化） | 中 |
 | `ArchiveListScreen.kt` | 归档管理页：归档卡片、滑动删除/追加恢复（去重）——v1.4 分家后仅整文件归档（主题移至 `TopicListScreen`）；`ArchiveEntryKind` 枚举定义留驻本文件 | 中 |
 | `ArchiveDetailScreen.kt` | 归档/主题详情页：复用 EntryListScreen（只读模式），`kind=topic` 传「主题详情」标题与来源文件名 | 低 |
@@ -18,6 +18,7 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 | `MultiSelect.kt` | 多选选中集维护纯函数（`retainedSelection`）＋多选态 contextual 顶栏 | 低 |
 | `TopicMoveDialogs.kt` | 移入主题流程对话框：目标选择/新建命名/同名确认/确认（含失败重试态）/多选长按预览 | 中 |
 | `EntryEditDialog.kt` / `EntryInputDialog.kt` | v1.6 无状态共享对话框（草稿提升宿主、onSave 单源、日历时序归宿主；MainScreen/工作区两消费方） | 低 |
+| `EntrySaveOps.kt` | v1.6 共享写盘/出口小件（/simplify 收敛）：`tryEditSave`/`tryAppend`/`copyToClipboard`/`validationToast`——两宿主写盘与复制样板单源 | 低 |
 | `ArchiveFlow.kt` | v1.6 归档共享编排（runArchive/ArchiveWordbook/ArchiveChoiceDialog/ArchiveOutcome/决策映射；主/题两消费方 onCompleted 差异化善后） | 中 |
 | `MoveFlow.kt` | v1.6 三动词（移入/移出/转移）状态 holder＋MoveOutcomeMapping 全组合（guideSuffix 承载首次指路） | 中 |
 | `TopicWorkspaceScreen.kt` | v1.6 主题工作区（编辑/删除/批量/新增/复制/分享/归档；与主界面同权；topic_workspace 路由）；v1.6.1 顶栏下方全宽标题行（随列表滚动＋titleCount 防闪计数） | 高 |
@@ -26,24 +27,18 @@ UI 层，包含所有 Compose 界面组件。采用 Jetpack Compose + Material 3
 | `LinkEntry.kt` | UI 层条目模型：timestamp（完整时间戳串作 key）+ content + 派生 timestampDisplay | 低 |
 | `AppColors.kt` | ~~全局颜色常量~~ **已删除（v1.3）**：迁移为 `ui/theme/Theme.kt` 语义色（`MaterialTheme.colorScheme.primary`/`.error` + `successColor` 扩展），详见 `theme/CLAUDE.md` | — |
 | `ToastUtils.kt` | 自定义 Toast：反色药丸（v1.4 视觉裁定——随应用主题反转：浅色深底白字/深色浅底深字，近不透明；ThemePreferences 偏好＋系统夜间同 Compose 解析规则），兼容旧版 Android | 低 |
-| `StateSavers.kt` | v1.6.1 状态保全（TD-051）：rememberSaveable 分立式三 Saver＋编码原语——**纯核心禁 import android.\***（JVM 假绿围栏），容量守卫确定性截断 | 低 |
+| `StateSavers.kt` | 状态保全 Saver 五枚（含编码原语 `NullableStringSaver`；另有 `TopicListScreen` 局部 `CreateStepSaver`）——**纯核心禁 import android.\***（JVM 假绿围栏），容量守卫确定性截断 | 低 |
 | `SafeFocus.kt` | v1.6.1 对话框恢复开态防崩：requestFocusSafe（等一帧＋runCatching——重建恢复帧 FocusRequester 晚挂载竞态） | 低 |
 | `theme/`（子包） | 主题基础设施（v1.3）：`AppendoTheme` 双色板、success 扩展色、`ThemeMode` 三态、状态栏同步——见 `theme/CLAUDE.md` | 中 |
 
-## 导航流程
+## 页面入口
 
-```
-MainScreen ("main")
-  ├── 点击顶栏"主题"图标（浏览态常驻含 0 条；多选态随 contextual bar 隐藏）→ TopicListScreen ("topics")
-  │                          └── 点击主题卡片 → TopicWorkspaceScreen ("topic_workspace/{filePath}"，v1.5 工作区；archive_detail 主题路径退役)
-  ├── 点击菜单"归档管理" → ArchiveListScreen ("archive_list")
-  │                          └── 点击归档卡片 → ArchiveDetailScreen ("archive_detail/{filePath}"，kind 缺省＝归档)
-  ├── 点击网格"归档"按钮（第四格）→ 弹出二选一对话框：「归档并清空」／「只归档，保留列表」（不导航；v1.4 起菜单"归档"项已移除，入口唯一化到网格）
-  ├── 点击菜单"打开文件" → 调用外部查看器
-  ├── 点击菜单"自定义目录" → SAF 文件选择器
-  ├── 点击菜单"外观"（原"主题"，v1.4 更名；三态功能不变）→ 弹出外观选择对话框（跟随系统/浅色/深色）
-  └── 点击菜单"关于" → 弹出对话框
-```
+（触发方式导读；路由图与路径参数约定以 `docs/architecture.md` §1.2 为准，不在此复制。）
+
+- MainScreen 顶栏「主题」（浏览态常驻含 0 条；多选态隐藏）→ TopicListScreen → 点击主题卡片 → TopicWorkspaceScreen（可编辑工作区）
+- MainScreen 菜单「归档管理」→ ArchiveListScreen → 点击归档卡片 → ArchiveDetailScreen（只读）
+- 网格「归档」（第四格）→ 二选一对话框：「归档并清空」／「只归档，保留列表」（不导航，入口唯一）
+- 菜单其余项：「打开文件」→ 外部查看器；「自定义目录」→ SAF 选择器；「外观」→ 三态对话框；「关于」→ 对话框
 
 ## 数据模型
 
@@ -83,11 +78,7 @@ data class LinkEntry(
 
 ## 文件刷新机制
 
-MainScreen 使用轮询机制检测文件变更：
-- 间隔：2 秒（`FILE_CHANGE_POLL_INTERVAL_MS`）
-- 比较逻辑：`fileRepository.getFileLastModified()` 与本地缓存对比
-- 触发写入后主动调用 `setFileLastModified()`，确保下轮轮询能检测到变化
-- 注意：该 mtime 是应用自维护的 SP 逻辑时间戳（非文件系统 mtime），**外部编辑不会触发刷新**
+2 秒轮询、SP 逻辑 mtime、写点清单等刷新语义是系统级现状，只在 `docs/architecture.md` §6.1/§6.3 维护（含写入刷新全景图）。UI 侧纪律：新增写入路径必须补调 `setFileLastModified`，否则列表不刷新。
 
 ## 依赖关系
 
